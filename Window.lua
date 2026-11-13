@@ -1209,7 +1209,8 @@ local function BuildList(page)
         .. "the ledger keeps what it said.")
     page.letters:SetPoint("BOTTOMLEFT", 8, 10)
     page.letters:Set("Letters")
-    page.settings = Foot(function() if GK.OpenOptions() then win:Hide() end end,
+    -- the settings' own pages (Options.lua), where the ledger lies: it gives them its place
+    page.settings = Foot(function() if GK.OpenOptions(nil, win) then win:Hide() end end,
         function() return SETTINGS or "Settings" end, "Grudgekeeper's settings: letters, warnings, sharing.")
     page.settings:SetPoint("LEFT", page.letters, "RIGHT", 6, 0)
     page.settings:Set(SETTINGS or "Settings")

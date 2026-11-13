@@ -834,57 +834,8 @@ end
 -- ---------------------------------------------------------------------------
 -- Settings
 -- ---------------------------------------------------------------------------
--- A sound to pick, under its box: the game's own dropdown. Picking one plays it, so you hear what you chose,
--- and picking the same one again plays it again. No dropdown in this client: no row. get() is the key in use,
--- set(key) keeps a new one; for a Shame player joining here, and for a target near (Options.lua). `text`
--- names the row ("Sound" when none): a row with a name gets a label of one width, so a list lines up.
-function GK.SoundRow(f, above, get, set, text)
-    local row = CreateFrame("Frame", nil, f)
-    row:SetSize(400, 28)
-    row:SetPoint("TOPLEFT", above, "BOTTOMLEFT", 0, -2)
-    local label = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    label:SetPoint("LEFT", 30, 0)                 -- under the box's label, not its box
-    label:SetText(text or "Sound")
-    if text then label:SetWidth(120) label:SetJustifyH("LEFT") end
-    local ok, dd = pcall(CreateFrame, "DropdownButton", nil, row, "WowStyle1DropdownTemplate")
-    if not (ok and type(dd) == "table" and dd.SetupMenu) then
-        label:Hide()
-        row:SetHeight(1)
-        return row
-    end
-    dd:SetWidth(200)
-    dd:SetPoint("LEFT", label, "RIGHT", 10, 0)
-    -- shown when the one picked is gone (a sound pack uninstalled): the chime is what then plays
-    if dd.SetDefaultText then dd:SetDefaultText("The chime") end
-    dd:SetupMenu(function(_, root)
-        for _, c in ipairs(GK.SoundChoices()) do
-            local key = c[1]
-            root:CreateRadio(c[2], function() return get() == key end, function()
-                set(key)
-                GK.PlayChoice(key)
-            end)
-        end
-    end)
-    row.dropdown = dd
-    return row
-end
-
--- This file loads before Options.lua, which makes the list: start it here if it isn't there yet.
-GK.OptionSections = GK.OptionSections or {}
-GK.OptionSections[#GK.OptionSections + 1] = function(f, anchor, h)
-    -- short names, what each does in its (i); the slash commands are on the CurseForge page, not here
-    local head = h.Section(anchor, "Notes")
-    local alerts = h.Check(head, "When a Marked player is near", "noteAlerts", "The same warning as for a kill order's target.")
-    local nearby = h.Check(alerts, "When a Shame player is near", "watchNearby", "One line in chat, no sound.")
-    local group = h.Check(nearby, "When a Shame player joins my group", "watchGroup",
-        "A warning with their tag, and the sound below.")
-    local sound = GK.SoundRow(f, group, GK.ShameSoundKey, function(key) GK.db.shameSound = key end)
-    sound.which = "shame"
-    local kudos = h.Check(sound, "When a Kudos player joins my group", "kudosGroup", "One friendly line in chat.")
-    local plate = h.Check(kudos, "Mark their nameplates", "plateNotes",
-        "A small mark beside players you have notes on. Needs nameplates on (V).")
-    return plate
-end
+-- The notes' settings - the warnings for Marked, Shame and Kudos, and the sound a Shame player joining plays -
+-- are a chapter of the settings' own pages (Options.lua, GK.SettingsChapters).
 
 -- ---------------------------------------------------------------------------
 -- Slash commands
@@ -991,7 +942,8 @@ end
 local OURS = { note = true, watch = true, shame = true, kudos = true, move = true, notes = true, import = true }
 -- what Core.lua's /grudge answers itself; anything else it meets it answers with its help
 local CORE = { orders = true, hitlist = true, board = true, leaderboard = true, post = true, letters = true,
-    read = true, test = true, notice = true, options = true, settings = true, debug = true, guild = true }
+    read = true, test = true, notice = true, options = true, settings = true, debug = true, guild = true,
+    spree = true, arrange = true }
 
 local function PrintHelp()
     print("  /grudge note [first surname] <text>  - write a note on a player (no name: your target)")

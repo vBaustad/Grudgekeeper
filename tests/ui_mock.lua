@@ -20,7 +20,6 @@ function U.load(M, GK)
         end
         table.insert(GK.LedgerPages, def)
     end
-    GK.OptionSections = {}
     GK.Ago = function() return "3 days ago" end
     GK.OpenWindow = function(page) M.opened = page end
     GK.OpenOptions = function() M.optionsOpened = true end

@@ -304,6 +304,29 @@ function GK.PlaceNotice(reset)
     GK.NoticeUpdate(false)
 end
 
+--- The mover (Move.lua): on, the letter icon shown with or without letters, and returned; off, as it was.
+function GK.NoticeForMove(on)
+    if not btn then Build() end
+    placing = on and true or false
+    btn.line:Hide()
+    GK.NoticeUpdate(false)
+    return on and btn or nil
+end
+
+--- Dragged by the mover: kept where it is, and the target button laid over its bubble again.
+function GK.NoticeMoved()
+    SavePosition(btn)
+    Replace()
+end
+
+function GK.NoticeReset()
+    GK.db.notice = nil
+    if btn then
+        Place()
+        Replace()
+    end
+end
+
 -- ---------------------------------------------------------------------------
 -- The bubble: who is near, said by the letter in the game's own chat bubble, and a click on it that
 -- targets them ("HAN ER I NÆRHETEN, KLIKK FOR TARGET!", the owner, 2026-11-09). No addon may target anyone

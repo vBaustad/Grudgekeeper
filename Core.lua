@@ -534,12 +534,15 @@ end
 -- the game's own sounds below say "warning" well enough.
 local SOUND_FILES = {
     { "makke", "Måkke ta med han", "Interface\\AddOns\\Grudgekeeper\\Media\\makke.mp3", guild = "YippYapp" },
-    -- the Grudgekeeper calling out each spree tier (ElevenLabs, 2026-11-12)
-    { "voice_bloodied", "Voice: Bloodied", "Interface\\AddOns\\Grudgekeeper\\Media\\voice_bloodied.mp3" },
-    { "voice_merciless", "Voice: Merciless", "Interface\\AddOns\\Grudgekeeper\\Media\\voice_merciless.mp3" },
-    { "voice_butcher", "Voice: Butcher", "Interface\\AddOns\\Grudgekeeper\\Media\\voice_butcher.mp3" },
-    { "voice_reaper", "Voice: Reaper", "Interface\\AddOns\\Grudgekeeper\\Media\\voice_reaper.mp3" },
-    { "voice_grudgebound", "Voice: Grudgebound", "Interface\\AddOns\\Grudgekeeper\\Media\\voice_grudgebound.mp3" },
+    -- the Grudgekeeper calling out each spree tier (ElevenLabs, 2026-11-12). spree: offered for the spree
+    -- announcements only, never for a target near or a Shame player: "lydene er kun for spree og slikt, ikke
+    -- for normalt" (the owner, 2026-11-12)
+    { "voice_bloodied", "Voice: Bloodied", "Interface\\AddOns\\Grudgekeeper\\Media\\voice_bloodied.mp3", spree = true },
+    { "voice_merciless", "Voice: Merciless", "Interface\\AddOns\\Grudgekeeper\\Media\\voice_merciless.mp3", spree = true },
+    { "voice_butcher", "Voice: Butcher", "Interface\\AddOns\\Grudgekeeper\\Media\\voice_butcher.mp3", spree = true },
+    { "voice_reaper", "Voice: Reaper", "Interface\\AddOns\\Grudgekeeper\\Media\\voice_reaper.mp3", spree = true },
+    { "voice_grudgebound", "Voice: Grudgebound", "Interface\\AddOns\\Grudgekeeper\\Media\\voice_grudgebound.mp3",
+      spree = true },
 }
 local CHIME = "kit:UI_RAID_BOSS_WHISPER_WARNING"
 
@@ -588,11 +591,22 @@ local function Gone(pick)
     return true
 end
 
+--- Whether a pick is one of the Grudgekeeper's voice lines, which are for the spree announcements only.
+local function SpreeOnly(pick)
+    local name = type(pick) == "string" and pick:match("^file:(.+)$")
+    if not name then return false end
+    for _, s in ipairs(SOUND_FILES) do
+        if s[1] == name then return s.spree == true end
+    end
+    return false
+end
+
 --- A gone pick goes back to the default: it would play the chime, or nothing, under a dropdown showing
---- nothing picked.
+--- nothing picked. So does a voice line picked for a target near or a Shame player (a build that offered
+--- them there): their pickers don't list it.
 function GK.ForgetGoneSounds(db)
     for field, default in pairs({ nearSound = defaults.nearSound, shameSound = defaults.shameSound }) do
-        if Gone(db[field]) then db[field] = default end
+        if Gone(db[field]) or SpreeOnly(db[field]) then db[field] = default end
     end
     for key, pick in pairs(type(db.spreeSounds) == "table" and db.spreeSounds or {}) do
         if Gone(pick) then db.spreeSounds[key] = nil end
@@ -613,10 +627,11 @@ local function SharedSounds()
 end
 
 --- Every sound there is to pick, { { key, label } }: none, ours, the game's, then other addons' by name.
-function GK.SoundChoices()
+--- spree: for a spree announcement, the Grudgekeeper's voice lines with them; else without.
+function GK.SoundChoices(spree)
     local list = { { "off", "None" } }
     for _, s in ipairs(SOUND_FILES) do
-        if Offered(s) then list[#list + 1] = { "file:" .. s[1], s[2] } end
+        if Offered(s) and (spree or not s.spree) then list[#list + 1] = { "file:" .. s[1], s[2] } end
     end
     for _, s in ipairs(SOUND_KITS) do
         if SOUNDKIT and SOUNDKIT[s[1]] then list[#list + 1] = { "kit:" .. s[1], s[2] } end
@@ -892,8 +907,8 @@ local function Help()
     print("  /grudge  - open the window: kill orders, the guild's leaderboard, your grudges")
     print("  /grudge post  - write a kill order on your target (no enemy targeted: it asks who)")
     print("  /grudge letters  - read your letters")
-    print("  /grudge test  - four sample letters, to see what they look like")
-    print("  /grudge notice  - show the letter icon to drag it where you want it (notice reset: back to start)")
+    print("  /grudge test  - five sample letters, to see what they look like")
+    print("  /grudge arrange  - put the letter icon, the spree splash and its toasts where you want them")
     print("  /grudge spree  - show a sample spree splash and toast")
     print("  /grudge options  - open the settings")
     print("  /grudge guild  - officers: put an enemy guild on watch by its name")
@@ -915,8 +930,11 @@ SlashCmdList.GRUDGEKEEPER = function(msg)
         GK.OpenLetters()
     elseif cmd == "test" then
         GK.SampleLetters()
-    elseif cmd == "notice" or cmd == "notice reset" then
-        GK.PlaceNotice(cmd == "notice reset")
+    elseif cmd == "arrange" or cmd == "notice" then
+        -- the letter icon, the splash and the toasts (Move.lua); "move" is the notes' (NotesUI.lua)
+        if GK.ToggleMover then GK.ToggleMover() end
+    elseif cmd == "notice reset" then
+        GK.NoticeReset()
     elseif cmd == "spree" then
         GK.AnnounceSample()           -- a sample splash and toast (Announce.lua)
     elseif cmd == "options" or cmd == "settings" then

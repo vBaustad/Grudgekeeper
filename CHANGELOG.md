@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.6.0
+
+- **Kill sprees.** A spree is your kills worth points in a row, until an enemy player kills you. Grey and farmed kills don't count, and assists don't. Reaching 3, 5, 7, 10 and 15 in a row is announced - Bloodied, Merciless, Butcher, Reaper and Grudgebound - and Grudgebound again at every fifth after that. Your guildies' sprees are announced to you too.
+- **A splash or a toast.** An announcement is a splash in the middle of the screen, with the tier's seal and its name on a banner, or a small toast by the letter icon. Each kind - your sprees, guildies' sprees, a spree that ended, a tormentor put down - is a splash, a toast or off, under Kill sprees in the settings. Two more settings say when they may come: always, not in combat, not in combat in a dungeon or raid, or never in a dungeon or raid. One that is held back waits, and comes afterwards. `/grudge spree` shows a sample of both.
+- **A spree ended, and tormentors.** A spree of 3 or more that ends on a death to an enemy player is announced. So is the kill of a tormentor: an enemy who has killed three or more of the guild since any of you last killed them.
+- **The Grudgekeeper's voice.** He calls out each tier. That is the tier's sound until you pick another: every tier, a spree that ended and a tormentor each have a sound to pick under Kill sprees.
+- **Settings in a window of their own.** The settings are on the ledger's paper in a window of Grudgekeeper's own: a menu of chapters down the left, the chapter you picked beside it. A wax seal is a setting that is on, a dashed ring one that is off. They open in a fight, and no page scrolls. The ledger's Settings button, a right-click on the minimap button and `/grudge options` open them, and **Back to the ledger** takes you back. The game's own options page keeps one button that opens them too.
+- **Arrange on screen.** The button at the foot of the settings, or `/grudge arrange`, shows the letter icon, the spree splash and the toasts with a frame around each: drag one where you want it, right-click it to put it back. The settings close while you do, and open again at Done. It replaces **Move the letter icon**.
+- **"Duel to the death" is off the list of sounds.** It plays nothing in Forever. If it was your sound for a target near, you now have the Battleground horn.
+- Kill sprees, their seals and banners and the Grudgekeeper's voice are a pull request from dakristia.
+
 ## 1.5.0
 
 - **Tracked.** Your own list of enemies to keep an eye on. Use **Track someone** at the top of your Grudges, or **Track** in the right-click menu on an enemy. They sit at the top of your Grudges, the one seen latest first. When one of them is near, you get the same warning as for a kill order's target, and an eye over their nameplate. **Stop tracking** is on their poster and in the same menu. Nobody else sees the list. You can track 25 at most.

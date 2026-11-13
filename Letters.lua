@@ -293,7 +293,7 @@ end
 -- of its own. Someone who skipped a release gets each letter they missed, oldest first: 1.5.0's came the
 -- same day as 1.4.0's (the owner, 2026-11-12: "må vel ha enda en what's new da"). The next one: its id at
 -- the end of NEWS, and its words in NEWS_WORDS.
-local NEWS = { "1.4.0", "1.5.0" }
+local NEWS = { "1.4.0", "1.5.0", "1.6.0" }
 local LATEST = NEWS[#NEWS]
 
 -- Each letter in his voice: two short paragraphs with air between and no numbers, and a button to where
@@ -311,6 +311,11 @@ local NEWS_WORDS = {
         "",
         "They wait at the top of your Grudges, and nobody else reads that page.",
     }, "seal_black", "Grudges", function() GK.OpenLedgerPage("Grudges") end },
+    ["1.6.0"] = { "Blood in a row", {
+        "String your kills together and I'll call it out - louder, the longer you last.",
+        "",
+        "My settings have pages of their own now: have it shouted, shown small, or not at all.",
+    }, "seal_red", "Settings", function() GK.OpenOptions("Kill sprees") end },
 }
 
 --- The news letters not seen yet, oldest first: all of them when none was, those after the one seen last,
@@ -1302,7 +1307,8 @@ end
 -- ---------------------------------------------------------------------------
 --- A window in the game's frame, w x h, titled; dragged as every sheet is, closed by its X (which hides
 --- it directly: the template's HideUIPanel does nothing in combat) and by Escape before the window under it.
-function GK.MakeFrameSheet(name, w, h, title)
+--- wide: a window of two pages (the settings), on the wide sheet the open ledger lies on.
+function GK.MakeFrameSheet(name, w, h, title, wide)
     local f = SheetFrame(name, w, h, "SettingsFrameTemplate")
     -- the template's flat grey backdrop gives way to the skin's background, as on the ledger: the plain
     -- parchment (sheet_single, the page with no torn edge) in its tone, or in classic the frame's own panel
@@ -1315,7 +1321,7 @@ function GK.MakeFrameSheet(name, w, h, title)
             bg:SetDesaturation(0)
             bg:SetVertexColor(1, 1, 1)
         else
-            bg:SetTexture(MEDIA .. "sheet_single")
+            bg:SetTexture(MEDIA .. (wide and "sheet_wide" or "sheet_single"))
             bg:SetTexCoord(0, 1, 0, 1)
             if GK.Tone then GK.Tone(bg) end
         end

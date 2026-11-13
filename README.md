@@ -12,6 +12,11 @@ leaderboard, and kill orders with a bounty on them.
 - **Track someone** at the top of your Grudges, or **Track** in the right-click menu on an enemy: your own
   list of enemies to keep an eye on, never shared. One of them near warns you and wears an eye over their
   nameplate.
+- Kill sprees: your kills worth points in a row are called out at 3, 5, 7, 10 and 15, yours and your
+  guildies', as a splash in the middle of the screen or a small toast by the letter icon. `/grudge spree`
+  shows a sample of both.
+- `/grudge options` opens the settings, in a window of their own. **Arrange on screen** there, or
+  `/grudge arrange`, lets you drag the letter icon, the splash and the toasts where you want them.
 - `/grudge test` puts five sample letters in your pile.
 - Right-click a player and pick **Grudgekeeper profile**: a wanted poster for an enemy, the record of a
   guildie. On an enemy, **Post a kill order** is right below it, and for an officer **Watch their guild**

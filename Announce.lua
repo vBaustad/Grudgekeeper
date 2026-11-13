@@ -76,13 +76,26 @@ local function Outline(fs)
     if file then fs:SetFont(file, size, "OUTLINE") end
 end
 
+--- Where the splash stands: where it was moved to (GK.db.splashAt, Move.lua), else a little above the middle.
+local function PlaceSplash()
+    splash:ClearAllPoints()
+    local p = GK.db.splashAt
+    if p and p.point then
+        splash:SetPoint(p.point, UIParent, p.relPoint or p.point, p.x or 0, p.y or 0)
+    else
+        splash:SetPoint("TOP", UIParent, "CENTER", 0, 260)
+    end
+end
+
 local function BuildSplash()
     splash = CreateFrame("Frame", "GrudgekeeperSplash", UIParent)
     splash:SetFrameStrata("HIGH")
     splash:EnableMouse(false)
-    -- Two thirds of the first try, which took too much of the screen (the owner, 2026-11-12).
+    -- Two thirds of the first try, which took too much of the screen (dakristia, who built it, 2026-11-12).
     splash:SetSize(2 * SEAL, SEAL + SEAL / 2 + 40)
-    splash:SetPoint("TOP", UIParent, "CENTER", 0, 260)
+    splash:SetMovable(true)                       -- by the mover (Move.lua), to where it was put
+    splash:SetClampedToScreen(true)
+    PlaceSplash()
     -- A soft ember glow of its own: the letter icon's glow.tga is a ring, and grown this big it read as a
     -- white halo around the seal.
     splash.glow = splash:CreateTexture(nil, "BACKGROUND")
@@ -150,6 +163,8 @@ local function BuildSplash()
         else
             self.shine:Hide()
         end
+        -- held: shown to be moved (Move.lua), so it stays until the mover closes
+        if self.held then return end
         if age >= SPLASH_HOLD + SPLASH_FADE then
             self:Hide()
         elseif age > SPLASH_HOLD then
@@ -208,10 +223,13 @@ local active, pool = {}, {}       -- the toasts showing, oldest first, and the f
 
 local function Relayout()
     local notice = GK.NoticeFrame()
+    local at = GK.db.toastAt                      -- where the first was moved to (Move.lua), else under the letter
     for i, t in ipairs(active) do
         t:ClearAllPoints()
         if i == 1 then
-            if notice then
+            if at and at.point then
+                t:SetPoint(at.point, UIParent, at.relPoint or at.point, at.x or 0, at.y or 0)
+            elseif notice then
                 t:SetPoint("TOPRIGHT", notice, "BOTTOMRIGHT", 0, -26)
             else
                 -- the letter is not built until one comes: where it will be
@@ -244,12 +262,15 @@ local function BuildToast()
     t.ribbon = t:CreateTexture(nil, "ARTWORK")
     t.ribbon:SetSize(256, 64)
     t.ribbon:SetPoint("TOPLEFT", t.seal, "TOPRIGHT", 4, 0)
-    -- a size up from the first try, which was hard to read by the letter icon (the owner, 2026-11-12)
+    -- a size up from the first try, which was hard to read by the letter icon (dakristia, 2026-11-12)
     t.line = t:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     Outline(t.line)
     t.line:SetJustifyH("LEFT")
+    t:SetMovable(true)                            -- the first is the stack's handle for the mover (Move.lua)
+    t:SetClampedToScreen(true)
     t.age = 0
     t:SetScript("OnUpdate", function(self, dt)
+        if self.held then return end              -- the mover's sample: it stays until the mover closes
         local age = self.age + dt
         self.age = age
         if age >= TOAST_HOLD + TOAST_FADE then
@@ -268,14 +289,18 @@ local function ShowToast(item)
     t.ribbon:SetTexture(item.ribbon)
     t.ribbon:SetShown(item.ribbon ~= nil)
     t.line:SetText(item.line)
-    -- under its ribbon; with no ribbon, beside the seal
+    -- centred under its ribbon, as the splash's line is under its own; with no ribbon, beside the seal. It
+    -- stood at the toast's left edge, under the seal: "teksten under det lille banneret er det left aligned
+    -- eller noe?" (the owner, 2026-11-12)
     t.line:ClearAllPoints()
     if item.ribbon then
-        t.line:SetPoint("TOPLEFT", t, "TOPLEFT", 0, -68)
-        t.line:SetWidth(324)
+        t.line:SetPoint("TOP", t.ribbon, "BOTTOM", 0, -4)
+        t.line:SetWidth(256)
+        t.line:SetJustifyH("CENTER")
     else
         t.line:SetPoint("LEFT", t.seal, "RIGHT", 4, 0)
         t.line:SetWidth(256)
+        t.line:SetJustifyH("LEFT")
     end
     t.age = 0
     t:SetAlpha(1)
@@ -399,4 +424,73 @@ function GK.AnnounceSample()
         line = "7 kills in a row", sound = "butcher", fire = "butcher" })
     Show({ style = "toast", seal = MEDIA .. "spree_butcher", ribbon = MEDIA .. "spree_butcher_name",
         line = "Glue Enjoyer: 7 kills in a row", silent = true })
+end
+
+-- ---------------------------------------------------------------------------
+-- The mover (Move.lua): a sample splash and toast that stay to be dragged, and where they were put
+-- ---------------------------------------------------------------------------
+local sampleToast
+
+--- Where a frame was dragged to, as the letter icon keeps its own: its point, UIParent's, and the offsets.
+local function PointOf(f)
+    local point, _, relPoint, x, y = f:GetPoint(1)
+    return { point = point, relPoint = relPoint, x = x, y = y }
+end
+
+local function IsActive(t)
+    for _, a in ipairs(active) do
+        if a == t then return true end
+    end
+    return false
+end
+
+--- on: the splash shown, with a sample, until the mover closes; returns it. Off: gone.
+function GK.SplashForMove(on)
+    if not splash then BuildSplash() end
+    if not on then
+        splash.held = nil
+        splash:Hide()
+        return nil
+    end
+    ShowSplash({ seal = MEDIA .. "spree_butcher", ribbon = MEDIA .. "spree_butcher_name",
+        line = "7 kills in a row", fire = "butcher" })
+    splash.held = true
+    return splash
+end
+
+function GK.SplashMoved() GK.db.splashAt = PointOf(splash) end
+
+function GK.SplashReset()
+    GK.db.splashAt = nil
+    if splash then PlaceSplash() end
+end
+
+--- on: a sample toast in the stack until the mover closes, and the stack's first, which the rest hang
+--- from, to drag; returns that one. Off: the sample gone.
+function GK.ToastsForMove(on)
+    if not on then
+        if sampleToast then
+            sampleToast.held = nil
+            if IsActive(sampleToast) then RemoveToast(sampleToast) end
+            sampleToast = nil
+        end
+        return nil
+    end
+    if not (sampleToast and IsActive(sampleToast)) then
+        ShowToast({ seal = MEDIA .. "spree_butcher", ribbon = MEDIA .. "spree_butcher_name",
+            line = "Glue Enjoyer: 7 kills in a row" })
+        sampleToast = active[#active]
+        sampleToast.held = true
+    end
+    return active[1]
+end
+
+function GK.ToastsMoved()
+    if active[1] then GK.db.toastAt = PointOf(active[1]) end
+    Relayout()
+end
+
+function GK.ToastsReset()
+    GK.db.toastAt = nil
+    Relayout()
 end

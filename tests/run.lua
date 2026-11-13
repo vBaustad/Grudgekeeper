@@ -1927,7 +1927,7 @@ test("the import tells the guild afterwards, once", function()
     eq(#W.sent, 0, "nothing more: it was done already")
 end)
 
-test("the settings: defaults for every new setting, and a section for them", function()
+test("the settings: defaults for every new setting", function()
     local GK = bootUI()
     eq(GK.db.noteAlerts, false)
     eq(GK.db.watchNearby, false)
@@ -1935,7 +1935,6 @@ test("the settings: defaults for every new setting, and a section for them", fun
     eq(GK.db.kudosGroup, false)
     eq(GK.db.plateNotes, true)
     eq(GK.db.alertStyle, nil, "no raid-warning style")
-    eq(#GK.OptionSections, 1)
 end)
 
 -- ---------------------------------------------------------------------------
@@ -2523,28 +2522,30 @@ test("what's new: every letter missed, oldest first, once; none on a first insta
     GK.DeliverNews(false)
     eq(#GK.char.letters, 0, "a moment after login, not under the loading screen")
     W.advance(6)
-    eq(#GK.char.letters, 2)
+    eq(#GK.char.letters, 3)
     eq(GK.char.letters[1].news, "1.4.0", "the oldest first")
     eq(GK.char.letters[2].news, "1.5.0")
-    eq(GK.db.newsSeen, "1.5.0")
+    eq(GK.char.letters[3].news, "1.6.0")
+    eq(GK.db.newsSeen, "1.6.0")
     GK.DeliverNews(false)                          -- the next login
     W.advance(6)
-    eq(#GK.char.letters, 2, "once")
+    eq(#GK.char.letters, 3, "once")
 
     local GK1 = bootSheets({ me = ME })
     function GK1.NoticeUpdate() end
     GK1.db.newsSeen = "1.4.0"                      -- on 1.4.0: its letter came then
     GK1.DeliverNews(false)
     W.advance(6)
-    eq(#GK1.char.letters, 1)
-    eq(GK1.char.letters[1].news, "1.5.0", "only the one after it")
+    eq(#GK1.char.letters, 2)
+    eq(GK1.char.letters[1].news, "1.5.0", "only the ones after it")
+    eq(GK1.char.letters[2].news, "1.6.0")
 
     local GK2 = bootSheets({ me = ME })
     function GK2.NoticeUpdate() end
     GK2.DeliverNews(true)
     W.advance(6)
     eq(#GK2.char.letters, 0, "a first install: nothing is new")
-    eq(GK2.db.newsSeen, "1.5.0", "and not later either")
+    eq(GK2.db.newsSeen, "1.6.0", "and not later either")
 
     local GK3 = bootSheets({ me = ME })
     function GK3.NoticeUpdate() end
@@ -2552,7 +2553,7 @@ test("what's new: every letter missed, oldest first, once; none on a first insta
     GK3.DeliverNews(false)
     W.advance(6)
     eq(#GK3.char.letters, 0, "letters off: none")
-    eq(GK3.db.newsSeen, "1.5.0")
+    eq(GK3.db.newsSeen, "1.6.0")
 
     local GK4 = bootSheets({ me = ME })
     function GK4.NoticeUpdate() end
@@ -2568,7 +2569,8 @@ end)
 test("what's new: short notes from him about no one, each with a button to where it is", function()
     local GK = bootSheets({ me = ME })
     local want = { ["1.4.0"] = { "A word from the keeper", "assists", "Leaderboard" },
-        ["1.5.0"] = { "Eyes on them", "Track an enemy", "Grudges" } }
+        ["1.5.0"] = { "Eyes on them", "Track an enemy", "Grudges" },
+        ["1.6.0"] = { "Blood in a row", "String your kills together", "Settings" } }
     for id, w in pairs(want) do
         local d = GK.LetterContent({ id = 1, kind = "news", news = id })
         eq(d.note, true, id)
@@ -2580,7 +2582,7 @@ test("what's new: short notes from him about no one, each with a button to where
         assert(not table.concat(d.lines, " "):find("%d"), id .. ": no numbers, those are on the Points heading")
         eq(d.buttons[1][1], w[3], id)
     end
-    eq(GK.LetterContent({ id = 1, kind = "news", sample = true }).title, "Eyes on them", "a sample: the latest")
+    eq(GK.LetterContent({ id = 1, kind = "news", sample = true }).title, "Blood in a row", "a sample: the latest")
 end)
 
 test("the settings page and the help say the release, not how many changes there have been", function()
@@ -2590,6 +2592,26 @@ test("the settings page and the help say the release, not how many changes there
     W.printed = {}
     SlashCmdList.GRUDGEKEEPER("help")
     assert((W.printed[1] or ""):find("v0.0.0-test commands", 1, true), tostring(W.printed[1]))
+end)
+
+-- "lydene er kun for spree og slikt, ikke for normalt" (the owner, 2026-11-12)
+test("the voice lines are for spree announcements only, not for a target near or a Shame player", function()
+    local GK = boot({ me = ME })
+    local function Voices(list)
+        local n = 0
+        for _, c in ipairs(list) do
+            if c[1]:find("^file:voice_") then n = n + 1 end
+        end
+        return n
+    end
+    eq(Voices(GK.SoundChoices()), 0, "a target near and a Shame player: no voice lines to pick")
+    eq(Voices(GK.SoundChoices(true)), 5, "a spree's: all five")
+    GK.db.nearSound, GK.db.shameSound = "file:voice_reaper", "file:voice_bloodied"
+    GK.db.spreeSounds = { reaper = "file:voice_reaper" }
+    GK.ForgetGoneSounds(GK.db)
+    eq(GK.db.nearSound, "kit:PVP_THROUGH_QUEUE", "a voice picked for a target near goes back to the horn")
+    eq(GK.db.shameSound, "auto", "and for a Shame player, to where it starts")
+    eq(GK.db.spreeSounds.reaper, "file:voice_reaper", "a spree keeps its voice")
 end)
 
 -- ---------------------------------------------------------------------------
@@ -2796,31 +2818,31 @@ local function bootHeard()
     for _, name in ipairs({ "GK_SPREE", "GK_SPREE_ENDED", "GK_TORMENTOR" }) do
         W.LIB.Listen(name, function(...) heard[#heard + 1] = { name, ... } end)
     end
-    local function K(sender, spree)
+    local function HearK(sender, spree)
         GK.ReceiveForTest("Grudgekeeper", msg("K", 1, GANK, "ROGUE", "Orc", 60, "Hillsbrad", 2, "", 5, "Orc", 2, spree),
             "GUILD", sender)
     end
-    local function D(sender, killer)
+    local function HearD(sender, killer)
         GK.ReceiveForTest("Grudgekeeper", msg("D", 1, killer or GANK, "ROGUE", "Orc", 60, "Hillsbrad", 1, "Orc", 2),
             "GUILD", sender)
     end
-    return GK, K, D, heard
+    return GK, HearK, HearD, heard
 end
 
 test("a guildie's K with a spree at a tier fires GK_SPREE; between tiers, nothing", function()
-    local _, K, _, heard = bootHeard()
-    for _, n in ipairs({ 1, 2, 4, 6, 14 }) do K(EDVARD, n) end
+    local _, HearK, _, heard = bootHeard()
+    for _, n in ipairs({ 1, 2, 4, 6, 14 }) do HearK(EDVARD, n) end
     eq(#heard, 0)
-    K(KARI, 3)
+    HearK(KARI, 3)
     eq(#heard, 1)
     eq(heard[1][1], "GK_SPREE")
     eq(heard[1][2], KARI)
     eq(heard[1][3], 3)
     eq(heard[1][4], "Bloodied")
     eq(heard[1][5], false, "not mine")
-    K(KARI, 15)
-    K(KARI, 20)
-    K(KARI, 25)
+    HearK(KARI, 15)
+    HearK(KARI, 20)
+    HearK(KARI, 25)
     eq(heard[2][4], "Grudgebound")
     eq(heard[3][4], "Grudgebound")
     eq(heard[4][4], "Grudgebound")
@@ -2828,83 +2850,83 @@ test("a guildie's K with a spree at a tier fires GK_SPREE; between tiers, nothin
 end)
 
 test("a guildie's milestone is told once: a kill worth nothing at 5 does not tell it again", function()
-    local _, K, D, heard = bootHeard()
-    K(KARI, 5)
-    K(KARI, 5)
-    K(KARI, 5)
+    local _, HearK, HearD, heard = bootHeard()
+    HearK(KARI, 5)
+    HearK(KARI, 5)
+    HearK(KARI, 5)
     eq(#heard, 1)
-    K(KARI, 7)
+    HearK(KARI, 7)
     eq(#heard, 2)
-    D(KARI)
-    K(KARI, 3)
+    HearD(KARI)
+    HearK(KARI, 3)
     eq(#heard, 4, "the end (heard[3]) and then a new spree's first milestone")
     eq(heard[4][1], "GK_SPREE")
 end)
 
 test("a guildie's spree that started over on a D we missed tells its milestones again", function()
-    local _, K, _, heard = bootHeard()
-    K(KARI, 7)
+    local _, HearK, _, heard = bootHeard()
+    HearK(KARI, 7)
     eq(#heard, 1)
-    K(KARI, 3)
+    HearK(KARI, 3)
     eq(#heard, 2, "3 after 7 with no D: they died and we missed it")
     eq(heard[2][1], "GK_SPREE")
     eq(heard[2][3], 3)
 end)
 
 test("a K from an older version has no field 13 and fires nothing; a bad one reads as none", function()
-    local GK, K, _, heard = bootHeard()
+    local GK, HearK, _, heard = bootHeard()
     GK.ReceiveForTest("Grudgekeeper", msg("K", 1, GANK, "ROGUE", "Orc", 60, "Hillsbrad", 2, "", 5, "Orc", 2), "GUILD", KARI)
-    K(KARI, "")
-    K(KARI, "three")
-    K(KARI, 3.5)
-    K(KARI, -3)
+    HearK(KARI, "")
+    HearK(KARI, "three")
+    HearK(KARI, 3.5)
+    HearK(KARI, -3)
     eq(#heard, 0)
     eq(GK.Store().slain[GANK].by[KARI], 5, "the kill itself is still taken in")
 end)
 
 test("a guildie's D after a spree of 3 or more ends it, once", function()
-    local _, K, D, heard = bootHeard()
-    K(KARI, 6)
+    local _, HearK, HearD, heard = bootHeard()
+    HearK(KARI, 6)
     eq(#heard, 0)
-    D(KARI)
+    HearD(KARI)
     eq(#heard, 1)
     eq(heard[1][1], "GK_SPREE_ENDED")
     eq(heard[1][2], KARI)
     eq(heard[1][3], 6)
     assert(heard[1][4], "who killed them")
     eq(heard[1][5], false)
-    D(KARI)
+    HearD(KARI)
     eq(#heard, 1, "no spree left to end")
 end)
 
 test("a guildie's D after a spree under 3, or one we never heard of, ends nothing", function()
-    local _, K, D, heard = bootHeard()
-    K(KARI, 2)
-    D(KARI)
-    D(EDVARD)
+    local _, HearK, HearD, heard = bootHeard()
+    HearK(KARI, 2)
+    HearD(KARI)
+    HearD(EDVARD)
     eq(#heard, 0)
 end)
 
 test("a guildie's spree is kept per guildie, and the next K takes it on from where it was", function()
-    local _, K, D, heard = bootHeard()
-    K(KARI, 4)
-    K(EDVARD, 8)
-    D(EDVARD)
+    local _, HearK, HearD, heard = bootHeard()
+    HearK(KARI, 4)
+    HearK(EDVARD, 8)
+    HearD(EDVARD)
     eq(#heard, 1)
     eq(heard[1][2], EDVARD)
-    K(KARI, 9)
-    D(KARI)
+    HearK(KARI, 9)
+    HearD(KARI)
     eq(heard[#heard][3], 9, "the last one heard")
 end)
 
 test("tormentor: three guildie deaths to one enemy, then a guildie's K on them ends it", function()
-    local GK, K, D, heard = bootHeard()
-    D(KARI)
-    D(EDVARD)
-    D(KARI)
+    local GK, HearK, HearD, heard = bootHeard()
+    HearD(KARI)
+    HearD(EDVARD)
+    HearD(KARI)
     eq(GK.Store().tormentors[GANK], 3)
     eq(#heard, 0)
-    K(EDVARD, 1)
+    HearK(EDVARD, 1)
     eq(GK.Store().tormentors[GANK] or 0, 0)
     eq(#heard, 1)
     eq(heard[1][1], "GK_TORMENTOR")
@@ -2915,9 +2937,9 @@ test("tormentor: three guildie deaths to one enemy, then a guildie's K on them e
 end)
 
 test("tormentor: our own death counts with the guild's, and a K from an older client still clears it", function()
-    local GK, _, D, heard = bootHeard()
-    D(KARI)
-    D(EDVARD)
+    local GK, _, HearD, heard = bootHeard()
+    HearD(KARI)
+    HearD(EDVARD)
     GK.TormentorGrew(GANK)
     eq(GK.Store().tormentors[GANK], 3)
     GK.ReceiveForTest("Grudgekeeper", msg("K", 1, GANK, "ROGUE", "Orc", 60, "Hillsbrad", 2, "", 5, "Orc", 2), "GUILD", KARI)
@@ -3275,108 +3297,167 @@ test("announce: a name the game hides is a question mark in every line", functio
 end)
 
 -- ---------------------------------------------------------------------------
--- The settings page (Options.lua): the kill spree rows write the right setting
+-- The settings' own pages (Options.lua): what there is to set, read as data (GK.SettingsChapters). The
+-- window that draws it is the smoke test's (tools/smoke_grudgekeeper.py).
 -- ---------------------------------------------------------------------------
---- Options.lua built over recording frames: O.menus[key] is the dropdown for that setting (its menu entries once
---- opened), O.sounds[key] the sound row for that sound key. Every other widget does nothing.
-local function bootOptions()
-    local GK = bootAnnounce()
-    GK.addonVersion = "test"
-    local O = { menus = {}, sounds = {}, texts = {} }
-    local object = {}
-    object.__index = function(self, method)
-        if method == "SetScript" then return function(_, name, fn) rawset(self, "on" .. name, fn) end end
-        if method == "SetupMenu" then return function(dd, fn) rawset(dd, "menu", fn) end end
-        if method == "SetText" then return function(_, text) table.insert(O.texts, text) end end
-        if method:find("^Create") then return function() return setmetatable({}, object) end end
-        return function() end
-    end
-    _G.CreateFrame = function(kind, _, parent)
-        local frame = setmetatable({}, object)
-        if kind == "DropdownButton" then table.insert(O.menus, { dd = frame, row = parent }) end
-        return frame
-    end
-    GK.SoundRow = function(_, _, get, set, text)
-        local row = { get = get, set = set, text = text }
-        table.insert(O.sounds, row)
-        return row
-    end
+--- Core with Options.lua's chapters: Find(key) is the row with that key, and its chapter.
+local function bootSettings()
+    local GK = boot({ me = ME })
+    _G.SOUNDKIT = { RAID_WARNING = 1, PVP_THROUGH_QUEUE = 2 }
+    GK.SPREE_DEFAULT_SOUNDS = { bloodied = "file:voice_bloodied", merciless = "file:voice_merciless",
+        butcher = "file:voice_butcher", reaper = "file:voice_reaper", grudgebound = "file:voice_grudgebound",
+        ended = "kit:UI_RAID_BOSS_DEFEATED", tormentor = "kit:UI_GARRISON_TOAST_INVASION_ALERT" }
     assert(loadfile("Options.lua"))("Grudgekeeper", GK)
-    local panel
-    local create = _G.CreateFrame
-    _G.CreateFrame = function(kind, ...) local f = create(kind, ...) panel = panel or f return f end
-    GK.RegisterOptions()
-    _G.CreateFrame = create
-    panel.onOnShow()
-    return GK, O
-end
-
---- The entries of the dropdown for a setting: { { text, selected(), pick() }, ... }.
-local function menuOf(O, key)
-    for _, m in ipairs(O.menus) do
-        if rawget(m.row, "key") == key then
-            local entries, root = {}, {}
-            function root.CreateRadio(_, text, selected, pick) table.insert(entries, { text, selected, pick }) end
-            m.dd.menu(m.dd, root)
-            return entries
+    local chapters = GK.SettingsChapters()
+    local function Find(key)
+        for _, ch in ipairs(chapters) do
+            for _, r in ipairs(ch.rows) do
+                if r.key == key then return r, ch end
+            end
         end
+        error("no setting " .. key)
     end
-    error("no dropdown for " .. key)
+    return GK, chapters, Find
 end
 
-test("settings page: the kill sprees heading and its note", function()
-    local _, O = bootOptions()
-    local heading, note
-    for _, t in ipairs(O.texts) do
-        if t == "Kill sprees" then heading = true end
-        if t:find("^A splash in the middle of the screen") then note = t end
+--- What a row's menu offers: { { text, selected(), pick() }, ... }.
+local function menuOf(row)
+    local entries, root = {}, {}
+    function root.CreateRadio(_, text, selected, pick) table.insert(entries, { text, selected, pick }) end
+    row.menu(root)
+    return entries
+end
+
+test("settings: seven chapters, Kill sprees third, and every saved setting has a row", function()
+    local _, chapters, Find = bootSettings()
+    local names = {}
+    for i, ch in ipairs(chapters) do names[i] = ch.name end
+    eq(table.concat(names, ", "), "Letters, Warnings, Kill sprees, Notes, Guild, Around the game, Look")
+    for _, key in ipairs({ "anyLetters", "letters", "myLetters", "keepLetters", "alertNear", "plateMarks", "mapPins",
+            "noteAlerts", "watchNearby", "watchGroup", "kudosGroup", "plateNotes", "share", "autoOrders", "tooltip",
+            "unitMenu", "inspectTab", "guildButton", "minimap", "sound", "shotFulfil", "shotEveryKill", "look",
+            "oldPortraits", "near", "shame" }) do
+        Find(key)
     end
-    assert(heading, "no Kill sprees heading")
-    eq(note, "A splash in the middle of the screen, or a small toast by the letter icon. /grudge spree shows both.")
+    for _, ch in ipairs(chapters) do
+        assert(#ch.rows <= 15, ch.name .. ": more rows than a page holds")
+        assert(ch.intro, ch.name .. ": what it is about")
+    end
 end)
 
-test("settings page: each kind row writes off, toast or splash", function()
-    local GK, O = bootOptions()
+test("settings: a check row keeps its setting, and does what else the change needs", function()
+    local GK, _, Find = bootSettings()
+    local row = Find("mapPins")
+    eq(row.kind, "check")
+    eq(row.get(), true)
+    row.set(false)
+    eq(GK.db.mapPins, false)
+    eq(row.get(), false)
+    -- sharing switched on tells the guild at once; letters off or on redraws the icon; unread letters fade
+    local told, drawn, faded = 0, 0, 0
+    function GK.SendBoard() told = told + 1 end
+    function GK.NoticeUpdate() drawn = drawn + 1 end
+    function GK.FadeLetters() faded = faded + 1 end
+    Find("share").set(false)
+    eq(told, 0)
+    Find("share").set(true)
+    eq(told, 1, "sharing on: the board goes out")
+    Find("anyLetters").set(false)
+    eq(drawn, 1, "the letter icon at once")
+    Find("keepLetters").set(true)
+    eq(faded, 0)
+    Find("keepLetters").set(false)
+    eq(faded, 1, "what waited fades")
+    -- the two that are not a plain field
+    local shown
+    function GK.SetMinimapShown(on) shown = on end
+    Find("minimap").set(false)
+    eq(shown, false)
+    local badge = 0
+    function GK.RefreshGuildBadge() badge = badge + 1 end
+    eq(Find("guildButton").get(), true, "on until switched off")
+    Find("guildButton").set(false)
+    eq(GK.db.guildButton, false)
+    eq(badge, 1)
+end)
+
+test("settings: the skin is chosen on the row, and switches at once", function()
+    local GK, _, Find = bootSettings()
+    local row = Find("look")
+    eq(row.kind, "choice")
+    eq(row.get(), "parchment")
+    row.set("classic")
+    eq(GK.db.look, "classic")
+    eq(GK.Classic(), true)
+    row.set("parchment")
+    eq(GK.db.look, nil)
+    eq(row.get(), "parchment")
+end)
+
+test("settings: each spree kind is off, toast or splash on its row; each when-rule a menu of four", function()
+    local GK, _, Find = bootSettings()
     for _, key in ipairs({ "spreeMine", "spreeGuild", "spreeEnded", "spreeTormentor" }) do
-        local entries = menuOf(O, key)
-        eq(#entries, 3)
-        eq(entries[1][1], "Off")
-        for i, want in ipairs({ "off", "toast", "splash" }) do
-            entries[i][3]()
+        local row = Find(key)
+        eq(row.kind, "choice", key)
+        eq(#row.options, 3)
+        eq(row.options[1][2], "Off")
+        for _, want in ipairs({ "off", "toast", "splash" }) do
+            row.set(want)
             eq(GK.db[key], want, key)
-            eq(menuOf(O, key)[i][2](), true, key .. " selected")
+            eq(row.get(), want)
         end
     end
-end)
-
-test("settings page: each when row writes its four choices", function()
-    local GK, O = bootOptions()
     for _, key in ipairs({ "announceWhenMine", "announceWhenGuild" }) do
-        local entries = menuOf(O, key)
+        local row = Find(key)
+        eq(row.kind, "pick", key)
+        local entries = menuOf(row)
         eq(#entries, 4)
         eq(entries[3][1], "Not in combat in a dungeon or raid")
         for i, want in ipairs({ "always", "noCombat", "noCombatInInstance", "noInstance" }) do
             entries[i][3]()
             eq(GK.db[key], want, key)
+            eq(menuOf(row)[i][2](), true, key .. " shows it chosen")
         end
     end
 end)
 
-test("settings page: a sound row for each tier, the end and the tormentor", function()
-    local GK, O = bootOptions()
-    local want = { "bloodied", "merciless", "butcher", "reaper", "grudgebound", "ended", "tormentor" }
-    local names = { "Bloodied", "Merciless", "Butcher", "Reaper", "Grudgebound", "Spree ended", "Tormentor" }
-    local sounds = {}                     -- the target-near row is the page's first, and is not one of these
-    for _, row in ipairs(O.sounds) do if row.text then table.insert(sounds, row) end end
-    eq(#sounds, #want)
-    for i, key in ipairs(want) do
-        local row = sounds[i]
-        eq(row.text, names[i])
-        eq(row.get(), GK.SPREE_DEFAULT_SOUNDS[key], key .. " shows the default")
+test("settings: a sound row for each tier, the end and the tormentor; the voices on these rows only", function()
+    local GK, _, Find = bootSettings()
+    local played = {}
+    function GK.PlayChoice(key) played[#played + 1] = key return true end
+    local names = { bloodied = "Bloodied", merciless = "Merciless", butcher = "Butcher", reaper = "Reaper",
+        grudgebound = "Grudgebound", ended = "Spree ended", tormentor = "Tormentor" }
+    for key, label in pairs(names) do
+        local row, ch = Find(key)
+        eq(ch.name, "Kill sprees")
+        eq(row.kind, "sound")
+        eq(row.label, label)
+        eq(row.get(), GK.SPREE_DEFAULT_SOUNDS[key], key .. " shows its own until one is picked")
         row.set("kit:TEST")
         eq(GK.db.spreeSounds[key], "kit:TEST", key)
         eq(row.get(), "kit:TEST")
     end
+    local function Voices(row)
+        local n = 0
+        for _, e in ipairs(menuOf(row)) do
+            if e[1]:find("^Voice: ") then n = n + 1 end
+        end
+        return n
+    end
+    eq(Voices(Find("reaper")), 5, "a spree's menu: the five voice lines")
+    eq(Voices(Find("near")), 0, "a target near: none")
+    eq(Voices(Find("shame")), 0, "a Shame player: none")
+    -- picking one keeps it and plays it
+    local near = Find("near")
+    local horn
+    for _, e in ipairs(menuOf(near)) do
+        if e[1] == "Raid warning" then horn = e end
+    end
+    assert(horn, "Raid warning is on the list")
+    horn[3]()
+    eq(GK.db.nearSound, "kit:RAID_WARNING")
+    eq(played[#played], "kit:RAID_WARNING", "you hear what you chose")
+    eq(horn[2](), true, "and it shows as chosen")
 end)
 
 say(("\n%d passed, %d failed"):format(passed, failed))
