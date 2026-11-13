@@ -2314,32 +2314,79 @@ test("two PCs of one guildie: the board adds up their parts, whichever spoke las
     eq(ScoreOf(r), "27/27/4", "an older copy of a part takes nothing away")
 end)
 
-test("a row from before parts is kept as '?' until parts from before marks add up to as much", function()
+test("a row from before parts gives way to the parts, and is never added to them", function()
     local GK, B, R = bootPCs()
     local board = GK.Store().board
-    -- Happy Idiot's own shape: the board last heard the new PC (an older client, 0 points, 5 kills); the old
-    -- PC, updated, sends its whole score from before marks
+    -- the row an older client told, then that guildie's first B with parts: the parts take its place
     B(KARI, 0, 5, 0)
     B(KARI, 26, 21, 4, part("aaaaaa", true, 26, 21, 4))
-    eq(ScoreOf(board[KARI]), "26/21/4", "the old PC's score is back, and the 5 kills it holds are not counted twice")
-    eq(board[KARI].parts["?"], nil)
-    -- the board last heard a PC that played a lot: the old PC's part doesn't hold that, so both count
+    eq(ScoreOf(board[KARI]), "26/21/4")
+    -- a row that says more than the parts do is no other PC's score to add: it may be every part in one
     B(EDVARD, 10, 30, 2)
     B(EDVARD, 26, 21, 4, part("aaaaaa", true, 26, 21, 4))
-    eq(ScoreOf(board[EDVARD]), "36/51/6", "kept as '?' and added")
-    B(EDVARD, 36, 51, 6, part("aaaaaa", true, 26, 21, 4) .. "," .. part("bbbbbb", true, 10, 30, 2))
-    eq(ScoreOf(board[EDVARD]), "36/51/6", "once that PC sends its own part, '?' goes and nothing counts twice")
+    eq(ScoreOf(board[EDVARD]), "26/21/4", "the parts, and nothing of the row they came over")
     eq(board[EDVARD].parts["?"], nil)
-    -- the bug itself: a brand-new PC's first B, 0 of everything, over a row from before parts
-    B(GANK, 26, 21, 4)
-    B(GANK, 0, 0, 0, part("nnnnnn", false, 0, 0, 0))
-    eq(ScoreOf(board[GANK]), "26/21/4", "a new PC's 0 is added to the row, never written over it")
-    B(GANK, 30, 30, 5, part("nnnnnn", false, 30, 30, 5))
-    eq(ScoreOf(board[GANK]), "56/51/9", "however far a new PC gets, it began at 0: the old row is not in it")
-    -- a row an older client passed on may be a copy of one with parts, all of them in one: not kept
+    -- that PC updated too: both parts, each once
+    B(EDVARD, 36, 51, 6, part("aaaaaa", true, 26, 21, 4) .. "," .. part("bbbbbb", true, 10, 30, 2))
+    eq(ScoreOf(board[EDVARD]), "36/51/6", "two marks add up")
+    -- an older client's B again: the row is what it says, as before parts
+    B(GANK, 26, 21, 4, part("aaaaaa", true, 26, 21, 4))
+    B(GANK, 10, 31, 2)
+    eq(ScoreOf(board[GANK]), "10/31/2")
+    eq(board[GANK].parts, nil)
+    -- a row passed on without parts, then its owner's B with them: the same
     R(KARI, NICE, 26, 21, 4)
     B(NICE, 0, 0, 0, part("nnnnnn", false, 0, 0, 0))
-    eq(ScoreOf(board[NICE]), "0/0/0", "a relayed row without the parts field is not counted as another PC")
+    eq(ScoreOf(board[NICE]), "0/0/0", "a relayed row is not counted as another PC either")
+end)
+
+-- Umulius Kjakabråten, one PC, with his numbers from the owner's saved board on 2026-11-13: his own part
+-- 28 points, 16 kills, 6 deaths, his row 62/38/25 at 13:04 and 90/54/31 at 16:51 ("følte kanskje 46 kills
+-- var litt mye": 46 was the week's). A B's plain numbers are the sum of everything its sender's record
+-- holds, and a Grudgekeeper from before marks keeps them as a row without parts. Updated, it took that sum
+-- for "another PC's whole score", kept it as the part "?" beside his own part, and handed it back to him.
+test("Umulius: a sum kept by a Grudgekeeper from before marks is not counted on top of its own parts", function()
+    local GK, B = bootPCs()
+    local board, week = GK.Store().board, GK.WeekId()
+    -- what we kept of him while we ran a Grudgekeeper before 1.4.0: no parts, no assists
+    board[KARI] = { p = 62, k = 38, d = 25, l = 48, c = "PALADIN", t = time(), wid = week, wp = 49, wk = 30, wd = 5 }
+    -- his B as it was then: the sum, the "?" he had been handed (34/22/19), and his own part
+    B(KARI, 62, 38, 25, part("?", false, 34, 22, 19, week, 21, 14) .. "," .. part("fwwvn0", true, 28, 16, 6, week, 28, 16))
+    eq(ScoreOf(board[KARI]), "28/16/6", "his own part, once (the old rule made this row 90/54/31)")
+    eq(board[KARI].wk, 16, "and in the week: 16 kills, where the page said 46")
+    eq(board[KARI].parts["?"], nil, "the '?' a client before 1.7.2 names is not read")
+end)
+
+test("the part '?' is taken out of what was saved: our own record and every row", function()
+    local GK = bootPCs()
+    local c, w, week = GK.char, GK.Week(), GK.WeekId()
+    -- his record as his own PC held it at 16:51: 90/54/31 with 6 assists, 77/46/8 this week, of which
+    -- "?" is 62/38/25 and 49/30/5 - and a marked part of another PC beside it, to stay
+    c.pc, c.u = "fwwvn0", true
+    c.points, c.kills, c.deaths, c.assists = 90 + 3, 54 + 2, 31 + 1, 6
+    w.p, w.k, w.d, w.a = 77, 46, 8, 6
+    c.parts = {
+        ["?"] = { p = 62, k = 38, d = 25, a = 0, w = week, wp = 49, wk = 30, wd = 5, wa = 0 },
+        aaaaaa = { p = 3, k = 2, d = 1, a = 0, w = week - 1, wp = 3, wk = 2, wd = 1, wa = 0 },
+    }
+    local board = GK.Store().board
+    board[KARI] = { p = 90, k = 54, d = 31, a = 6, t = time(), wid = week, wp = 77, wk = 46, wd = 8, wa = 6, parts = {
+        ["?"] = { p = 62, k = 38, d = 25, a = 0, w = week, wp = 49, wk = 30, wd = 5, wa = 0 },
+        fwwvn0 = { u = true, p = 28, k = 16, d = 6, a = 6, w = week, wp = 28, wk = 16, wd = 3, wa = 6 } } }
+    board[EDVARD] = { p = 5, k = 4, d = 3, t = time(), parts = { ["?"] = { p = 5, k = 4, d = 3, a = 0 } } }
+    eq(GK.RetireOldRows(), true, "our own record changed")
+    eq(ScoreOf(c), "31/18/7", "what this PC made (28/16/6) and the other PC's marked part (3/2/1)")
+    eq(c.assists, 6)
+    eq(("%d/%d/%d/%d"):format(w.p, w.k, w.d, w.a), "28/16/3/6", "this week: this PC's own, the other part being last week's")
+    eq(c.parts["?"], nil)
+    assert(c.parts.aaaaaa, "a marked part stays")
+    eq(ScoreOf(board[KARI]), "28/16/6", "a guildie's row is the sum of its marked parts again")
+    eq(board[KARI].wk, 16)
+    eq(board[KARI].parts["?"], nil)
+    eq(ScoreOf(board[EDVARD]), "5/4/3", "a row that had nothing else keeps its numbers until its owner's next B")
+    eq(board[EDVARD].parts, nil)
+    eq(GK.RetireOldRows(), false, "and once is enough")
+    eq(ScoreOf(c), "31/18/7")
 end)
 
 test("Happy Idiot updates and logs in on the old PC first: nothing is lost", function()
@@ -2378,12 +2425,14 @@ test("a brand-new PC takes the guild's parts of it, and its own kills go on top"
     local GK, _, R = bootPCs()
     local c = GK.char
     eq(c.u, nil, "a record that starts here held nothing from before marks")
-    R(KARI, ME, 26, 21, 4, part("?", false, 26, 21, 4))     -- the guild's row of us, from before parts
-    eq(ScoreOf(c), "26/21/4")
+    -- the guild's row of us as a client before 1.7.2 hands it back, a "?" in it: nothing is taken from that
+    R(KARI, ME, 26, 21, 4, part("?", false, 26, 21, 4))
+    eq(ScoreOf(c), "0/0/0", "a '?' is no part of ours")
+    eq(c.parts["?"], nil)
     c.points, c.kills = c.points + 2, c.kills + 1               -- a kill on this PC
-    -- the old PC updated and killed once more: its part holds the old row, so the old row goes
+    -- the old PC updated and killed once more: its marked part is what comes to us
     R(KARI, ME, 30, 23, 4, part("?", false, 26, 21, 4) .. "," .. part("aaaaaa", true, 28, 22, 4))
-    eq(ScoreOf(c), "30/23/4", "this PC's kill, plus the old PC's whole part, and the old row only once")
+    eq(ScoreOf(c), "30/23/4", "this PC's kill, plus the old PC's whole part")
     eq(c.parts["?"], nil)
 end)
 

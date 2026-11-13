@@ -28,6 +28,16 @@
 --   came up twice after a look at the game's own Chat tab ("dobler text ... går man til noe annet og
 --   tilbake er det dobbelt", the owner, 2026-11-13). Which half of that match failed was never
 --   measured; this needs neither half.
+--   The game's lines cannot be kept. What somebody said is not text in them: it is a reference the game
+--   fills in as it draws the line (ClubDocumentation.lua: a message's content is a "kstringClubMessage"),
+--   and a reference the game has let go of is drawn as "Unknown". With the guild window shut for a
+--   while, every line the page had copied read "[name]: Unknown" until the player had been to the game's
+--   own Chat tab and back (the owner's screenshot, 2026-11-13: "ikke åpnet tabben på en stund ... scrollet
+--   opp og alt ble unknown"). The window lets go as it shuts - CommunitiesFrameMixin:OnHide calls
+--   C_Club.Flush and takes its eye off the chat stream - which fits; that it is this, and how soon after,
+--   was not measured. So the game's lines are read only between its chat view filling itself and the
+--   window shutting (fresh), and the page's chat is written again each time the window opens and each
+--   time that view fills itself. What we heard ourselves is text, and stays.
 --
 -- Everything is laid OVER the game's window. Nothing of the game's is called to switch view, and nothing
 -- of it is hidden or moved:
@@ -102,6 +112,9 @@ local lines = {}                  -- guild chat heard: { t, a (who), f (who, wit
                                   -- they said), l (the game's line number, this session only) }, oldest first
 local unseen = 0                  -- how many of the newest lines heard the game's own chat view cannot hold
 local dimmed                      -- the game's chat scroll bar, while we hold it see-through
+local fresh = false               -- the game's chat view has filled itself since the guild window last shut:
+                                  -- only then are its lines read (the note on "Unknown" at the top)
+local written = false             -- the page's chat has been written since the guild window last opened
 
 local function Theirs(fn)
     for _, k in ipairs(THEIR_TABS) do
@@ -191,12 +204,17 @@ local function TheirChatUp()
     return type(chat) == "table" and chat.IsVisible ~= nil and chat:IsVisible() and true or false
 end
 
---- The chat written afresh, each time the page comes up. When the game's own view holds guild chat: its
---- lines, then those of ours it cannot have - what was said since it went away (unseen). When it holds
---- none - it has not been up, or it is on the officers' chat - everything we heard and kept.
-local function Rewrite()
-    local theirs = TheirLines()
-    view.chat:Clear()
+--- The chat written afresh: each time the page comes up, the guild window opens, or the game's own chat
+--- view fills itself. When that view holds guild chat that can still be read (fresh): its lines, then
+--- those of ours it cannot have - what was said since it went away (unseen). When it holds none - it has
+--- not been up since the window opened, or it is on the officers' chat - everything we heard and kept.
+--- keep: written again under a reader, it stays where they had scrolled it to.
+local function Rewrite(keep)
+    local theirs = fresh and TheirLines() or {}
+    local chat = view.chat
+    local at = keep and chat.GetScrollOffset and chat:GetScrollOffset() or nil
+    written = true
+    chat:Clear()
     local n
     if #theirs > 0 then
         for i = math.max(1, #theirs - CHAT_SHOWN + 1), #theirs do ShowLine(theirs[i]) end
@@ -207,6 +225,7 @@ local function Rewrite()
         n = #lines
     end
     view.none:SetShown(n == 0)
+    if type(at) == "number" and at > 0 and chat.SetScrollOffset then chat:SetScrollOffset(at) end
 end
 
 --- A line of guild chat, heard. Kept whether or not the page is up, so it has something to show when it
@@ -881,9 +900,9 @@ local function Update()
         if not view then Build() end
         Dress()
         Dim(true)
-        -- the chat afresh as the page comes up, and not again while it stays up: written again under a
-        -- reader it would jump to its last line
-        if not view:IsShown() then Rewrite() end
+        -- the chat afresh as the page comes up, and as the guild window opens with the page still chosen
+        -- (what it showed before the window shut can no longer be read); not again while it stays up
+        if not written or not view:IsShown() then Rewrite() end
         view:Show()
         Fill()
     else
@@ -950,6 +969,20 @@ local function Attach()
     if type(f.Chat) == "table" and f.Chat.HookScript then
         f.Chat:HookScript("OnShow", function() unseen = 0 end)
     end
+    -- The window shut: the game lets go of what its chat lines said, and the page's copies of them with it.
+    -- They are read again once the game's chat view has filled itself afresh, and the page's chat written
+    -- with them at once - also when history comes in a moment after the window opened.
+    f:HookScript("OnHide", function() fresh, written = false, false end)
+    if type(f.Chat) == "table" then
+        local function Filled()
+            fresh = true
+            if view and view:IsVisible() then Rewrite(true) end
+        end
+        if type(f.Chat.DisplayChat) == "function" then hooksecurefunc(f.Chat, "DisplayChat", Filled) end
+        if type(f.Chat.BackfillMessages) == "function" then hooksecurefunc(f.Chat, "BackfillMessages", Filled) end
+    end
+    -- made while the window stands open on its chat view: that view filled itself as it came up
+    fresh = TheirChatUp()
     seenMode = Mode()
     Update()
 end

@@ -166,11 +166,22 @@ end
 -- one join by taking the larger of each number, and a row is the sum of its parts - on a guildie's board,
 -- and in the player's own record when the guild passes their row back after they log in. Whichever PC
 -- spoke last, the sum is the same.
--- A row from before marks has no parts. When a B with parts comes over one, the old row is kept as the
--- part "?" - it may be another PC's whole score - until the parts that held a score from before marks (u)
--- add up to as much, and then it goes, as counted in them. A brand-new PC's part (no u) never covers it:
--- that PC began at 0, so whatever "?" holds, it did not make.
-local MAX_PARTS = 6                     -- the old row "?" included; a seventh PC is not heard of
+-- A row from before marks has no parts, and stays what it is until its owner's next B with parts, which
+-- takes its place. It is never added to them.
+--   Until 1.7.1 it was: kept as a part "?" - "it may be another PC's whole score" - until the parts
+--   holding a score from before marks (u) added up to as much. But a row without parts is also what a
+--   Grudgekeeper from before marks keeps of a guildie who HAS them: their B's plain numbers, every part
+--   in one. When that guildie's own "?" could not be covered, each of us who updated turned such a sum
+--   into a bigger "?", handed it back to them (R), their record grew by it (GK.MergeMine), and their next
+--   B told everyone - who keep the larger of two copies. Umulius Kjakabråten, one PC, 24 kills: on the
+--   owner's board 22 + 16 = 38 at 13:04 on 2026-11-13 and 38 + 16 = 54 at 16:51, 46 of them "this week",
+--   his own part 16 throughout ("følte kanskje 46 kills var litt mye"). The second "?" was the whole of
+--   the first row to the number, with no assists - as only a Grudgekeeper before 1.4.0 stores a row.
+--   Nothing on a client can tell the two kinds of old row apart, and a part only grows, so "?" is gone:
+--   not made, not read from a B or an R, and taken out of what was saved (GK.RetireOldRows). What it
+--   was for - one PC still on a Grudgekeeper before 1.4.0 - mends itself when that PC is updated: its
+--   record gets a mark, and the two add up. u still goes out with our part, for the clients that read it.
+local MAX_PARTS = 6                     -- a seventh PC is not heard of
 local PART_NUMS = { "p", "k", "d", "a" }
 local WEEK_NUMS = { "wp", "wk", "wd", "wa" }
 
@@ -181,9 +192,10 @@ local function ReadParts(text)
     for token in text:gmatch("[^,]+") do
         local id, u, p, k, d, a, w, wp, wk, wd, wa = token:match(
             "^([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):([^:]*)$")
-        local mark = id == "?" or (id and id:match("^[0-9a-z][0-9a-z][0-9a-z][0-9a-z][0-9a-z][0-9a-z]$"))
+        -- a PC's mark, and nothing else: the part "?" a client before 1.7.2 may still name is not read
+        local mark = id and id:match("^[0-9a-z][0-9a-z][0-9a-z][0-9a-z][0-9a-z][0-9a-z]$")
         if mark and not out[id] then
-            local part = { u = (u == "1" and id ~= "?") or nil, p = Int(p, 0, 1e7), k = Int(k, 0, 1e6),
+            local part = { u = (u == "1") or nil, p = Int(p, 0, 1e7), k = Int(k, 0, 1e6),
                 d = Int(d, 0, 1e6), a = Int(a, 0, 1e6) or 0, w = Int(w, 0, 2 ^ 31) }
             if part.p and part.k and part.d then
                 if part.w then
@@ -232,28 +244,6 @@ local function MergePart(set, id, x)
     end
 end
 
---- The old row "?" goes once the parts holding a score from before marks add up to at least as much.
---- extra: our own part, which is not in the set.
-local function DropCovered(set, extra)
-    local old = set["?"]
-    if not old then return end
-    local sum, any = { p = 0, k = 0, d = 0, a = 0 }, false
-    local function Add(x)
-        if not (x and x.u) then return end
-        any = true
-        for _, f in ipairs(PART_NUMS) do sum[f] = sum[f] + (x[f] or 0) end
-    end
-    for id, x in pairs(set) do
-        if id ~= "?" then Add(x) end
-    end
-    Add(extra)
-    if not any then return end
-    for _, f in ipairs(PART_NUMS) do
-        if sum[f] < (old[f] or 0) then return end
-    end
-    set["?"] = nil
-end
-
 --- The sum of a set of parts; this week's numbers only from the parts made in week `wid`.
 local function SumParts(set, wid)
     local s = { p = 0, k = 0, d = 0, a = 0, wp = 0, wk = 0, wd = 0, wa = 0 }
@@ -292,19 +282,17 @@ function GK.MyPartsText()
     return PartsText(all)
 end
 
---- Our own row, passed back by a guildie (R, after we asked at login): the parts other PCs made, and the
---- old row "?", join the record, and the record grows by what they bring. Our own part we know better
---- than anyone, so a part under our own mark is never taken. Returns whether anything changed.
+--- Our own row, passed back by a guildie (R, after we asked at login): the parts other PCs made join the
+--- record, and the record grows by what they bring. Our own part we know better than anyone, so a part
+--- under our own mark is never taken. Returns whether anything changed.
 function GK.MergeMine(parts)
     local c, w = GK.char, GK.Week()
     GK.ClaimPC(c)
     local set = c.parts
     local before = SumParts(set, w.id)
-    local own = OwnPart(c, w, set)
     for id, x in pairs(parts) do
         if id ~= c.pc then MergePart(set, id, x) end
     end
-    DropCovered(set, own)
     local after = SumParts(set, w.id)
     local changed = false
     for f, v in pairs(after) do
@@ -317,6 +305,31 @@ function GK.MergeMine(parts)
     c.assists = (c.assists or 0) + after.a - before.a
     w.p, w.k = w.p + after.wp - before.wp, w.k + after.wk - before.wk
     w.d, w.a = w.d + after.wd - before.wd, (w.a or 0) + after.wa - before.wa
+    return true
+end
+
+--- The part "?" taken out of what was saved, at login ("One character, more than one PC"): out of our own
+--- record, which goes back to what this PC made and what the marked parts hold - the record less its
+--- parts is exactly this PC's own, whatever "?" had grown to - and out of every row of every guild's
+--- board, each the sum of its marked parts again. Returns whether our own record changed.
+function GK.RetireOldRows()
+    for _, g in pairs(GK.db.guilds) do
+        for _, r in pairs(type(g.board) == "table" and g.board or {}) do
+            if type(r.parts) == "table" and r.parts["?"] then
+                r.parts["?"] = nil
+                -- a row that had nothing else keeps its numbers until its owner's next B
+                if next(r.parts) then Total(r) else r.parts = nil end
+            end
+        end
+    end
+    local c, w = GK.char, GK.Week()
+    GK.ClaimPC(c)
+    if not c.parts["?"] then return false end
+    local own = OwnPart(c, w, c.parts)
+    c.parts["?"] = nil
+    local rest = SumParts(c.parts, w.id)
+    c.points, c.kills, c.deaths, c.assists = own.p + rest.p, own.k + rest.k, own.d + rest.d, own.a + rest.a
+    w.p, w.k, w.d, w.a = own.wp + rest.wp, own.wk + rest.wk, own.wd + rest.wd, own.wa + rest.wa
     return true
 end
 
@@ -1171,18 +1184,12 @@ local function ApplyAssists(r, a, wa)
 end
 
 --- A guildie's own B. With parts, they join the parts we have of their row and the row is the sum; a row we
---- had from before parts stays as the part "?" ("One character, more than one PC"). Without parts - an
---- older client - the row is what it says, as before parts.
+--- had without parts gives way to them, and is never added ("One character, more than one PC"). Without
+--- parts - an older client - the row is what it says, as before parts.
 local function OnBoard(sender, f)
     heard["b:" .. sender] = GetTime()
     local was = GK.Store().board[sender]
-    local had, old = was and was.parts, nil
-    -- only a row the guildie told us themselves: one an older client passed on may be a copy of a row with
-    -- parts that lost them on the way, all the PCs' score in one, and kept as "?" it would count twice
-    if was and not had and not was.via then
-        old = { p = was.p or 0, k = was.k or 0, d = was.d or 0, a = was.a or 0, w = was.wid,
-            wp = was.wp or 0, wk = was.wk or 0, wd = was.wd or 0, wa = was.wa or 0 }
-    end
+    local had = was and was.parts
     local r = ApplyBoard(sender, f, 0)
     ApplyAssists(r, f[20], f[21])
     if not r then return end
@@ -1193,9 +1200,7 @@ local function OnBoard(sender, f)
         return
     end
     local set = had or {}
-    if old and old.p + old.k + old.d + old.a > 0 then set["?"] = old end
     for id, x in pairs(parts) do MergePart(set, id, x) end
-    DropCovered(set)
     r.parts = set
     Total(r)
 end
@@ -1711,6 +1716,8 @@ local function Ask()
 end
 
 function GK.StartGuild()
+    -- before anything is shown or sent: the login's B then says our record as it is without "?"
+    GK.RetireOldRows()
     -- While the test panel or the screenshots stand in for the guild (GK.testMode), the real guild's
     -- messages wait outside: they landed in the made-up store, and the store page's pictures showed four
     -- real guildies on the made-up leaderboard and "#4 of 19, 22, 24" a few seconds apart (2026-11-10).

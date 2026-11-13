@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.2
+
+- **Kills counted more than once on the leaderboard.** A guildie whose score the guild had put together from an old row and a new one could have their own kills, deaths and points added again each time one of us updated Grudgekeeper, and the number kept growing: one of us showed 46 kills this week and had made 16. The leaderboard now adds up only what each of a guildie's PCs has counted itself. Your own leaderboard is right as soon as you have this version, and a guildie's own record is put right the first time they log in with it. A score from before 1.4.0 that the guild had kept for a guildie after their own record was lost is no longer added, because it cannot be told apart from the sums that were counted twice. A PC still on a Grudgekeeper older than 1.4.0 counts with your others once it is updated.
+- **"Unknown" in guild chat on the Grudgekeeper tab.** With the guild window shut for a while, the earlier lines in the page's chat read "Unknown" where the words should be, until you had been to the game's own Chat tab and back. The page now writes its chat afresh each time the guild window opens. Earlier lines are shown again once the game's own Chat view has them; until then the page shows what was said while you have been logged in, and the last sixty lines kept from before.
+
 ## 1.7.1
 
 - **A letter about the tab on the guild window.** 1.7.0 went out without the Grudgekeeper's word on it. It comes now, once, to the first character you log in with.
