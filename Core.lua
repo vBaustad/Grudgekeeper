@@ -51,12 +51,20 @@ local defaults = {
     kudosGroup = false,      -- one friendly chat line when a Kudos player joins your group (chat: off, the owner doesn't read it)
     plateNotes = true,       -- a small dim mark on the nameplate of a player you have notes on
     guilds = {},             -- [guild key] = { board, orders, wanted, slain, feed, nextId } (Guild.lua)
+    spreeMine = "splash",    -- your spree milestone: "off", "toast" or "splash" (Announce.lua)
+    spreeGuild = "toast",    -- a guildie's spree milestone
+    spreeEnded = "toast",    -- a spree of ours or a guildie's that an enemy ended
+    spreeTormentor = "toast", -- one of the guild put an end to a tormentor
+    announceWhenMine = "always",       -- when yours may come: "always", "noCombat", "noCombatInInstance" or "noInstance"
+    announceWhenGuild = "noCombat",    -- the same for a guildie's; one held back waits, then comes in order
+    spreeSounds = {},        -- [tier key, "ended" or "tormentor"] = a sound (GK.SoundChoices); none picked: Announce.lua's own
     looks = {},              -- [player key] = race file and sex, "Scourge3": their race's face on cards (Sightings.lua)
 }
 -- This character's own record.
 local charDefaults = {
     points = 0, kills = 0, deaths = 0, assists = 0,
     streak = 0, bestStreak = 0,  -- kills since you last died to an enemy player, and the most ever
+    spree = 0,               -- the same, counting only the kills worth points (GK.SpreeTier)
     done = 0, won = 0,           -- kill orders you fulfilled, and the bounties on them (copper)
     -- week = { id, p, k, d, a }: this week's score, made by GK.Week and started over at the weekly reset
     log = {},                -- newest first: { k = "K", "A" or "D", t, n, c, r, l, z, p, o, w (an assist's killer) }
@@ -448,6 +456,42 @@ function GK.InWorld()
     return worldNow
 end
 
+-- Spree tiers: the kill that makes a spree one of these numbers is a milestone. Grudgebound comes again at
+-- every 5 after the last number. The key is the tier's art file name (Media/spree_<key>.tga).
+GK.SPREE_TIERS = {
+    { n = 3, key = "bloodied", name = "Bloodied" },
+    { n = 5, key = "merciless", name = "Merciless" },
+    { n = 7, key = "butcher", name = "Butcher" },
+    { n = 10, key = "reaper", name = "Reaper" },
+    { n = 15, key = "grudgebound", name = "Grudgebound" },
+}
+
+GK.SPREE_MIN = GK.SPREE_TIERS[1].n       -- the shortest spree that is one: below it nothing is told
+
+--- The tier a spree of n is in (nil below the first), and whether n is the number that begins that tier.
+local function TierFor(n)
+    if type(n) ~= "number" then return nil end
+    local tier
+    for _, t in ipairs(GK.SPREE_TIERS) do
+        if n >= t.n then tier = t end
+    end
+    if not tier then return nil end
+    local last = GK.SPREE_TIERS[#GK.SPREE_TIERS]
+    return tier, n == tier.n or (tier == last and n % 5 == 0)
+end
+
+--- The tier a spree of n is in now: its name and key, nil below the first tier.
+function GK.SpreeTierOf(n)
+    local tier = TierFor(n)
+    if tier then return tier.name, tier.key end
+end
+
+--- The tier a spree of n begins, when n is a milestone: its name and key. nil for any other number.
+function GK.SpreeTier(n)
+    local tier, begins = TierFor(n)
+    if tier and begins then return tier.name, tier.key end
+end
+
 --- "20s", "1g 50s" - for chat and the wire. Letters draw coins with GK.Coins.
 function GK.MoneyText(copper)
     copper = math.floor(tonumber(copper) or 0)
@@ -490,6 +534,12 @@ end
 -- the game's own sounds below say "warning" well enough.
 local SOUND_FILES = {
     { "makke", "Måkke ta med han", "Interface\\AddOns\\Grudgekeeper\\Media\\makke.mp3", guild = "YippYapp" },
+    -- the Grudgekeeper calling out each spree tier (ElevenLabs, 2026-11-12)
+    { "voice_bloodied", "Voice: Bloodied", "Interface\\AddOns\\Grudgekeeper\\Media\\voice_bloodied.mp3" },
+    { "voice_merciless", "Voice: Merciless", "Interface\\AddOns\\Grudgekeeper\\Media\\voice_merciless.mp3" },
+    { "voice_butcher", "Voice: Butcher", "Interface\\AddOns\\Grudgekeeper\\Media\\voice_butcher.mp3" },
+    { "voice_reaper", "Voice: Reaper", "Interface\\AddOns\\Grudgekeeper\\Media\\voice_reaper.mp3" },
+    { "voice_grudgebound", "Voice: Grudgebound", "Interface\\AddOns\\Grudgekeeper\\Media\\voice_grudgebound.mp3" },
 }
 local CHIME = "kit:UI_RAID_BOSS_WHISPER_WARNING"
 
@@ -506,7 +556,6 @@ end
 -- the SoundKitConstants id); one this client lacks in SOUNDKIT is left out.
 local SOUND_KITS = {
     { "PVP_THROUGH_QUEUE", "Battleground horn" },
-    { "HARDCORE_DUEL", "Duel to the death" },
     { "UI_GARRISON_TOAST_INVASION_ALERT", "Invasion alert" },
     { "RAID_WARNING", "Raid warning" },
     { "RAID_BOSS_EMOTE_WARNING", "Boss emote" },
@@ -525,19 +574,28 @@ local SOUND_KITS = {
     { "IG_PLAYER_INVITE", "Group invite" },
 }
 
---- A pick of a file that left the package (the war horn, the God of War clips) goes back to the default:
---- it would play the chime under a dropdown showing nothing picked. Only our own files: another addon's
+--- Whether a pick is one of ours that left the package: a file (the war horn, the God of War clips) or a
+--- kit taken off the list (HARDCORE_DUEL, which plays nothing on Forever). Only our own: another addon's
 --- sound may simply not be loaded yet at login.
+local function Gone(pick)
+    if type(pick) ~= "string" then return false end
+    local kind, name = pick:match("^(%a+):(.+)$")
+    local list = (kind == "file" and SOUND_FILES) or (kind == "kit" and SOUND_KITS)
+    if not list then return false end
+    for _, s in ipairs(list) do
+        if s[1] == name then return false end
+    end
+    return true
+end
+
+--- A gone pick goes back to the default: it would play the chime, or nothing, under a dropdown showing
+--- nothing picked.
 function GK.ForgetGoneSounds(db)
     for field, default in pairs({ nearSound = defaults.nearSound, shameSound = defaults.shameSound }) do
-        local name = type(db[field]) == "string" and db[field]:match("^file:(.+)$")
-        if name then
-            local known = false
-            for _, s in ipairs(SOUND_FILES) do
-                if s[1] == name then known = true end
-            end
-            if not known then db[field] = default end
-        end
+        if Gone(db[field]) then db[field] = default end
+    end
+    for key, pick in pairs(type(db.spreeSounds) == "table" and db.spreeSounds or {}) do
+        if Gone(pick) then db.spreeSounds[key] = nil end
     end
 end
 
@@ -652,14 +710,46 @@ function GK.Store()
     key = key or "-"
     local g = GK.db.guilds[key]
     if not g then
-        g = { board = {}, orders = {}, wanted = {}, slain = {}, feed = {}, people = {}, nextId = 1 }
+        g = { board = {}, orders = {}, wanted = {}, slain = {}, tormentors = {}, feed = {}, people = {}, nextId = 1 }
         GK.db.guilds[key] = g
     end
     if not g.slain then g.slain = {} end      -- a store from before the guild kept its tally
+    if not g.tormentors then g.tormentors = {} end   -- and from before it counted who kills us
     -- the notes (Notes.lua), here from the start: made by the first read instead, an empty one turned up
     -- after the test panel had put the store back (smoke_grudgekeeper, 2026-11-05)
     if not g.people then g.people = {} end
     return g
+end
+
+-- Tormentors: an enemy who has killed 3 or more of the guild since any of us last killed them. Each client
+-- counts from what it hears (our deaths, a guildie's D) and clears the count at any kill of theirs (ours, or
+-- a guildie's K), so two clients that were offline at different times differ a little. That is fine.
+local MAX_TORMENTORS = 200
+local TORMENTOR_AT = 3
+
+--- One more of the guild killed by this enemy. Their count after it. At most MAX_TORMENTORS enemies are
+--- kept: when a new one comes to a full table, the one with the smallest count goes.
+function GK.TormentorGrew(key)
+    local t = GK.Store().tormentors
+    if not t[key] then
+        local n, least, leastKey = 0, nil, nil
+        for k, v in pairs(t) do
+            n = n + 1
+            if not least or v < least then least, leastKey = v, k end
+        end
+        if n >= MAX_TORMENTORS and leastKey then t[leastKey] = nil end
+    end
+    t[key] = (t[key] or 0) + 1
+    return t[key]
+end
+
+--- The count of guildies this enemy killed, when it was 3 or more, so the kill that ends it can be told; nil
+--- otherwise. The count starts over either way (a count of 0 is no entry, which keeps the table small).
+function GK.TormentorEnded(key)
+    local t = GK.Store().tormentors
+    local n = t[key]
+    t[key] = nil
+    return n and n >= TORMENTOR_AT and n or nil
 end
 
 --- Our record of one enemy player, made when first needed. At most MAX_FOES: the one met longest ago
@@ -804,6 +894,7 @@ local function Help()
     print("  /grudge letters  - read your letters")
     print("  /grudge test  - four sample letters, to see what they look like")
     print("  /grudge notice  - show the letter icon to drag it where you want it (notice reset: back to start)")
+    print("  /grudge spree  - show a sample spree splash and toast")
     print("  /grudge options  - open the settings")
     print("  /grudge guild  - officers: put an enemy guild on watch by its name")
 end
@@ -826,6 +917,8 @@ SlashCmdList.GRUDGEKEEPER = function(msg)
         GK.SampleLetters()
     elseif cmd == "notice" or cmd == "notice reset" then
         GK.PlaceNotice(cmd == "notice reset")
+    elseif cmd == "spree" then
+        GK.AnnounceSample()           -- a sample splash and toast (Announce.lua)
     elseif cmd == "options" or cmd == "settings" then
         GK.OpenOptions()
     elseif cmd == "guild" then
