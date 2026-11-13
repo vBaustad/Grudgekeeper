@@ -286,6 +286,16 @@ end
 
 local function Colour(fs, c) fs:SetTextColor(c[1], c[2], c[3]) end
 
+local function Plural(n, word) return ("%d %s%s"):format(n, word, n == 1 and "" or "s") end
+
+--- A guildie's count as the leaderboard says it under the mouse: "This week: 13 kills, 12 deaths, 21
+--- assists". The assists only for one whose Grudgekeeper counts them.
+function GK.BoardLine(r, week)
+    local parts = { Plural(r.k or 0, "kill"), Plural(r.d or 0, "death") }
+    if r.a then parts[#parts + 1] = Plural(r.a, "assist") end
+    return (week and "This week: " or "All time: ") .. table.concat(parts, ", ")
+end
+
 --- A ruled line, w long from x,y: down the page with tall, else across it.
 local function Rule(parent, x, y, w, tall, alpha)
     local rule = parent:CreateTexture(nil, "ARTWORK")
@@ -624,6 +634,18 @@ local function BuildBoard()
         row.name = Text(row, GK.INK, GK.TEXT_FONT, 12)
         row.name:SetPoint("LEFT", 28, 0)
         row.name:SetPoint("RIGHT", row.pts, "LEFT", -6, 0)
+        -- the rest of what the ledger holds on them, under the mouse: the panel has room for their points
+        -- only, and a boast or a jibe in the chat beside it wants the kills and the deaths ("se stats og
+        -- skryte/mobbe andre samtidig", the owner, 2026-11-13)
+        row:EnableMouse(true)
+        row:SetScript("OnEnter", function(self)
+            if not self.r then return end
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:AddLine(GK.Show(self.r.who), 1, 1, 1)
+            GameTooltip:AddLine(GK.BoardLine(self.r, weekly), 1, 0.82, 0)
+            GameTooltip:Show()
+        end)
+        row:SetScript("OnLeave", function() GameTooltip:Hide() end)
         board.rows[i] = row
     end
     return board
@@ -790,6 +812,7 @@ Fill = function()
     for i, row in ipairs(board.rows) do
         local at2 = (i == BOARD and place > BOARD) and place or i
         local r = list[at2]
+        row.r = r
         row:SetShown(r ~= nil)
         if r then
             local seal = at2 <= 3 and (r.p or 0) > 0

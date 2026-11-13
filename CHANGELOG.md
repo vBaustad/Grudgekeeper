@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.1
+
+- **A letter about the tab on the guild window.** 1.7.0 went out without the Grudgekeeper's word on it. It comes now, once, to the first character you log in with.
+- **Kills and deaths on the guild window's leaderboard.** On the Grudgekeeper tab of the guild window, hold the mouse over a name on the leaderboard to see their kills, deaths and assists - this week's or all time's, whichever the board is on. The panel itself has room for the points only.
+
 ## 1.7.0
 
 - **A Grudgekeeper tab on the guild window.** Under the game's own tabs down the guild window's right edge there is now one of Grudgekeeper's. Click it and the whole window turns to a page of the ledger, with the Grudgekeeper's face where the guild's crest was. It is the same page whichever of the game's views you came from. Click any of the game's tabs to have the guild window back as it was.

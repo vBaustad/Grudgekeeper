@@ -293,7 +293,7 @@ end
 -- of its own. Someone who skipped a release gets each letter they missed, oldest first: 1.5.0's came the
 -- same day as 1.4.0's (the owner, 2026-11-12: "må vel ha enda en what's new da"). The next one: its id at
 -- the end of NEWS, and its words in NEWS_WORDS.
-local NEWS = { "1.4.0", "1.5.0", "1.6.0" }
+local NEWS = { "1.4.0", "1.5.0", "1.6.0", "1.7.0" }
 local LATEST = NEWS[#NEWS]
 
 -- Each letter in his voice: two short paragraphs with air between and no numbers, and a button to where
@@ -316,6 +316,18 @@ local NEWS_WORDS = {
         "",
         "My settings have pages of their own now: have it shouted, shown small, or not at all.",
     }, "seal_red", "Settings", function() GK.OpenOptions("Kill sprees") end },
+    -- The button goes to the tab's switch, not to the guild window: opening the game's window from an
+    -- addon would run its opening as ours, and its roster asks the game for things only the game may ask.
+    -- A first draft said what is on the page ("your week, the orders, the board"): "nja prøv annen tekst
+    -- ... du kan se alle sine stats ved siden av guild chatten og se hvem som jobber og hvem som slacker
+    -- ... se stats og skryte/mobbe andre samtidig" (the owner, 2026-11-13). So it says what the page is FOR.
+    -- The jibe is his own, said to whoever reads it: a line telling the player what to ask a guildie was
+    -- turned down ("jeg liker ikke at vi sier 'ask them this'", the owner, the same day).
+    ["1.7.0"] = { "Who's slacking?", {
+        "A tab on your guild window puts my ledger beside guild chat. Now everyone sees who's working, and who's slacking.",
+        "",
+        "Brag if you've earned it. And if all you do is die - maybe try killing someone, for a change.",
+    }, "seal_black", "Settings", function() GK.OpenOptions("Around the game") end },
 }
 
 --- The news letters not seen yet, oldest first: all of them when none was, those after the one seen last,
