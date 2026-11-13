@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.7.0
+
+- **A Grudgekeeper tab on the guild window.** Under the game's own tabs down the guild window's right edge there is now one of Grudgekeeper's. Click it and the whole window turns to a page of the ledger, with the Grudgekeeper's face where the guild's crest was. It is the same page whichever of the game's views you came from. Click any of the game's tabs to have the guild window back as it was.
+- **On the page.** Four panels. You: your title and how far it is to the next one, this week's points, kills, deaths and assists, your kills in a row, your place on the board, and the latest of the guild's news. The three biggest open kill orders. The leaderboard, this week's or all time's, with the top three wearing their seals. And guild chat.
+- **Guild chat on the page.** A chat as the game's own: dark, in your chat font and colours, names in their class's colour, with a scroll bar and how many of the guild are online. Write on the line at its foot and press Enter to say it in guild chat. Click a name to whisper them, right-click it for the game's menu; hold the mouse over an item's link to see the item. If you have the game put the time before chat lines, it is here too.
+- **What the chat remembers.** It shows what has been said since you logged in, and the last sixty lines are kept on your own computer from one session to the next. When the game's own Chat view has been open, the page also shows what that view holds, which reaches back before you logged in. Slash commands are not sent from here; they go in the game's own chat box.
+- **The round badge beside the guild window is gone.** The tab took its place. The same setting switches it off: Settings, Around the game, "A tab on the guild window". With it off, no guild chat is kept either.
+
 ## 1.6.0
 
 - **Kill sprees.** A spree is your kills worth points in a row, until an enemy player kills you. Grey and farmed kills don't count, and assists don't. Reaching 3, 5, 7, 10 and 15 in a row is announced - Bloodied, Merciless, Butcher, Reaper and Grudgebound - and Grudgebound again at every fifth after that. Your guildies' sprees are announced to you too.

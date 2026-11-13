@@ -486,9 +486,10 @@ local function FirstName(key)
     return s:match("^[^ ]+") or s                   -- not %S: see GK.SameName
 end
 
-local function NewsItems()
+local function NewsItems(limit)
     local items = {}
     for i, e in ipairs(GK.Store().feed) do
+        if limit and #items >= limit then break end   -- the guild window's tab asks for a line or ten
         -- your own news says You: your full name and surname first left "Critical Mango killed Seedkek..."
         -- no room for whom (the owner, 2026-11-06)
         local mine = e.who ~= nil and LIB.IsMyStoredName(e.who)
@@ -532,6 +533,11 @@ local function NewsItems()
     end
     return items, "Nothing yet. Kills, deaths and kill orders from everyone in your guild who runs Grudgekeeper "
         .. "show up here."
+end
+
+--- The latest n lines of the guild's news, worded as the News page words them, the newest first.
+function GK.LatestNews(n)
+    return (NewsItems(n))
 end
 
 --- The leaderboard's resets-in text, after its links.

@@ -173,7 +173,7 @@ function M.boot(opts)
     -- M.started[name] holds what each was started with.
     M.started = {}
     for _, name in ipairs({ "StartGuild", "StartSightings", "StartKills", "StartLetters", "StartMail",
-            "StartSocial", "StartProfiles", "StartInspect", "StartMapPins", "RegisterOptions" }) do
+            "StartSocial", "StartGuildTab", "StartProfiles", "StartInspect", "StartMapPins", "RegisterOptions" }) do
         GK[name] = function(...) M.started[name] = { ... } end
     end
     M.changes = 0

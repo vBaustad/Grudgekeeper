@@ -3373,12 +3373,12 @@ test("settings: a check row keeps its setting, and does what else the change nee
     function GK.SetMinimapShown(on) shown = on end
     Find("minimap").set(false)
     eq(shown, false)
-    local badge = 0
-    function GK.RefreshGuildBadge() badge = badge + 1 end
+    local tab = 0
+    function GK.RefreshGuildTab() tab = tab + 1 end
     eq(Find("guildButton").get(), true, "on until switched off")
     Find("guildButton").set(false)
     eq(GK.db.guildButton, false)
-    eq(badge, 1)
+    eq(tab, 1, "the tab on the guild window is told at once")
 end)
 
 test("settings: the skin is chosen on the row, and switches at once", function()

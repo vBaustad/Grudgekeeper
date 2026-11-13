@@ -1,16 +1,11 @@
--- Grudgekeeper - the quiet ways in: one line on a tooltip, one badge beside the guild window.
--- Neither ever opens anything or makes a sound; they are only there when you are already looking.
+-- Grudgekeeper - the quiet way in: one line on a tooltip. It never opens anything or makes a sound; it is
+-- only there when you are already looking.
 --   Tooltip   mouse over an enemy player you have a history with, and one line says it:
 --             "Grudge: killed you 24 - you got them 3 - kill order 20s". Nobody you've never met gets one.
---   Guild     a small round badge on the guild window's right edge, opening the leaderboard. Outside
---             the window, not in its button row: Guildhall's button already lives along the bottom,
---             and two addons each placing theirs beside "the leftmost button" would anchor to each
---             other in a loop.
+-- (The round badge on the guild window's edge lived here until it became a tab there: GuildTab.lua.)
 local ADDON, GK = ...
 local LIB = LibStub("LibForever-1.0")
 local Secret = GK.Secret
-
-local MEDIA = "Interface\\AddOns\\Grudgekeeper\\Media\\"
 
 -- ---------------------------------------------------------------------------
 -- The tooltip line
@@ -62,52 +57,8 @@ local function OnUnitTip(tooltip)
     tooltip:Show()
 end
 
--- ---------------------------------------------------------------------------
--- The guild window badge
--- ---------------------------------------------------------------------------
-local badge
-
-local function Attach()
-    if badge then return end
-    local parent = _G.CommunitiesFrame
-    if not (parent and parent.GetObjectType) then return end
-    badge = CreateFrame("Button", nil, parent)
-    badge:SetSize(34, 34)
-    badge:SetPoint("BOTTOMLEFT", parent, "BOTTOMRIGHT", 2, 36)
-    local tex = badge:CreateTexture(nil, "ARTWORK")
-    tex:SetAllPoints()
-    tex:SetTexture(MEDIA .. "minimap")
-    local hi = badge:CreateTexture(nil, "HIGHLIGHT")
-    hi:SetAllPoints()
-    hi:SetTexture(MEDIA .. "glow")
-    hi:SetBlendMode("ADD")
-    hi:SetVertexColor(1, 0.8, 0.35, 0.6)
-    badge:SetScript("OnClick", function() GK.OpenWindow(2) end)
-    badge:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:AddLine(GK.TAG)
-        local rank, of = GK.MyRank()
-        GameTooltip:AddLine(("The guild's leaderboard - you're #%d of %d"):format(rank, of), 1, 1, 1)
-        local open = #GK.OpenOrders()
-        if open > 0 then GameTooltip:AddLine(("%d open kill order%s"):format(open, open == 1 and "" or "s"), 1, 0.5, 0.4) end
-        GameTooltip:Show()
-    end)
-    badge:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    badge:SetShown(GK.db.guildButton and IsInGuild())
-end
-
-function GK.RefreshGuildBadge()
-    Attach()
-    if badge then badge:SetShown(GK.db.guildButton and IsInGuild()) end
-end
-
 function GK.StartSocial()
     if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall and Enum and Enum.TooltipDataType then
         TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Unit, OnUnitTip)
     end
-    -- The guild window loads on demand: it may be there already, or come later.
-    Attach()
-    LIB.On("ADDON_LOADED", function(name)
-        if name == "Blizzard_Communities" then Attach() end
-    end)
 end

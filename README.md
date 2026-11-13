@@ -25,6 +25,9 @@ leaderboard, and kill orders with a bounty on them.
 - A grudge that is wrong goes with **Forget grudge** on that player's card (two clicks): your record of
   them, here and in the guild's lists. Your score stays.
 - Inspect a guildie and the **Grudgekeeper** tab below the game's own shows their page of the ledger.
+- On the guild window, the **Grudgekeeper** tab under the game's own turns the window into a page of the
+  ledger: you this week, the biggest kill orders, the leaderboard, and guild chat to read and write in.
+  Click one of the game's tabs to have the guild window back.
 - Right-click any player and pick **Grudgekeeper notes**: a note on them, or put them on Marked, Shame or
   Kudos with a tag. `/grudge note`, `/grudge shame` and `/grudge kudos` do the same from chat. The notes
   came from Guild Grudge, by dakristia; `/grudge import` takes over its saved notes.

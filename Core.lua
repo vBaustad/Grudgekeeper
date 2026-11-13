@@ -36,7 +36,7 @@ local defaults = {
     oldPortraits = true,     -- race faces from the old character-creation screen, not today's race icons (GK.SetPortrait);
                              -- on by default, whichever skin (the owner, 2026-11-11)
     tooltip = true,          -- one line on an enemy player's tooltip: your history with them
-    guildButton = true,      -- a small Grudgekeeper badge beside the guild window
+    guildButton = true,      -- a Grudgekeeper tab among the guild window's own (GuildTab.lua)
     minimap = {},            -- LibDBIcon's own record: where the button sits, whether it is hidden
     mapPins = true,          -- where an order's target was last seen, on the world map
     unitMenu = true,         -- our lines in the game's right-click menu on a player: profile, and kill order on an enemy
@@ -70,6 +70,7 @@ local charDefaults = {
     log = {},                -- newest first: { k = "K", "A" or "D", t, n, c, r, l, z, p, o, w (an assist's killer) }
     foes = {},               -- [key] = { n, c, r, l, k, d, a, last, lastKill, lastAssist, lastDeath, hits = { time, ... } }
     tracked = {},            -- [key] = { t, c, r, l }: enemies you track, yours alone (Sightings.lua, GK.Track)
+    guildChat = {},          -- the last lines of guild chat, for the page on the guild window (GuildTab.lua)
     letters = {},            -- oldest first (Letters.lua)
     letterId = 0,
     -- pc, u, parts: this PC's mark on the record, whether it held a score before marks existed, and the
@@ -1153,6 +1154,10 @@ LIB.On("PLAYER_LOGIN", function()
     GK.StartLetters(fresh)
     GK.StartMail()
     GK.StartSocial()
+    -- GuildTab.lua came in an update: the game reads the list of files when it starts, so a /reload
+    -- after an update has the new Core.lua and not the new file. Without it there is no tab until the
+    -- game is started again - and everything after this line still starts.
+    if GK.StartGuildTab then GK.StartGuildTab() end
     GK.StartProfiles()
     GK.StartInspect()
     GK.StartMapPins()

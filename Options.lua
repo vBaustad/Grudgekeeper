@@ -123,12 +123,12 @@ function GK.SettingsChapters()
             Check("tooltip", "A line on enemy tooltips", "Only for enemies you have a history with."),
             Check("unitMenu", "In the right-click menu", "A poster, record, notes, a kill order, Track."),
             Check("inspectTab", "A tab on the Inspect window", "A guildie's record, right there."),
-            { kind = "check", key = "guildButton", label = "A badge on the guild window",
-              help = "Click it for the leaderboard.",
+            { kind = "check", key = "guildButton", label = "A tab on the guild window",
+              help = "Your week, the kill orders, the leaderboard and guild chat on one page.",
               get = function() return GK.db.guildButton ~= false end,
               set = function(on)
                   GK.db.guildButton = on and true or false
-                  GK.RefreshGuildBadge()
+                  GK.RefreshGuildTab()
               end },
             { kind = "check", key = "minimap", label = "Minimap button",
               help = "Left-click opens the ledger, right-click these pages.",
