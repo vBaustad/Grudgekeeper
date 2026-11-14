@@ -1,6 +1,6 @@
 -- Grudgekeeper - a tab of our own on the guild window, and the page it opens: a page of the ledger laid
--- over the whole window, with you this week, the open kill orders, the guild's news, the week's
--- leaderboard, and guild chat to read and write in ("lagt vår tab som en lik guildtab ... så du liksom
+-- over the whole window, with you this week, the kill orders (the one the guild got last, and the open
+-- ones), the guild's news, the week's leaderboard, and guild chat to read and write in ("lagt vår tab som en lik guildtab ... så du liksom
 -- får en view hvor du kan se stats og chatte i guild på en gang", the owner, 2026-11-13).
 --
 -- How it came to look as it does, the same day:
@@ -90,6 +90,9 @@ local CHAT = { 208, TOP - 116, 384, TALL - 116 }
 local BOARD_AT = { 600, TOP, 193, TALL }
 local BAND_H = 21                                 -- the leather band a panel's name is on
 local ORDERS, ORDER_H = 3, 26
+-- What an order's row has for its middle text and its right-hand one together: the row less where the
+-- middle one starts (176), the gap between the two (8) and the right-hand one's own margin (2). BuildOrders.
+local WHAT_ROOM = KILLS[3] - 16 - 176 - 8 - 2
 local NEWS, NEWS_H = 7, 18
 local BOARD, BOARD_H = 15, 20
 local CHAT_KEEP = 60              -- lines of guild chat kept, in memory and from one session to the next
@@ -799,29 +802,67 @@ Fill = function()
         local it = news[i]
         row:SetShown(it ~= nil)
         if it then
-            row.name:SetText(it.short or it.name)
             row.when:SetText((GK.Ago(it.ts):gsub(" ago$", "")))
+            -- each name in its class's colour in the Classic skin (NewsItems' painted words)
+            local painted = GK.Classic() and it.painted or nil
+            row.name:SetText(painted and painted.short or it.short or it.name)
+            -- The column is narrow: a line with several of us in it that runs past it, first names or not,
+            -- says who and how many more (NewsItems' shortest), so whom it was about is not what is cut.
+            if it.shortest then
+                local wide = (row.name.GetUnboundedStringWidth and row.name:GetUnboundedStringWidth())
+                    or row.name:GetStringWidth() or 0
+                if wide > row:GetWidth() - (row.when:GetStringWidth() or 0) - 6 then
+                    row.name:SetText(painted and painted.shortest or it.shortest)
+                end
+            end
+            Colour(row.name, it.ink or GK.INK)        -- an order fulfilled, in the other colour (NewsItems)
             row.full, row.sub = it.name, it.sub
         end
     end
     you.noNews:SetShown(#news == 0)
 
-    -- the kill orders: the biggest bounties first, and how many there are in all
+    -- The kill orders: the one the guild got last, if in the last day, then the biggest bounties, and how
+    -- many are open in all. The one got says who got them where an open one says what they are, in the
+    -- other colour, and when where an open one says its bounty; a click opens it as it does the others.
+    -- Only the open ones stood here, so an order somebody got was gone from the page the moment it was
+    -- ("det er mer listene og oversikten", the owner, 2026-11-14).
     local open = GK.OpenOrders()
+    local got = GK.FulfilledLately(1)[1]
+    local shown = { got }
+    for _, o in ipairs(open) do
+        if #shown >= ORDERS then break end
+        shown[#shown + 1] = o
+    end
     for i, row in ipairs(orders.rows) do
-        local o = open[i]
+        local o = shown[i]
         row:SetShown(o ~= nil)
         if o then
             local pot = GK.Pot(o)
             row.orderKey = o.key
             row.face:Set({ key = o.n, c = o.c })
             row.name:SetText(GK.Show(o.n))
-            row.what:SetText((GK.Describe(o.l, o.c, o.r):gsub("^Level ", "")))
-            row.pot:SetText(pot > 0 and GK.MoneyText(pot) or "honour")
-            Colour(row.pot, pot > 0 and GK.BLOOD or GK.FADED)
+            Colour(row.name, GK.ClassInk(o.c) or GK.INK)          -- their class's colour in the Classic skin
+            if o == got then
+                -- no time where we only came to hear of it afterwards (o.late, Guild.lua)
+                row.pot:SetText(o.late and "" or (GK.Ago(o.doneAt):gsub(" ago$", "")))
+                Colour(row.pot, GK.FADED)
+                -- whole names if the row has the room for them, else first names
+                row.what:SetText("got by " .. GK.GotBy(o))
+                local wide = (row.what.GetUnboundedStringWidth and row.what:GetUnboundedStringWidth())
+                    or row.what:GetStringWidth() or 0
+                if wide > WHAT_ROOM - (row.pot:GetStringWidth() or 0) then
+                    row.what:SetText("got by " .. GK.GotBy(o, true))
+                end
+                Colour(row.what, GK.BLOOD)
+            else
+                row.what:SetText((GK.Describe(o.l, o.c, o.r):gsub("^Level ", "")))
+                Colour(row.what, GK.FADED)
+                row.pot:SetText(pot > 0 and GK.MoneyText(pot) or "")     -- gold, or nothing: no word for none
+                Colour(row.pot, GK.BLOOD)
+            end
         end
     end
-    orders.none:SetShown(#open == 0)
+    orders.none:SetShown(#shown == 0)
     orders.count:SetText(#open > 0 and ("%d open"):format(#open) or "")
 
     -- the leaderboard: the top three wear their seals, and you are always on it - in the last row,
@@ -842,7 +883,7 @@ Fill = function()
             row.name:SetText(GK.Show(r.who))
             row.pts:SetText(tostring(r.p))
             row.own:SetShown(r.me == true)
-            Colour(row.name, r.me and GK.BLOOD or GK.INK)
+            Colour(row.name, GK.ClassInk(r.c) or (r.me and GK.BLOOD or GK.INK))     -- in the Classic skin, theirs
             Colour(row.pts, r.me and GK.BLOOD or GK.INK)
         end
     end

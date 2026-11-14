@@ -55,8 +55,10 @@ local defaults = {
     spreeGuild = "toast",    -- a guildie's spree milestone
     spreeEnded = "toast",    -- a spree of ours or a guildie's that an enemy ended
     spreeTormentor = "toast", -- one of the guild put an end to a tormentor
+    orderDone = "toast",     -- a guildie got the target of a kill order
     announceWhenMine = "always",       -- when yours may come: "always", "noCombat", "noCombatInInstance" or "noInstance"
     announceWhenGuild = "noCombat",    -- the same for a guildie's; one held back waits, then comes in order
+    announceTime = 7,                  -- how many seconds a toast shows; a splash half of it (Announce.lua)
     spreeSounds = {},        -- [tier key, "ended" or "tormentor"] = a sound (GK.SoundChoices); none picked: Announce.lua's own
     looks = {},              -- [player key] = race file and sex, "Scourge3": their race's face on cards (Sightings.lua)
 }
@@ -1012,6 +1014,36 @@ function GK.UseLook(name)
 end
 
 function GK.Classic() return GK.LOOK == GK.LOOKS.classic end
+
+-- A player's name in their class's colour, in the Classic skin, as the game writes names on its own dark
+-- panels ("tenker vi at navn skal være i class color?", the owner, 2026-11-14). Never on the parchment: every
+-- class colour reads there at 1.0 to 2.5 against the 4.5 small text needs, Warrior's and Druid's at exactly
+-- the parchment's own lightness, where the ink names are written in reads at 6.3 (chrclasses, build 70938,
+-- against sheet_single as Window.lua tones it - DECISIONS.md). So no setting: the skin is the choice.
+local classInk = {}
+
+--- The colour a name of this class is written in - { r, g, b }, as GK.Ink takes it - or nil: on parchment,
+--- or for a class the game has no colour for.
+function GK.ClassInk(class)
+    if not (class and GK.Classic()) then return nil end
+    local c = RAID_CLASS_COLORS and RAID_CLASS_COLORS[class]
+    if not (type(c) == "table" and c.r and c.g and c.b) then return nil end
+    local ink = classInk[class]
+    if not ink then
+        ink = { c.r, c.g, c.b }
+        classInk[class] = ink
+    end
+    return ink
+end
+
+--- A name inside a line of text, in its class's colour where GK.ClassInk has one: the game's colour codes
+--- round it, which a line in another colour keeps for that name alone. As it is where there is none.
+function GK.InClass(text, class)
+    local c = GK.ClassInk(class)
+    if not (c and type(text) == "string") then return text end
+    return ("|cff%02x%02x%02x%s|r"):format(math.floor(c[1] * 255 + 0.5), math.floor(c[2] * 255 + 0.5),
+        math.floor(c[3] * 255 + 0.5), text)
+end
 
 -- ---------------------------------------------------------------------------
 -- Every alphabet a name is written in

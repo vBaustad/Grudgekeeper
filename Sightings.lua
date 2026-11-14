@@ -415,6 +415,11 @@ local function Spotted(order, s)
         order.seen = last
     end
     last.by, last.z, last.t, last.l = LIB.Me(), s.z, time(), s.l
+    -- the level we see them at, where it is higher than the order says: asked only then, as this runs
+    -- at every look (GK.OrderLevel, Guild.lua)
+    if s.l and s.l > 0 and (not order.l or order.l < s.l) and GK.OrderLevel(order.n, order.guid, s.l) then
+        GK.Changed()
+    end
     -- Where we stand goes with it - for the pin on the world map (MapPins.lua) - read only as often as
     -- the guild is told, not at every look: one map lookup per target every two minutes. A pin up to
     -- two minutes behind is still where to look; nameplates only show within a few dozen yards.

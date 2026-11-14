@@ -221,7 +221,12 @@ function GK.PosterCard(t, inLedger)
         return t[field] or (live and live[field]) or (o and o[field]) or (f and f[field]) or (e and e[field])
             or (w and w[field])
     end
-    local c, r, l = Pick("c"), Pick("r"), Pick("l")
+    -- Their level is the highest anyone has it at: a level only goes up, and the caller's is from when its
+    -- row was made - an order's posting, their last kill on us (GK.HigherLevel, Guild.lua).
+    local c, r, l = Pick("c"), Pick("r"), t.l
+    for _, known in ipairs({ live or false, o or false, f or false, e or false, w or false }) do
+        if known then l = GK.HigherLevel(l, known.l) end
+    end
     -- Their race's face, from race and sex seen or kept (GK.FaceOf), under whichever spelling we have
     -- them by - the card may be asked for a name alone.
     local function Known(k) return k and GK.FaceOf(k).rf and k or nil end
@@ -313,9 +318,15 @@ function GK.PosterCard(t, inLedger)
         -- guildie's kill fulfils it, and "Hunting: nobody yet" read as a sign-up it was waiting for ("jeg
         -- vil ikke at noen skal ta ordre", the owner, 2026-11-07).
         local givers = backers + ((o.reward or 0) > 0 and 1 or 0)
-        rich.tiles[1] = { pot > 0 and GK.Coins(pot) or "honour", "Bounty",
+        -- "None" over BOUNTY for an order with no gold: it said "honour", a word the owner did not want for
+        -- it (2026-11-14), and "No bounty" is wider than the tile, a quarter of the card
+        rich.tiles[1] = { pot > 0 and GK.Coins(pot) or "None", "Bounty",
             givers > 0 and ("from %d guildie%s"):format(givers, givers == 1 and "" or "s") or "no gold on it" }
         local order = { { "Posted by", ("%s, %s"):format(Upper(by), GK.Ago(o.t)) } }
+        -- they have levelled since: what the order said when posted, where we knew it (GK.OrderLevel)
+        if o.was and o.l and o.l > o.was then
+            order[#order + 1] = { "Level", ("%d when posted, seen at %d since"):format(o.was, o.l) }
+        end
         if o.note and o.note ~= "" then order[#order + 1] = { "Why", o.note } end
         if o.exp then order[#order + 1] = { "Runs out", Until(o.exp) } end
         rich.sections[1] = { head = "The order", kind = "facts", rows = order }
@@ -391,7 +402,7 @@ local function Lately(key, me, most)
             if e.kind == "K" or e.kind == "H" then
                 right = (e.p or 0) > 0 and ("+%d"):format(e.p) or nil
             elseif e.kind == "C" then
-                right = (e.p or 0) > 0 and GK.Coins(e.p) or "honour"
+                right = (e.p or 0) > 0 and GK.Coins(e.p) or nil
             elseif e.kind == "T" then
                 right = (e.p or 0) > 0 and GK.Coins(e.p) or nil
             end

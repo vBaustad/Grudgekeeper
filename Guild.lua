@@ -52,7 +52,7 @@
 -- paid with the order's state (p), as before the pot existed.
 -- Worst case a guild can make us keep: 150 orders (10 open per poster), 500 board rows (6 parts each), 200 wanted,
 -- 200 wanted (50 guildies each), 200 slain (enemies the guild has killed, 20 killers each), 200 tormentors
--- (enemies and their count of us killed, Core.lua), 500 guildies' last sprees (in memory only), 40 feed
+-- (enemies and their count of us killed, Core.lua), 500 guildies' last sprees (in memory only), 80 feed
 -- lines and 20 backers per order (a share passed on, P, counts against the same 20). Every sender is
 -- also held to LibForever's 30 messages / 10 s.
 local ADDON, GK = ...
@@ -68,7 +68,9 @@ local MAX_SPREES = 500
 local MAX_WANTED = 200
 local MAX_SLAIN = 200
 local MAX_SLAYERS = 20
-local MAX_FEED = 40
+-- Twice the forty it was: a kill is a line for its blow and one for each who helped, shown as one
+-- (Window.lua, KillGroups), so forty lines kept could be ten on the page.
+local MAX_FEED = 80
 local MAX_VICTIMS = 50
 local MAX_BACKERS = 20
 local MAX_REWARD = 1000 * 10000          -- 1000 gold, in copper
@@ -84,6 +86,7 @@ local CAMP_FOR, CAMP_DEATHS = 30 * 60, 3
 local RECENT_PAIRS = 10                  -- deaths kept per enemy for the rules above, at most
 local KEEP_CLOSED = 14 * GK.DAY          -- withdrawn, expired and paid orders, then gone
 local KEEP_OWED = 30 * GK.DAY            -- a fulfilled order still owed stays this long
+local LATELY = GK.DAY                    -- an order somebody got stays in sight this long (GK.FulfilledLately)
 local BOARD_STALE = 60 * GK.DAY          -- a guildie not heard from in this long leaves the board
 local STATES = { o = 0, d = 1, p = 2, x = 2, e = 2 }   -- an order only ever moves forward
 
@@ -502,6 +505,27 @@ function GK.AllOrders()
     return list
 end
 
+--- The orders somebody got in the last day, the latest first, at most max of them. For the guildie who
+--- was not there: a fulfilled order left the list of open ones for the closed ones folded under it, and
+--- unless its hunter told guild chat, a line in the news was all anyone else saw of it ("noen drepte en på
+--- kill order nå. men det er ikke egentlig mulig for meg, som ikke var med, å egentlig se det", the owner,
+--- 2026-11-14). The day counts from doneAt, which is when the kill was made where we heard its F, and
+--- when we came to hear of it where we did not (o.late, ApplyOrder).
+function GK.FulfilledLately(max)
+    local list, now = {}, time()
+    for _, o in pairs(GK.Store().orders) do
+        if (o.state == "d" or o.state == "p") and o.doneBy and now - (o.doneAt or 0) < LATELY then
+            list[#list + 1] = o
+        end
+    end
+    table.sort(list, function(a, b)
+        if (a.doneAt or 0) ~= (b.doneAt or 0) then return (a.doneAt or 0) > (b.doneAt or 0) end
+        return a.key < b.key
+    end)
+    for i = #list, (max or #list) + 1, -1 do list[i] = nil end
+    return list
+end
+
 -- ---------------------------------------------------------------------------
 -- The bounty, shared: everyone who got the target - the killing blow and the guildies with them
 -- (GroupHelpers, below) - gets an equal part of every gold piece in the pot ("samarbeider folk i samme
@@ -782,6 +806,20 @@ function GK.WhoGotThem(doneBy, helpers)
     return GK.NameList(keys)
 end
 
+--- The same for a row to say to the player: you as "you", and with first, first names only - for a row
+--- too short for the whole of them.
+function GK.GotBy(o, first)
+    local function Who(k)
+        if LIB.IsMyStoredName(k) then return "you" end
+        local s = GK.Show(k)
+        return first and (s:match("^[^ ]+") or s) or s            -- not %S: see GK.SameName
+    end
+    local names = { Who(o.doneBy) }
+    for _, k in ipairs(o.helpers or {}) do names[#names + 1] = Who(k) end
+    if #names == 1 then return names[1] end
+    return table.concat(names, ", ", 1, #names - 1) .. " and " .. names[#names]
+end
+
 --- Our kill fulfilled this order.
 function GK.Fulfil(o, zone)
     if o.state ~= "o" then return end
@@ -844,6 +882,46 @@ function GK.TellOrder(o, L)
     if L then L.told = true end
     GK.Changed()
     return true
+end
+
+-- ---------------------------------------------------------------------------
+-- An order's level. It was the level its target had when the order was posted, and stayed that for the
+-- order's seven days, while they levelled: "når guildies finner bounty folk, er vi nødt til å oppdatere
+-- levelen deres i tillegg så guildies veit at de er annen level enn når bounty ble lagt ut" (the owner,
+-- 2026-11-14). A sighting has carried the level seen since sightings were sent (S, field 6) and nothing read
+-- it. A level only goes up, so the highest anyone has seen is the nearest to what they are now: an order
+-- takes a higher one from wherever it comes - a guildie's sighting or death, our own look or death, its
+-- poster's own copy - and never a lower one, so a poster who was away when they were seen cannot set it back.
+-- -1 is "too high for whoever looked to read" (GK.ValidLevel): any number read says more, and it replaces
+-- no number. o.was keeps what the order said first, where we knew it, for its card.
+-- ---------------------------------------------------------------------------
+--- The higher of two levels, either of which may be nil or -1.
+function GK.HigherLevel(a, b)
+    if not a then return b end
+    if not b then return a end
+    if a < 1 then return b end
+    if b < 1 then return a end
+    return math.max(a, b)
+end
+
+local function RaiseLevel(o, level)
+    local old = o.l
+    if not level or (old and (level < 1 or level <= old)) then return false end
+    o.l = level
+    if old and old > 0 then o.was = o.was or old end
+    return true
+end
+
+--- This player was seen at this level: every open order on them says at least that from now on. True
+--- when one of them changed.
+function GK.OrderLevel(key, guid, level)
+    level = GK.ValidLevel(level)
+    if not level or level < 1 then return false end
+    local changed = false
+    for _, o in ipairs(GK.OrdersOn(key, guid)) do
+        if o.state == "o" and RaiseLevel(o, level) then changed = true end
+    end
+    return changed
 end
 
 --- Where we saw an order's target: o.seen as Sightings.lua filled it in, our own spot included.
@@ -923,10 +1001,21 @@ function GK.Avenged(key, now, before)
     return nil
 end
 
+--- A spree in the guild's news (the ledger's News, the guild window's Lately): a milestone ("S" - n how many
+--- in a row, tier its name), a spree an enemy ended ("E" - n how long it had been), a tormentor put down ("M"
+--- - n how many of us they had killed). who: the guildie, or us; v: the enemy of that kill or death,
+--- { key, c, l }. Each was told as it happened and stood nowhere afterwards ("kill streaks bør ligge i news
+--- kanskje eller?", the owner, 2026-11-14). Nothing is sent: every client makes these of the kills and
+--- deaths it hears, as it makes the announcements.
+function GK.SpreeNews(kind, who, v, zone, n, tier)
+    AddFeed({ t = time(), who = who, kind = kind, n = v.key, c = v.c, l = v.l, z = zone, s = n, tr = tier })
+end
+
 function GK.SendDeath(v, zone, times)
     AddFeed({ t = time(), who = LIB.Me(), kind = "D", n = v.key, c = v.c, l = v.l, z = zone })
     -- Our own deaths count in the guild's wanted list too.
     GK.NoteWanted(LIB.Me(), v.key, v.c, v.r, v.l, times)
+    GK.OrderLevel(v.key, v.guid, v.l)              -- and we saw their level
     if not GK.db.share then return end
     local rf, sx = LookOf(v.key, v.rf, v.sx)
     Send(Msg("D", PROTO, v.key, v.c, v.r, v.l, zone, times, rf, sx))
@@ -942,6 +1031,9 @@ end
 -- (Most wanted), my kills of them, my news about them - and asks the guild to do the same (U). Only ever the
 -- sender's own part: a peer may only change their own records. The score stays: those kills and deaths
 -- happened, whoever they were to.
+
+-- The kinds of news a forgotten grudge takes with it (ForgetIn).
+local FORGOTTEN = { K = true, D = true, H = true, S = true, E = true, M = true }
 
 --- Take `who`'s part out of what the guild keeps on `key`.
 local function ForgetIn(who, key)
@@ -969,7 +1061,8 @@ local function ForgetIn(who, key)
     local feed = s.feed
     for i = #feed, 1, -1 do
         local n = feed[i]
-        if n.who == who and n.n == key and (n.kind == "K" or n.kind == "D" or n.kind == "H") then table.remove(feed, i) end
+        -- the kills, deaths and assists, and what was made of them: a milestone, a spree ended, a tormentor
+        if n.who == who and n.n == key and FORGOTTEN[n.kind] then table.remove(feed, i) end
     end
 end
 
@@ -1241,8 +1334,9 @@ local function OnKill(sender, f)
     local name = GK.PlayerKey(GK.Clean(f[3], 64))
     if not name then return end
     local c, r, l = GK.ValidClass(f[4]), GK.Clean(f[5], 20), GK.ValidLevel(f[6])
+    local zone = GK.Clean(f[7], 40)
     AddFeed({ t = time(), who = sender, kind = "K", n = name, c = c, l = l,
-        z = GK.Clean(f[7], 40), p = Int(f[8], 0, 100), av = GK.LocalKey(GK.Clean(f[9], 64)) })
+        z = zone, p = Int(f[8], 0, 100), av = GK.LocalKey(GK.Clean(f[9], 64)) })
     GK.NoteSlain(sender, name, c, r, l, Int(f[10], 1, 1e6))
     KeepLook(name, f[11], f[12])
     local spree = Int(f[13], 0, 1e5)
@@ -1252,10 +1346,16 @@ local function OnKill(sender, f)
         -- only a spree that moved: a kill worth nothing sends the same number again. A lower one started
         -- over on a death whose D we missed, and its milestones count again.
         local tier, key = GK.SpreeTier(spree)
-        if tier and spree ~= before then LIB.Fire("GK_SPREE", sender, spree, tier, false, key) end
+        if tier and spree ~= before then
+            LIB.Fire("GK_SPREE", sender, spree, tier, false, key)
+            GK.SpreeNews("S", sender, { key = name, c = c, l = l }, zone, spree, tier)
+        end
     end
     local tormented = GK.TormentorEnded(name)
-    if tormented then LIB.Fire("GK_TORMENTOR", sender, GK.Show(name), tormented, false) end
+    if tormented then
+        LIB.Fire("GK_TORMENTOR", sender, GK.Show(name), tormented, false)
+        GK.SpreeNews("M", sender, { key = name, c = c, l = l }, zone, tormented)
+    end
 end
 
 local function OnAssist(sender, f)
@@ -1270,13 +1370,18 @@ local function OnDeath(sender, f)
     local times = Int(f[8], 1, 100000)
     if not (name and times) then return end
     local c, l = GK.ValidClass(f[4]), GK.ValidLevel(f[6])
+    local zone = GK.Clean(f[7], 40)
     GK.NoteWanted(sender, name, c, GK.Clean(f[5], 20), l, times)
-    AddFeed({ t = time(), who = sender, kind = "D", n = name, c = c, l = l, z = GK.Clean(f[7], 40) })
+    GK.OrderLevel(name, nil, l)                    -- a guildie who died to them saw their level
+    AddFeed({ t = time(), who = sender, kind = "D", n = name, c = c, l = l, z = zone })
     KeepLook(name, f[9], f[10])
     GK.TormentorGrew(name)
     local spree = lastSpree[sender]
     if spree then
-        if spree >= GK.SPREE_MIN then LIB.Fire("GK_SPREE_ENDED", sender, spree, GK.Show(name), false) end
+        if spree >= GK.SPREE_MIN then
+            LIB.Fire("GK_SPREE_ENDED", sender, spree, GK.Show(name), false)
+            GK.SpreeNews("E", sender, { key = name, c = c, l = l }, zone, spree)
+        end
         lastSpree[sender] = 0
     end
 end
@@ -1312,7 +1417,9 @@ local function ApplyOrder(by, f, base, relayed)
     end
     if fresh or not relayed then
         o.n = name
-        o.c, o.r, o.l = GK.ValidClass(Field(5)), GK.Clean(Field(6), 20), GK.ValidLevel(Field(7))
+        o.c, o.r = GK.ValidClass(Field(5)), GK.Clean(Field(6), 20)
+        -- the poster's level for them, unless we know a higher: they may not have heard who saw them since
+        RaiseLevel(o, GK.ValidLevel(Field(7)))
         local guid = Field(8)
         o.guid = (type(guid) == "string" and guid:match("^Player%-%d+%-%x+$")) and guid or o.guid
         o.reward = Int(Field(9), 0, MAX_REWARD) or 0
@@ -1330,7 +1437,9 @@ local function ApplyOrder(by, f, base, relayed)
     -- only when we had nobody
     local doneBy = GK.LocalKey(GK.Clean(Field(13), 64))
     if doneBy and o.state ~= "o" and (not relayed or not o.doneBy) then o.doneBy = doneBy end
-    if o.state ~= "o" and not o.doneAt then o.doneAt = now end
+    -- closed, and we never heard it close (its F: OnFulfil): when is not ours to say, so the time is when
+    -- we came to hear of it - late, which keeps a row from saying "2 min ago" of a kill from yesterday
+    if o.state ~= "o" and not o.doneAt then o.doneAt, o.late = now, true end
     Touched()
     Trim(s)
     -- The poster still calls it open, and our kill fulfilled it: they were away when it happened, and
@@ -1391,6 +1500,9 @@ local function OnFulfil(sender, f)
     Touched()
     AddFeed({ t = o.doneAt, who = sender, kind = "F", n = o.n, c = o.c, l = o.l, p = o.reward, z = o.doneZone,
         own = o.by == sender or nil, h = o.helpers })
+    -- for whatever tells it as it happens (Announce.lua). A guildie's, always: the F of our own kill finds
+    -- the order closed already (GK.Fulfil), and so does one said a second time
+    LIB.Fire("GK_ORDER_DONE", sender, o.helpers, o.n, (GK.Pot(o)))
     local me = LIB.Me()
     local share = (o.by == me and (o.reward or 0)) or (o.pot and o.pot[me]) or 0
     if o.by == me then SendOrder(o) end               -- the poster's word settles who was first
@@ -1474,6 +1586,7 @@ local function OnSighting(sender, f)
     local m, x, y = Int(f[7], 1, 1e6), Int(f[8], 0, 1000), Int(f[9], 0, 1000)
     if not (m and x and y) then m, x, y = nil, nil, nil end
     o.seen = { by = sender, z = zone, t = time(), l = GK.ValidLevel(f[6]), m = m, x = x, y = y }
+    GK.OrderLevel(o.n, o.guid, o.seen.l)           -- and the level they were seen at, on every order on them
     -- Everyone hears where: nobody takes an order, every guildie is the hunter (the owner, 2026-11-07).
     if GK.db.alertNear then
         GK.Warn(("%s saw %s%s"):format(GK.Show(sender), GK.Show(o.n), zone and (" in " .. zone) or ""), false)

@@ -2261,6 +2261,176 @@ test("old race portraits: the face from the old sheet, today's icon for a race i
 end)
 
 -- ---------------------------------------------------------------------------
+-- An order somebody got, for the guildie who was not there (Guild.lua): fulfilled, it left the open orders
+-- for the closed ones folded under them, and one line of news was all anyone else saw ("noen drepte en på
+-- kill order nå. men det er ikke egentlig mulig for meg, som ikke var med, å egentlig se det", the owner,
+-- 2026-11-14)
+-- ---------------------------------------------------------------------------
+--- Guild.lua with the letters an order would bring counted, not written (Letters.lua is not loaded).
+local function bootOrders()
+    local GK, LIB = boot({ me = ME })
+    assert(loadfile(W.dir .. "Guild.lua"))("Grudgekeeper", GK)
+    local letters = {}
+    for _, kind in ipairs({ "OrderLetter", "CompleteLetter", "PaidLetter", "ExpiredLetter" }) do
+        GK[kind] = function() letters[#letters + 1] = kind end
+    end
+    return GK, LIB, letters
+end
+
+--- Kari posts an order on each of these, open, with a bounty of 20s; returns each by its target's name.
+local function kariOrders(GK, ...)
+    local now, by = time(), {}
+    for i, name in ipairs({ ... }) do
+        GK.ReceiveForTest("Grudgekeeper", msg("C", 1, 100 + i, name .. "-Realm", "ROGUE", "Orc", 35, "", 2000, now,
+            now + 86400, "o", "", ""), "GUILD", KARI)
+        by[name] = GK.Store().orders[KARI .. "#" .. (100 + i)]
+        assert(by[name] and by[name].state == "o", "the order on " .. name .. " should be open")
+    end
+    return by
+end
+
+test("fulfilled lately: the orders somebody got in the last day, the latest first - no other closed one", function()
+    local GK = bootOrders()
+    local o = kariOrders(GK, "Aaa", "Bbb", "Ccc", "Ddd", "Eee")
+    eq(#GK.FulfilledLately(), 0, "open orders only: none")
+    GK.ReceiveForTest("Grudgekeeper", msg("F", 1, KARI, 101, "Hillsbrad Foothills", ""), "GUILD", EDVARD)
+    GK.ReceiveForTest("Grudgekeeper", msg("F", 1, KARI, 102, "Arathi Highlands", ""), "GUILD", EDVARD)
+    eq(o.Aaa.state, "d")
+    eq(o.Aaa.late, nil, "its F heard: the time is the kill's")
+    o.Aaa.doneAt, o.Bbb.doneAt = time() - 3600, time() - 60
+    local list = GK.FulfilledLately()
+    eq(#list, 2)
+    eq(list[1], o.Bbb, "the latest first")
+    eq(list[2], o.Aaa)
+    eq(#GK.FulfilledLately(1), 1, "no more than asked for")
+    eq(GK.FulfilledLately(1)[1], o.Bbb, "...and the latest of them")
+    -- paid is still got; withdrawn and expired were never got
+    o.Aaa.state = "p"
+    o.Ccc.state, o.Ccc.doneAt = "x", time()
+    o.Ddd.state, o.Ddd.doneAt = "e", time()
+    eq(#GK.FulfilledLately(), 2, "a paid one stays, a withdrawn and an expired one are none of them")
+    -- a day on, it is one of the closed orders and no more
+    o.Aaa.doneAt = time() - 86400 - 1
+    eq(#GK.FulfilledLately(), 1, "not after a day")
+    eq(GK.FulfilledLately()[1], o.Bbb)
+end)
+
+test("fulfilled lately: an order we only came to hear was closed is one, with no time of its own", function()
+    local GK = bootOrders()
+    local o = kariOrders(GK, "Aaa")
+    -- Kari's own word that Edvard got them: we never heard his F (we were away, or it was lost)
+    local now = time()
+    GK.ReceiveForTest("Grudgekeeper", msg("C", 1, 101, "Aaa-Realm", "ROGUE", "Orc", 35, "", 2000, now, now + 86400,
+        "d", EDVARD, ""), "GUILD", KARI)
+    eq(o.Aaa.state, "d")
+    eq(o.Aaa.doneBy, EDVARD)
+    eq(o.Aaa.late, true, "when it was got is not ours to say")
+    eq(GK.FulfilledLately()[1], o.Aaa, "news to us all the same")
+    -- one that arrives closed, never seen open, the same
+    GK.ReceiveForTest("Grudgekeeper", msg("C", 1, 109, "Zzz-Realm", "ROGUE", "Orc", 35, "", 0, now, now + 86400,
+        "d", EDVARD, ""), "GUILD", KARI)
+    local z = GK.Store().orders[KARI .. "#109"]
+    eq(z.late, true)
+    eq(#GK.FulfilledLately(), 2)
+end)
+
+-- An order kept the level its target had when it was posted, for its seven days, while they levelled:
+-- "når guildies finner bounty folk, er vi nødt til å oppdatere levelen deres i tillegg så guildies veit at de
+-- er annen level enn når bounty ble lagt ut" (the owner, 2026-11-14). A sighting carried the level seen all
+-- along (S, field 6), and nothing read it.
+test("an order's level: a guildie's sighting raises it, on every order on them, and nothing lowers it", function()
+    local GK = bootOrders()
+    function GK.Warn() end
+    function GK.KeepLooks() end
+    local o = kariOrders(GK, "Aaa")
+    local now = time()
+    local function Order(by, id, name, level)
+        GK.ReceiveForTest("Grudgekeeper", msg("C", 1, id, name .. "-Realm", "ROGUE", "Orc", level, "", 0, now, now + 86400,
+            "o", "", ""), "GUILD", by)
+        return GK.Store().orders[by .. "#" .. id]
+    end
+    local function Seen(level)
+        GK.ReceiveForTest("Grudgekeeper", msg("S", 1, KARI, 101, "Hillsbrad", level, 1424, 500, 500), "GUILD", EDVARD)
+    end
+    eq(o.Aaa.l, 35, "posted at 35")
+    local other = Order(EDVARD, 7, "Aaa", 34)
+    eq(other.l, 34, "and Edvard's own order on them, posted at 34")
+    Seen(38)
+    eq(o.Aaa.l, 38, "seen at 38: the order says so")
+    eq(o.Aaa.was, 35, "...and keeps what it said when posted")
+    eq(o.Aaa.seen.l, 38, "...the sighting its own, as before")
+    eq(other.l, 38, "...and so does the other order on them")
+    eq(other.was, 34)
+    Seen(36)
+    eq(o.Aaa.l, 38, "a lower level - an older look, passed on late - is not taken")
+    Seen(-1)
+    eq(o.Aaa.l, 38, "too high for whoever looked to read: says nothing")
+    Seen("many")
+    eq(o.Aaa.l, 38, "no number: nothing")
+    Seen(40)
+    eq(o.Aaa.l, 40, "higher again")
+    eq(o.Aaa.was, 35, "...what it said when posted stays the first")
+    -- the poster's own copy, from before anyone saw them: it cannot set the level back
+    eq(Order(KARI, 101, "Aaa", 35), o.Aaa, "Kari's order again, as she has it")
+    eq(o.Aaa.l, 40, "the poster's 35 does not lower it")
+    Order(KARI, 101, "Aaa", 42)
+    eq(o.Aaa.l, 42, "a poster who knows a higher one says it")
+    -- a guildie who dies to them saw their level, and so did we at our own death
+    GK.ReceiveForTest("Grudgekeeper", msg("D", 1, "Aaa-Realm", "ROGUE", "Orc", 44, "Hillsbrad", 1), "GUILD", EDVARD)
+    eq(o.Aaa.l, 44, "a guildie's death to them: the level in it")
+    GK.db.share = false                      -- the order's level is ours to know whether we tell the guild or not
+    GK.SendDeath({ key = "Aaa-Realm", c = "ROGUE", r = "Orc", l = 45 }, "Hillsbrad", 1)
+    eq(o.Aaa.l, 45, "our own death to them: theirs then")
+    -- an order posted on one too high to read gets its number from who can read it, and has no "was"
+    local skull = Order(KARI, 109, "Skull", -1)
+    eq(skull.l, -1)
+    GK.ReceiveForTest("Grudgekeeper", msg("S", 1, KARI, 109, "Hillsbrad", 52, 1424, 500, 500), "GUILD", EDVARD)
+    eq(skull.l, 52, "a number where there was none")
+    eq(skull.was, nil, "...and nothing it was before")
+    -- a closed order is left as it stood
+    GK.ReceiveForTest("Grudgekeeper", msg("F", 1, KARI, 109, "Hillsbrad", ""), "GUILD", EDVARD)
+    eq(GK.OrderLevel("Skull-Realm", nil, 60), false, "no open order on them: nothing to raise")
+    eq(skull.l, 52)
+    -- the higher of two, either of which may be missing or unreadable
+    eq(GK.HigherLevel(33, 36), 36)
+    eq(GK.HigherLevel(36, 33), 36)
+    eq(GK.HigherLevel(nil, 33), 33)
+    eq(GK.HigherLevel(33, nil), 33)
+    eq(GK.HigherLevel(-1, 33), 33, "a number over unreadable")
+    eq(GK.HigherLevel(33, -1), 33)
+    eq(GK.HigherLevel(-1, -1), -1)
+    eq(GK.HigherLevel(nil, nil), nil)
+end)
+
+test("fulfilled: who got them as a row says it - you as you, first names for a short row", function()
+    local GK = bootOrders()
+    eq(GK.GotBy({ doneBy = "Kriger Skaalvik-Realm" }), "Kriger Skaalvik")
+    eq(GK.GotBy({ doneBy = ME }), "you")
+    eq(GK.GotBy({ doneBy = "Kriger Skaalvik-Realm", helpers = { ME, "Umulius Kjakabråten-Realm" } }),
+        "Kriger Skaalvik, you and Umulius Kjakabråten")
+    eq(GK.GotBy({ doneBy = "Kriger Skaalvik-Realm", helpers = { "Umulius Kjakabråten-Realm" } }, true),
+        "Kriger and Umulius", "first names")
+end)
+
+test("fulfilled: a guildie's F says so once, to whatever tells it - not ours, not one said again", function()
+    local GK, LIB = bootOrders()
+    local told = {}
+    LIB.Listen("GK_ORDER_DONE", function(who, helpers, target, pot) told[#told + 1] = { who, helpers, target, pot } end)
+    local o = kariOrders(GK, "Aaa", "Bbb")
+    GK.ReceiveForTest("Grudgekeeper", msg("F", 1, KARI, 101, "Hillsbrad Foothills", ""), "GUILD", EDVARD)
+    eq(#told, 1)
+    eq(told[1][1], EDVARD, "who got them")
+    eq(told[1][3], "Aaa-Realm", "whom")
+    eq(told[1][4], 2000, "the bounty")
+    GK.ReceiveForTest("Grudgekeeper", msg("F", 1, KARI, 101, "Hillsbrad Foothills", ""), "GUILD", EDVARD)
+    eq(#told, 1, "said again: nothing")
+    -- our own kill: GK.Fulfil closes it, and the F that comes back to us finds it closed
+    GK.Fulfil(o.Bbb, "Arathi Highlands")
+    GK.ReceiveForTest("Grudgekeeper", msg("F", 1, KARI, 102, "Arathi Highlands", ""), "GUILD", ME)
+    eq(#told, 1, "ours: nothing")
+end)
+
+-- ---------------------------------------------------------------------------
 -- One character, more than one PC (Guild.lua): Happy Idiot logged in on a second PC, started from 0
 -- there, and its first B wrote 0 over his row on every board (2026-11-11)
 -- ---------------------------------------------------------------------------
@@ -2706,6 +2876,13 @@ local function bootSpree()
     function GK.SendDeath() end
     function GK.AutoOrder() return nil end
     function GK.SlainLetter() end
+    -- what goes in the guild's news of it (Guild.lua's GK.SpreeNews): "S 3 Bloodied" for a milestone, "E 4"
+    -- for a spree an enemy ended, "M 3" for a tormentor put down
+    GK.news = {}
+    function GK.SpreeNews(kind, who, v, zone, n, tier)
+        assert(who == ME and v and v.key, "a spree's news is ours here, and about an enemy")
+        table.insert(GK.news, kind .. " " .. n .. (tier and (" " .. tier) or ""))
+    end
     return GK, LIB, heard
 end
 
@@ -2763,6 +2940,9 @@ test("spree: a milestone of ours fires GK_SPREE once, at 3, 5, 7, 10, 15, then 2
         got[#got + 1] = e[3] .. ":" .. e[4]
     end
     eq(table.concat(got, " "), "3:Bloodied 5:Merciless 7:Butcher 10:Reaper 15:Grudgebound 20:Grudgebound 25:Grudgebound")
+    -- and each is a line in the guild's news ("kill streaks bør ligge i news kanskje eller?", the owner, 2026-11-14)
+    eq(table.concat(GK.news, ", "),
+        "S 3 Bloodied, S 5 Merciless, S 7 Butcher, S 10 Reaper, S 15 Grudgebound, S 20 Grudgebound, S 25 Grudgebound")
 end)
 
 test("spree: a grey kill on a milestone number fires nothing", function()
@@ -2790,6 +2970,7 @@ test("spree: our death to an enemy ends it, and says what it was", function()
     eq(heard[1][3], 4)
     eq(heard[1][4], GK.Show(GANK), "who ended it")
     eq(heard[1][5], true)
+    eq(GK.news[#GK.news], "E 4", "and it is in the guild's news: a spree of four, ended")
 end)
 
 test("spree: dying with less than 3 ends nothing to announce, but still resets it", function()
@@ -2799,6 +2980,7 @@ test("spree: dying with less than 3 ends nothing to announce, but still resets i
     eq(GK.RecordDeath({ key = GANK, guid = FOE_GUID, c = "ROGUE", r = "Orc", l = 65 }), 2)
     eq(GK.char.spree, 0)
     eq(#heard, 0)
+    eq(#GK.news, 0, "and nothing for the news")
 end)
 
 test("tormentor: three of the guild dead, then our kill ends them and the count goes to 0", function()
@@ -2815,6 +2997,7 @@ test("tormentor: three of the guild dead, then our kill ends them and the count 
     eq(heard[1][3], GK.Show(GANK))
     eq(heard[1][4], 3)
     eq(heard[1][5], true)
+    eq(GK.news[#GK.news], "M 3", "and it is in the guild's news: a tormentor of three put down")
 end)
 
 test("tormentor: fewer than 3 is no tormentor, and a kill still clears the count", function()
@@ -2823,6 +3006,7 @@ test("tormentor: fewer than 3 is no tormentor, and a kill still clears the count
     GK.RecordKill({ key = GANK, guid = FOE_GUID, c = "ROGUE", r = "Orc", l = 65, rf = "Orc", sx = 2 })
     eq(GK.Store().tormentors[GANK] or 0, 0)
     eq(#heard, 0)
+    eq(#GK.news, 0, "and nothing for the news")
 end)
 
 test("tormentor: a grey kill on one still ends them", function()
@@ -2971,6 +3155,45 @@ test("a guildie's spree is kept per guildie, and the next K takes it on from whe
     eq(heard[#heard][3], 9, "the last one heard")
 end)
 
+-- A spree was told as it happened and stood nowhere afterwards ("kill streaks bør ligge i news kanskje
+-- eller?", the owner, 2026-11-14): each is a line in the guild's news, made of the K or the D that was heard.
+test("a guildie's spree in the news: a milestone over its kill, its end over the death, a tormentor put down", function()
+    local GK, HearK, HearD = bootHeard()
+    local feed = GK.Store().feed
+    local function Kinds()
+        local k = {}
+        for i, e in ipairs(feed) do k[i] = e.kind end
+        return table.concat(k)
+    end
+    HearK(KARI, 2)
+    eq(Kinds(), "K", "a kill between milestones: its own line and no more")
+    HearK(KARI, 3)
+    eq(Kinds(), "SKK", "a milestone: its line over the kill's")
+    eq(feed[1].who, KARI, "whose")
+    eq(feed[1].s, 3, "how many in a row")
+    eq(feed[1].tr, "Bloodied", "the tier's name")
+    eq(feed[1].n, GANK, "the enemy of the kill that made it")
+    eq(feed[1].z, "Hillsbrad", "and where")
+    HearK(KARI, 3)
+    eq(Kinds(), "KSKK", "the same number again, a kill worth nothing: no second milestone")
+    HearD(KARI)
+    eq(Kinds(), "EDKSKK", "a spree an enemy ended: over the death's own line")
+    eq(feed[1].s, 3, "how long it had been")
+    eq(feed[1].n, GANK, "and who ended it")
+    HearD(KARI)
+    eq(Kinds(), "DEDKSKK", "a death with no spree left: its own line and no more")
+    -- three of us dead to them by now, Edvard's the third: his next kill on them puts a tormentor down
+    HearD(EDVARD)
+    eq(GK.Store().tormentors[GANK], 3)
+    HearK(EDVARD, 1)
+    eq(Kinds(), "MKDDEDKSKK", "a tormentor put down: over the kill's line")
+    eq(feed[1].who, EDVARD, "who did it")
+    eq(feed[1].s, 3, "and how many of us they had killed")
+    -- a grudge forgotten takes its news with it, these lines too
+    GK.ReceiveForTest("Grudgekeeper", msg("U", 1, GANK), "GUILD", KARI)
+    eq(Kinds(), "MKD", "Kari's grudge forgotten: her kills, deaths, milestone and ended spree go; Edvard's stay")
+end)
+
 test("tormentor: three guildie deaths to one enemy, then a guildie's K on them ends it", function()
     local GK, HearK, HearD, heard = bootHeard()
     HearD(KARI)
@@ -3080,6 +3303,7 @@ test("announce: the settings start as asked", function()
     eq(GK.db.spreeGuild, "toast")
     eq(GK.db.spreeEnded, "toast")
     eq(GK.db.spreeTormentor, "toast")
+    eq(GK.db.orderDone, "toast")
     eq(GK.db.announceWhenMine, "always")
     eq(GK.db.announceWhenGuild, "noCombat")
     eq(next(GK.db.spreeSounds), nil)
@@ -3113,8 +3337,8 @@ test("announce: a held splash waits for the one before it, one after another", f
     LIB.fire("PLAYER_REGEN_ENABLED")
     eq(#A.txt, 1)
     eq(A.txt[1], "Kari: 5 kills in a row")
-    W.advance(3)
-    eq(#A.txt, 1, "still the first one's time")
+    W.advance(4)
+    eq(#A.txt, 1, "still the first one's time: three and a half seconds, and one more")
     W.advance(1)
     eq(#A.txt, 2)
     eq(A.txt[2], "Edvard: 7 kills in a row")
@@ -3284,8 +3508,8 @@ test("announce: a new splash waits for the one on screen, even when nothing is q
     W.advance(1)
     LIB.Fire("GK_SPREE", EDVARD, 7, "Butcher", false, "butcher")
     eq(#A.txt, 1, "the first is still showing")
-    W.advance(2)
-    eq(#A.txt, 1, "3 s in: not yet")
+    W.advance(3)
+    eq(#A.txt, 1, "4 s in: not yet")
     W.advance(1)
     eq(#A.txt, 2, "after the first one's time")
     eq(A.txt[2], "Edvard: 7 kills in a row")
@@ -3299,9 +3523,57 @@ test("announce: a toast does not wait for a splash that is waiting", function()
     LIB.Fire("GK_SPREE_ENDED", KARI, 8, "Gankalot", false) -- a toast: at once
     eq(#A.txt, 2)
     eq(A.txt[2], "Kari's 8-kill spree ended (Gankalot)")
-    W.advance(4)
+    W.advance(5)
     eq(#A.txt, 3)
     eq(A.txt[3], "Edvard: 7 kills in a row", "the splash in its own turn")
+end)
+
+-- "gjør popup visende bittelitt lenger og legg settings så folk kan sette lengde selv" (the owner,
+-- 2026-11-14): a toast showed for five seconds and a splash for two and a half, fixed.
+test("announce: how long one shows is the setting's - a toast that many seconds, a splash half of it", function()
+    local GK, LIB, A = bootAnnounce()
+    eq(GK.db.announceTime, 7, "seven seconds out of the box, where it was five")
+    LIB.Fire("GK_SPREE", KARI, 3, "Bloodied", false, "bloodied")
+    local toast = A.frames[1]
+    toast.OnUpdate(toast, 7.5)
+    LIB.Fire("GK_SPREE", EDVARD, 3, "Bloodied", false, "bloodied")
+    eq(#A.frames, 2, "7.5 s on the first toast is still up, fading: the second is a frame of its own")
+    toast.OnUpdate(toast, 0.2)
+    LIB.Fire("GK_SPREE", KARI, 5, "Merciless", false, "merciless")
+    eq(#A.frames, 2, "past its seven seconds and its fade it is gone: its frame is used again")
+    -- set to three: gone after three and the fade
+    local GK2, LIB2, A2 = bootAnnounce()
+    GK2.db.announceTime = 3
+    LIB2.Fire("GK_SPREE", KARI, 3, "Bloodied", false, "bloodied")
+    local quick = A2.frames[1]
+    quick.OnUpdate(quick, 3.7)
+    LIB2.Fire("GK_SPREE", EDVARD, 3, "Bloodied", false, "bloodied")
+    eq(#A2.frames, 1, "set to three seconds: gone after three and the fade")
+    -- one that is up keeps the time it came with: the setting changed under it does not cut it short
+    local GK3, LIB3, A3 = bootAnnounce()
+    LIB3.Fire("GK_SPREE", KARI, 3, "Bloodied", false, "bloodied")
+    GK3.db.announceTime = 3
+    local kept = A3.frames[1]
+    kept.OnUpdate(kept, 5)
+    LIB3.Fire("GK_SPREE", EDVARD, 3, "Bloodied", false, "bloodied")
+    eq(#A3.frames, 2, "shown at seven, then set to three: still up at five")
+    -- a splash: half of it, and the next waits for that and a second more
+    local GK4, LIB4, A4 = bootAnnounce()
+    GK4.db.announceTime, GK4.db.spreeGuild = 10, "splash"
+    LIB4.Fire("GK_SPREE", KARI, 5, "Merciless", false, "merciless")
+    LIB4.Fire("GK_SPREE", EDVARD, 7, "Butcher", false, "butcher")
+    W.advance(5)
+    eq(#A4.txt, 1, "set to ten: the splash has five seconds, and the next waits a sixth")
+    W.advance(2)
+    eq(#A4.txt, 2, "then it comes")
+    -- a setting that is no number, or a silly one, is seven, or the most there is
+    local GK5, LIB5, A5 = bootAnnounce()
+    GK5.db.announceTime = "soon"
+    LIB5.Fire("GK_SPREE", KARI, 3, "Bloodied", false, "bloodied")
+    local odd = A5.frames[1]
+    odd.OnUpdate(odd, 7.5)
+    LIB5.Fire("GK_SPREE", EDVARD, 3, "Bloodied", false, "bloodied")
+    eq(#A5.frames, 2, "no number: seven seconds, as out of the box")
 end)
 
 test("announce: a toast before the letter icon exists sits where the icon would be", function()
@@ -3346,6 +3618,30 @@ test("announce: a name the game hides is a question mark in every line", functio
     eq(A.txt[2], "Kari's 5-kill spree ended (?)")
     assert(not A.txt[2]:find("Hidden"), A.txt[2])
     eq(A.txt[3], "You put an end to ?, who had killed 4 of us")
+end)
+
+test("announce: a guildie's kill order fulfilled - the order's seal, who and how many with them, the bounty", function()
+    local GK, LIB, A = bootAnnounce()
+    LIB.Fire("GK_ORDER_DONE", KARI, nil, GANK, 2000)
+    local seal, ribbon, line = shownAt(A, 1)
+    eq(seal, MEDIA .. "seal_red", "the wax a kill order's letter is sealed with")
+    eq(ribbon, "nil", "no ribbon")
+    eq(line, "Kill order fulfilled: Gank Master, by Kari - 20s")
+    eq(A.played[1], 1, "its own sound: PvP update")
+    LIB.Fire("GK_ORDER_DONE", KARI, { EDVARD, ME }, GANK, 0)
+    eq(A.txt[2], "Kill order fulfilled: Gank Master, by Kari and 2 more", "for honour: no sum")
+    -- a guildie's, so held by the guildies' rule, and it comes when the fight ends
+    A.combat = true
+    LIB.Fire("GK_ORDER_DONE", KARI, nil, GANK, 2000)
+    eq(#A.txt, 2, "held in a fight")
+    A.combat = false
+    LIB.fire("PLAYER_REGEN_ENABLED")
+    eq(#A.txt, 3)
+    -- its own setting: a splash, or nothing
+    GK.db.orderDone = "off"
+    LIB.Fire("GK_ORDER_DONE", KARI, nil, GANK, 2000)
+    eq(#A.txt, 3, "off: nothing")
+    eq(#A.played, 3, "...and no sound")
 end)
 
 -- ---------------------------------------------------------------------------
@@ -3448,8 +3744,9 @@ end)
 
 test("settings: each spree kind is off, toast or splash on its row; each when-rule a menu of four", function()
     local GK, _, Find = bootSettings()
-    for _, key in ipairs({ "spreeMine", "spreeGuild", "spreeEnded", "spreeTormentor" }) do
-        local row = Find(key)
+    for _, key in ipairs({ "spreeMine", "spreeGuild", "spreeEnded", "spreeTormentor", "orderDone" }) do
+        local row, ch = Find(key)
+        eq(ch.name, "Kill sprees", key)
         eq(row.kind, "choice", key)
         eq(#row.options, 3)
         eq(row.options[1][2], "Off")
@@ -3470,6 +3767,35 @@ test("settings: each spree kind is off, toast or splash on its row; each when-ru
             eq(GK.db[key], want, key)
             eq(menuOf(row)[i][2](), true, key .. " shows it chosen")
         end
+    end
+    -- how long they show: a menu of seconds, each saying what a splash gets of it
+    local row, ch = Find("announceTime")
+    eq(ch.name, "Kill sprees")
+    eq(row.kind, "pick")
+    eq(row.label, "Show for")
+    eq(row.get(), 7, "seven seconds until another is picked")
+    local entries = menuOf(row)
+    eq(#entries, 5)
+    eq(entries[3][1], "7 seconds - a splash 3.5")
+    eq(entries[3][2](), true, "seven shows as the one chosen")
+    for i, want in ipairs({ 3, 5, 7, 10, 15 }) do
+        entries[i][3]()
+        eq(GK.db.announceTime, want, "picked: the seconds, as a number")
+        eq(menuOf(row)[i][2](), true, "and it shows chosen")
+    end
+end)
+
+-- The page holds 380 units under its heading (Options.lua: host), and a row is 26 high, a sound's 24, a
+-- heading's 28, a setting with a line of help 36: a chapter taller than that runs into the signature.
+test("settings: no chapter's rows are taller than the page", function()
+    local _, chapters = bootSettings()
+    local HEIGHT = { choice = 26, pick = 26, sound = 24, head = 28 }
+    for _, ch in ipairs(chapters) do
+        local tall = 0
+        for _, r in ipairs(ch.rows) do
+            tall = tall + (HEIGHT[r.kind] or (r.help and 36 or 26))
+        end
+        assert(tall <= 380, ("%s: its rows are %d tall, the page 380"):format(ch.name, tall))
     end
 end)
 

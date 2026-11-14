@@ -1,17 +1,30 @@
--- Grudgekeeper - the announcements: a spree milestone, a spree that ended, a tormentor put down. Each is
--- told as a splash (big, in the middle of the screen, click-through) or a toast (small, stacked under the
--- letter icon), or not at all - the kind's setting says which. Two more settings say when it may come:
+-- Grudgekeeper - the announcements: a spree milestone, a spree that ended, a tormentor put down, a
+-- guildie's kill order fulfilled. Each is told as a splash (big, in the middle of the screen,
+-- click-through) or a toast (small, stacked under the letter icon), or not at all - the kind's setting
+-- says which. Two more settings say when it may come:
 -- always, or not in a fight, not in a fight in an instance, not in an instance. One that may not come yet
 -- is held, and plays in order when the setting allows (the fight ends, the area changes), one splash
 -- after another. Plain frames only: nothing here is secure, protected or a CVar, so it all works in combat.
--- What is told comes from Kills.lua and Guild.lua as GK_SPREE, GK_SPREE_ENDED and GK_TORMENTOR.
+-- What is told comes from Kills.lua and Guild.lua as GK_SPREE, GK_SPREE_ENDED, GK_TORMENTOR and
+-- GK_ORDER_DONE.
 local ADDON, GK = ...
 local LIB = LibStub("LibForever-1.0")
 
 local MEDIA = "Interface\\AddOns\\Grudgekeeper\\Media\\"
-local SPLASH_GAP = 3.5           -- a held splash waits this long after the one before it
-local SPLASH_HOLD, SPLASH_FADE, SPLASH_POP = 2.5, 0.6, 0.25
-local TOAST_HOLD, TOAST_FADE, MAX_TOASTS = 5, 0.6, 4
+local SPLASH_FADE, SPLASH_POP = 0.6, 0.25
+local TOAST_FADE, MAX_TOASTS = 0.6, 4
+-- How long one shows before it fades is the player's to say (GK.db.announceTime, Options.lua): a toast
+-- that many seconds, a splash half of it, as the two were when they were fixed at 5 and 2.5 - which was a
+-- little short ("gjør popup visende bittelitt lenger og legg settings så folk kan sette lengde selv", the
+-- owner, 2026-11-14): out of the box 7 and 3.5. Read when one is shown, and kept on it, so a change of the
+-- setting never cuts one short. A held splash waits for the one before it and a second more.
+local TIME_DEFAULT, TIME_MIN, TIME_MAX = 7, 1, 60       -- the default is Core.lua's too (announceTime)
+
+local function ToastHold()
+    local t = tonumber(GK.db and GK.db.announceTime) or TIME_DEFAULT
+    return math.max(TIME_MIN, math.min(TIME_MAX, t))
+end
+local function SplashHold() return ToastHold() / 2 end
 -- Held announcements are capped: after a long raid in a fight-only setting, a backlog would otherwise all
 -- replay at once, long after it mattered. The oldest goes.
 local MAX_HELD = 30
@@ -25,6 +38,7 @@ local DEFAULT_SOUNDS = {
     grudgebound = "file:voice_grudgebound",
     ended = "kit:UI_RAID_BOSS_DEFEATED",
     tormentor = "kit:UI_GARRISON_TOAST_INVASION_ALERT",
+    order = "kit:IG_PVP_UPDATE",                 -- a guildie's kill order fulfilled: no row to pick another on
 }
 GK.SPREE_DEFAULT_SOUNDS = DEFAULT_SOUNDS     -- for the settings page, which shows these until one is picked
 
@@ -165,10 +179,11 @@ local function BuildSplash()
         end
         -- held: shown to be moved (Move.lua), so it stays until the mover closes
         if self.held then return end
-        if age >= SPLASH_HOLD + SPLASH_FADE then
+        local hold = self.hold or SplashHold()
+        if age >= hold + SPLASH_FADE then
             self:Hide()
-        elseif age > SPLASH_HOLD then
-            self:SetAlpha(1 - (age - SPLASH_HOLD) / SPLASH_FADE)
+        elseif age > hold then
+            self:SetAlpha(1 - (age - hold) / SPLASH_FADE)
         end
     end)
     splash:Hide()
@@ -210,10 +225,10 @@ local function ShowSplash(item)
     splash.shine:Hide()
     Kindle(item.fire)
     splash.line:SetText(item.line)
-    splash.age = 0
+    splash.age, splash.hold = 0, SplashHold()
     splash:SetAlpha(1)
     splash:Show()
-    splashBusyUntil = GetTime() + SPLASH_GAP
+    splashBusyUntil = GetTime() + splash.hold + 1
 end
 
 -- ---------------------------------------------------------------------------
@@ -273,10 +288,11 @@ local function BuildToast()
         if self.held then return end              -- the mover's sample: it stays until the mover closes
         local age = self.age + dt
         self.age = age
-        if age >= TOAST_HOLD + TOAST_FADE then
+        local hold = self.hold or ToastHold()
+        if age >= hold + TOAST_FADE then
             RemoveToast(self)
-        elseif age > TOAST_HOLD then
-            self:SetAlpha(1 - (age - TOAST_HOLD) / TOAST_FADE)
+        elseif age > hold then
+            self:SetAlpha(1 - (age - hold) / TOAST_FADE)
         end
     end)
     return t
@@ -302,7 +318,7 @@ local function ShowToast(item)
         t.line:SetWidth(256)
         t.line:SetJustifyH("LEFT")
     end
-    t.age = 0
+    t.age, t.hold = 0, ToastHold()
     t:SetAlpha(1)
     active[#active + 1] = t
     Relayout()
@@ -416,6 +432,20 @@ end)
 LIB.Listen("GK_TORMENTOR", function(who, enemyName, count, mine)
     local line = ("%s put an end to %s, who had killed %d of us"):format(mine and "You" or Name(who), Hide(enemyName), count)
     Add("spreeTormentor", mine, { seal = MEDIA .. "seal_black", line = line, sound = "tormentor" })
+end)
+
+-- A guildie got the target of a kill order (Guild.lua, the F we heard): told as it happens, to everyone -
+-- also who has a letter coming for it, the poster and who put gold in. Without it nobody who was not
+-- there knew, unless the hunter told guild chat ("noen drepte en på kill order nå. men det er ikke
+-- egentlig mulig for meg, som ikke var med, å egentlig se det", the owner, 2026-11-14). The seal is the
+-- red wax a kill order's letter is sealed with: 128 across as the other two are, where the skull an order
+-- puts over a nameplate is 64, too few for a splash.
+LIB.Listen("GK_ORDER_DONE", function(who, helpers, targetKey, pot)
+    local more = type(helpers) == "table" and #helpers or 0
+    local line = ("Kill order fulfilled: %s, by %s%s%s"):format(Name(targetKey), Name(who),
+        more > 0 and (" and %d more"):format(more) or "",
+        (tonumber(pot) or 0) > 0 and (" - " .. GK.MoneyText(pot)) or "")
+    Add("orderDone", false, { seal = MEDIA .. "seal_red", line = line, sound = "order" })
 end)
 
 --- /grudge spree: a sample splash and a sample toast, whatever the settings and the when-rules say.

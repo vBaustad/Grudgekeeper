@@ -20,6 +20,9 @@ local KINDS = { { "off", "Off" }, { "toast", "Toast" }, { "splash", "Splash" } }
 local WHEN = { { "always", "Always" }, { "noCombat", "Not in combat" },
     { "noCombatInInstance", "Not in combat in a dungeon or raid" },
     { "noInstance", "Never in a dungeon or raid" } }
+-- How long an announcement shows: the seconds a toast does, and a splash half of them (Announce.lua).
+local TIMES = { { 3, "3 seconds - a splash 1.5" }, { 5, "5 seconds - a splash 2.5" }, { 7, "7 seconds - a splash 3.5" },
+    { 10, "10 seconds - a splash 5" }, { 15, "15 seconds - a splash 7.5" } }
 
 --- A setting that is on or off, kept in GK.db[key]. child: it belongs under the row above. after(on):
 --- what else has to happen when it changes.
@@ -160,11 +163,18 @@ function GK.SettingsChapters()
             Choice("choice", "spreeGuild", "Guildies' sprees", KINDS, "toast"),
             Choice("choice", "spreeEnded", "A spree ended", KINDS, "toast"),
             Choice("choice", "spreeTormentor", "A tormentor put down", KINDS, "toast"),
+            -- No spree, but told the same way and held by the same rule: a guildie's, so Show guildies'. Its
+            -- sound is not one to pick: the page is full.
+            Choice("choice", "orderDone", "A guildie's kill order fulfilled", KINDS, "toast"),
             Choice("pick", "announceWhenMine", "Show mine", WHEN, "always"),
             Choice("pick", "announceWhenGuild", "Show guildies'", WHEN, "noCombat"),
-            Head("The keeper's voice"),
+            -- how long one shows before it fades ("legg settings så folk kan sette lengde selv", the owner,
+            -- 2026-11-14)
+            Choice("pick", "announceTime", "Show for", TIMES, 7),
         }
-        -- one sound for each tier, rising, then the two that are no tier; the voice lines are offered here only
+        -- One sound for each tier, rising, then the two that are no tier; the voice lines are offered here
+        -- only. They stood under a heading, "The keeper's voice", which gave its row to Show for: the page
+        -- holds 380 units and these fifteen rows take 376 (8 at 26, 7 at 24) - a sixteenth does not fit.
         local function SpreeSound(key, label)
             rows[#rows + 1] = Sound(key, label, function()
                 return (GK.db.spreeSounds or {})[key] or GK.SPREE_DEFAULT_SOUNDS[key]

@@ -79,7 +79,7 @@ function GrudgekeeperMapPinMixin:OnMouseEnter()
         GameTooltip:AddLine(("Seen here by %s, %s"):format(by, GK.Ago(s.t)), 0.9, 0.8, 0.6)
     end
     local pot = GK.Pot(o)
-    GameTooltip:AddLine(pot > 0 and ("Bounty " .. GK.MoneyText(pot)) or "A kill order for honour", 1, 0.82, 0)
+    GameTooltip:AddLine(pot > 0 and ("Bounty " .. GK.MoneyText(pot)) or "A kill order, no bounty", 1, 0.82, 0)
     GameTooltip:AddLine("Click: wanted poster", 0.8, 0.8, 0.8)
     GameTooltip:Show()
 end

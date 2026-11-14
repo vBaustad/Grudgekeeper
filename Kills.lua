@@ -108,12 +108,19 @@ function GK.RecordKill(v)
     GK.SendKill(v, zone, points, avenged, f.k, c.spree)
     -- What the kill made of it, for whatever shows it (GK_SPREE, GK_TORMENTOR). Only after the send: the
     -- guild hears the kill first.
+    -- Each is a line in the guild's news as well (GK.SpreeNews), after the kill's own.
     if points > 0 then
         local tier, key = GK.SpreeTier(c.spree)
-        if tier then LIB.Fire("GK_SPREE", LIB.Me(), c.spree, tier, true, key) end
+        if tier then
+            LIB.Fire("GK_SPREE", LIB.Me(), c.spree, tier, true, key)
+            GK.SpreeNews("S", LIB.Me(), v, zone, c.spree, tier)
+        end
     end
     local tormented = GK.TormentorEnded(v.key)
-    if tormented then LIB.Fire("GK_TORMENTOR", LIB.Me(), GK.Show(v.key), tormented, true) end
+    if tormented then
+        LIB.Fire("GK_TORMENTOR", LIB.Me(), GK.Show(v.key), tormented, true)
+        GK.SpreeNews("M", LIB.Me(), v, zone, tormented)
+    end
     GK.SendBoard()
     if (#orders > 0 and GK.db.shotFulfil) or GK.db.shotEveryKill then GK.Shot(0.3) end
     -- A letter only for the kill that earns a new title. One for every kill was one after every fight ("den
@@ -436,6 +443,8 @@ function GK.RecordDeath(v)
     local zone = GK.Zone()
     GK.AddLog({ k = "D", t = time(), n = v.key, c = v.c, r = v.r, l = v.l, z = zone, s = v.spell })
     GK.SendDeath(v, zone, f.d)
+    -- the spree it ended, in the guild's news after the death's own line
+    if spree >= GK.SPREE_MIN then GK.SpreeNews("E", LIB.Me(), v, zone, spree) end
     GK.SendBoard()
     -- the third of us in two hours, or the third time for you in half an hour: an order goes out
     local auto = GK.AutoOrder(v)

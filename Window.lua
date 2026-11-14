@@ -49,10 +49,21 @@ local FACE = 30                                      -- a row's portrait; 26 ble
 -- kept the rank's room until 2026-11-07, which pushed their rows far to the right ("radene er skjøvet
 -- veldig til høyre", the owner); the name's heading, at 48, now stands over the name.
 local NAME_X, NAME_X_RANKED = 44, 74
+-- How far left of a row its tooltip stands: past the window's own edge, which is the list's 20 (FX) and the
+-- row's 4 in from it, and a little more.
+local TIP_GAP = 28
 local LIST_TOP = 96                                  -- the first row, down from the page's top
+-- The rows of the kill orders page, which has nothing between its title and its list and so room for a
+-- row more than the others (ListFrame, which a test holds this to).
+local ORDER_ROWS = ROWS + 1
 -- the right-hand column stops short of the row's end: folded, room for the » that says a click turns
 -- the page (they ran into each other in the preview)
 local COL1, COL2, COL_WIDE, COL_RIGHT = 232, 266, 196, PAGE_W - 36
+-- A word under the first count (Most wanted's "2 days ago" under how often they killed us): the count
+-- stands C1_LIFT higher, the word C1_UNDER under the row's middle, as a grudge's "they lead" under its
+-- score. The line under the name stops C1_UNDER_W short of the column's middle: half of "38 days ago" in
+-- that type and a gap. Worked out from the type's size, not measured in the game.
+local C1_LIFT, C1_UNDER, C1_UNDER_W = 5, 10, 36
 local SCORE_X = COL_RIGHT - 34                       -- the middle of a grudge's score ("0 - 1")
 -- The leaderboard's three counts, K, D and A, a little closer than COL1 and COL2: at 34 apart the third
 -- left a four-figure score no room. The name keeps 116, and a longer one steps down a size first.
@@ -67,6 +78,9 @@ local SUGGEST = 5            -- with no open order, who killed us most: this man
 -- Only the pages stop: the store keeps what it kept, and posters, tooltips and warnings know everyone.
 local LIST_MAX, CLOSED_MAX = 25, 10
 GK.LIST_MAX = LIST_MAX       -- for the pages other files add (NotesUI.lua)
+-- The orders somebody got in the last day that stand over the open ones (GK.FulfilledLately): the latest
+-- three. Each is a row the first page has not got for an open order.
+local LATELY_MAX = 3
 local TAB_GAP, GROUP_GAP = 3, 16                     -- between two tabs; and before the friendly pages, or Friends
 -- How far up the tabs go, behind the frame's bottom edge. The game's own windows put them 2 up and over
 -- the edge, which here read as buttons set under the book: "føler ikke tabsene henger helt ordentlig på?"
@@ -111,15 +125,33 @@ local TAB_BUTTON_H, SIDE_TOP, SIDE_LEN, TAB_ICON = 32, 34, 46, 22
 local ICONS = "Interface\\Icons\\"
 local SWAP_ICON = { Friends = ICONS .. "INV_Misc_GroupNeedMore", Enemies = MEDIA .. "mark" }
 
---- Where each page of a list starts (0-based offsets into it): ROWS rows a page, but a heading is never
---- the last row of a page - it goes over to the next one with its rows. Turning a page goes from one
+--- Where a page's list starts, down from the page's top, and how many rows of it fit over the foot. Under
+--- the heading row; without one, where the headings would be (the Grudges page's list "trenger ikke bli
+--- dytta så langt inn", the owner, 2026-11-07); and with no line under the title either - no sub, no
+--- links - right under the title, where a tenth row fits. The kill orders page is that one: its line said
+--- how many orders are open and your points and place, its headings sorted a list that is in order, and
+--- with Only mine they were "dead space med ting som ikke trengs og bare tar opp plass" (the owner,
+--- 2026-11-14).
+local function ListFrame(def)
+    local top = LIST_TOP
+    if #def.headings == 0 then
+        top = top - 30
+        if not def.sub and not def.links then top = top - 16 end
+    end
+    local tenth = top + (ROWS + 1) * ROW_H <= LIST_TOP + ROWS * ROW_H
+    return top, tenth and ROWS + 1 or ROWS
+end
+
+--- Where each page of a list starts (0-based offsets into it): perPage rows a page (ROWS, where a page does
+--- not say), but a heading is never the last row of a page - it goes over to the next one with its rows. Turning a page goes from one
 --- start to the next, so a page never shows what the page before showed: after 1-9 of 10 the last page
 --- used to be 2-10, the list pushed back to fill it ("page turning burde jo ikke vise de samme", the
 --- owner, 2026-11-07).
-function GK.PageStarts(items)
+function GK.PageStarts(items, perPage)
+    perPage = perPage or ROWS
     local starts, at = { 0 }, 0
-    while at + ROWS < #items do
-        local nextAt = at + ROWS
+    while at + perPage < #items do
+        local nextAt = at + perPage
         if items[nextAt] and items[nextAt].header and nextAt - 1 > at then nextAt = nextAt - 1 end
         starts[#starts + 1] = nextAt
         at = nextAt
@@ -165,11 +197,15 @@ end
 local function Folded() return GK.db and GK.db.ledgerFolded == true end
 
 -- ---------------------------------------------------------------------------
--- What each page lists. An item: { key, name, sub, rank, seal, face = { key, rf, sx, c }, c1, c2, wide,
+-- What each page lists. An item: { key, name, short, shortest, painted, class, sub, rank, seal, face = { key, rf, sx, c }, c1, c2, wide,
 -- right, rightColour, faded, mine, own, ts, votes, header, select = { kind = "poster", t, order } or
 -- { kind = "record", key } or { kind = "card", make } }
 -- mine tints the row; own only says the row is yours, for Only mine; votes, bounty, you and they are the
--- numbers a column heading sorts by (GK.SortItems), ts when it happened.
+-- numbers a column heading sorts by (GK.SortItems), ts when it happened. past: a row about something
+-- over that is not faded - never the row a page chooses by itself (Chosen). ink: the name in this colour.
+-- class: the row's name is one player's, of this class - in its colour in the Classic skin (GK.ClassInk).
+-- painted: { name, short, shortest } with each player's name in its class's colour, for a line with names
+-- in it, made only in the Classic skin.
 -- ---------------------------------------------------------------------------
 local STATE_WORD = { d = "FULFILLED", p = "PAID", x = "WITHDRAWN", e = "EXPIRED" }
 
@@ -188,23 +224,30 @@ end
 -- ("history med kill orders som er lukket kan kanskje bare være en knapp eller noe? litt færre ting å gå
 -- igjennom", the owner, 2026-11-10). Folded again at every login: a look back, not a setting.
 local showClosed = false
+-- The open orders with no gold on them, folded under theirs: nil until its heading is clicked, and the
+-- page's own rule decides (OrderItems); then as clicked, until the page is chosen again (SelectTab).
+local showFree
 
 --- The orders the page lists. open: the open ones, the biggest bounty first, LIST_MAX of them and any of
 --- yours past those - an order you posted or put gold in never drops off. closed, latest first: those that
 --- still ask something of you - a bounty you owe on it, or yours to tell the guild, its card's buttons
 --- (DetailCard) - and, unfolded, the CLOSED_MAX latest of the rest. more: how many of those unfolding shows.
-local function ListedOrders(me)
-    local open, closed, nOpen, others, owing = {}, {}, 0, 0, {}
+--- lately: the orders with a row of their own over the open ones (OrderItems), not listed here again.
+local function ListedOrders(me, lately)
+    local open, closed, nOpen, others, owing, above = {}, {}, 0, 0, {}, {}
     for _, e in ipairs(GK.Owed()) do owing[e.o] = true end
+    for _, o in ipairs(lately or {}) do above[o] = true end
     for _, o in ipairs(GK.AllOrders()) do
         if o.state == "o" then
             nOpen = nOpen + 1
             if nOpen <= LIST_MAX or (me and (o.by == me or (o.pot and o.pot[me]))) then open[#open + 1] = o end
-        elseif owing[o] or GK.CanTellOrder(o) then
-            closed[#closed + 1] = o                                  -- never folded away: it wants you
-        else
-            others = others + 1
-            if showClosed and others <= CLOSED_MAX then closed[#closed + 1] = o end
+        elseif not above[o] then                                     -- those have their row at the top
+            if owing[o] or GK.CanTellOrder(o) then
+                closed[#closed + 1] = o                              -- never folded away: it wants you
+            else
+                others = others + 1
+                if showClosed and others <= CLOSED_MAX then closed[#closed + 1] = o end
+            end
         end
     end
     return open, closed, math.min(others, CLOSED_MAX)
@@ -213,12 +256,14 @@ end
 --- One order's row on the page, open or closed.
 local function OrderRow(o, me)
     local pot, backers = GK.Pot(o)
-    local it = { key = "o:" .. o.key, name = GK.Show(o.n), face = { key = o.n, c = o.c }, select = PosterSpec(o.n, o, o),
-        desc = Short(o.l, o.c, o.r), ts = o.t,
-        own = me and (o.by == me or o.doneBy == me or (o.pot and o.pot[me])) or nil }
+    local it = { key = "o:" .. o.key, name = GK.Show(o.n), class = o.c, face = { key = o.n, c = o.c },
+        select = PosterSpec(o.n, o, o),
+        desc = Short(o.l, o.c, o.r), ts = o.t }
     if o.state == "o" then
-        it.bounty = pot
-        it.right = pot > 0 and GK.Coins(pot) or "honour"
+        -- gold, or nothing: an order with none on it stands under No bounty, or on a page of nothing else
+        -- (OrderItems). It said "honour" here, and Most wanted "order" for the same thing: "liker ingen av
+        -- de egt?" (the owner, 2026-11-14)
+        it.right = pot > 0 and GK.Coins(pot) or ""
         -- your own order by you, as its card says: "by Critical Mango" over a card's "Posted by You"
         local byMe = o.by == me
         local bits = { o.auto and (byMe and "by your death" or ("by %s's death"):format(GK.Show(o.by)))
@@ -238,10 +283,69 @@ local function OrderRow(o, me)
     return it
 end
 
+--- The row of an order somebody got in the last day, over the open ones: who got them, where and when,
+--- and the bounty it carried. Not faded as a closed order's row is - this is the news - but past: never
+--- the row the page chooses by itself, which stays the first open order (Chosen). No time where we only
+--- came to hear of it afterwards (o.late): that time is ours, not the kill's.
+local function LatelyRow(o, me)
+    local it = OrderRow(o, me)
+    local pot = GK.Pot(o)
+    it.faded, it.rightColour, it.past = nil, nil, true
+    it.right, it.ts = pot > 0 and GK.Coins(pot) or "", o.doneAt
+    local bits = { "by " .. GK.GotBy(o) }
+    if o.doneZone and o.doneZone ~= "" then bits[#bits + 1] = o.doneZone end
+    if not o.late then bits[#bits + 1] = GK.Ago(o.doneAt) end
+    it.sub = table.concat(bits, " - ")
+    return it
+end
+
 local function OrderItems()
     local items, me = {}, LIB.Me()
-    local open, closed, more = ListedOrders(me)
-    for _, o in ipairs(open) do items[#items + 1] = OrderRow(o, me) end
+    local lately = GK.FulfilledLately(LATELY_MAX)
+    local open, closed, more = ListedOrders(me, lately)
+    -- What the guild got in the last day stands first, under a heading of its own, and the open orders
+    -- get theirs under it. Fulfilled, an order went from the open ones to the closed ones folded at the
+    -- end of them - pages on - and with its hunter not telling guild chat, nobody who was not there saw
+    -- it at all ("kill orders lista med flere sider der blir det liksom litt borte", the owner, 2026-11-14).
+    -- With none in the last day the page is as it was, the open orders under no heading.
+    if #lately > 0 then
+        items[#items + 1] = { header = true, name = "Fulfilled lately" }
+        for _, o in ipairs(lately) do items[#items + 1] = LatelyRow(o, me) end
+        if #open > 0 then items[#items + 1] = { header = true, name = "Open orders" } end
+    end
+    -- The open orders with gold on them first, and the ones with none under a heading of their own that
+    -- folds them away, as the closed ones are. The owner's page was 33 rows over four turns of it, and 18 of
+    -- its 25 open orders carried no gold: two turns were rows that said "honour" and nothing else ("kill
+    -- order tabben føles også litt voldsom nå? mye sider", 2026-11-14). Folded unless they fit on the
+    -- first turn of the page with what stands over them; a click on the heading has the last word until
+    -- the page is chosen again (SelectTab). The ones you posted are there folded or not, as a closed order
+    -- that still wants you is: the page has no Only mine to find them by (GK.LedgerPages). Where no open
+    -- order has gold there is nothing to tell them from: no heading, no fold.
+    local gold, free = {}, {}
+    for _, o in ipairs(open) do
+        local list = (GK.Pot(o)) > 0 and gold or free
+        list[#list + 1] = o
+    end
+    if #gold == 0 then gold, free = free, gold end
+    for _, o in ipairs(gold) do items[#items + 1] = OrderRow(o, me) end
+    if #free > 0 then
+        local shown, others = showFree, 0
+        if shown == nil then shown = #items + 1 + #free <= ORDER_ROWS end
+        for _, o in ipairs(free) do
+            if o.by ~= me then others = others + 1 end
+        end
+        local head = { header = true, name = "No bounty" }
+        if others > 0 then                         -- nothing to fold where every one of them is yours
+            head.order = shown and "hide" or ("show " .. others)
+            head.clickTip = shown and "Click: fold the orders with no gold on them away"
+                or "Click: show the orders with no gold on them"
+            head.click = function() showFree = not shown end
+        end
+        items[#items + 1] = head
+        for _, o in ipairs(free) do
+            if shown or o.by == me then items[#items + 1] = OrderRow(o, me) end
+        end
+    end
     -- No open order: the first page of the ledger was a blank one (the owner, 2026-11-06). Who has killed
     -- the guild most stands in - the ones you would put a price on - each a click from their poster and
     -- its Post a kill order.
@@ -252,7 +356,8 @@ local function OrderItems()
             for i = 1, math.min(#wanted, SUGGEST) do
                 local e = wanted[i]
                 items[#items + 1] = { key = "w:" .. e.key, name = GK.Show(e.key), desc = Short(e.w.l, e.w.c, e.w.r),
-                    face = { key = e.key, c = e.w.c }, wide = "killed us " .. e.total, select = PosterSpec(e.key, e.w),
+                    class = e.w.c, face = { key = e.key, c = e.w.c }, wide = "killed us " .. e.total,
+                    select = PosterSpec(e.key, e.w),
                     ts = e.w.last }
             end
         end
@@ -313,7 +418,7 @@ local function BoardItems()
         rank = rank or #items + 1
         listed[r.who] = true
         items[#items + 1] = { key = "b:" .. r.who, rank = rank, seal = rank <= 3 and p > 0,
-            name = GK.Show(r.who), sub = GK.Title(r.total), face = { key = r.who, rf = r.rf, sx = r.sx, c = r.c },
+            name = GK.Show(r.who), class = r.c, sub = GK.Title(r.total), face = { key = r.who, rf = r.rf, sx = r.sx, c = r.c },
             -- a dash for a guildie whose client sends no assists: a 0 would say they had none
             c1 = tostring(k), c2 = tostring(d), c3 = a and tostring(a) or "-", right = tostring(p), mine = r.me,
             select = { kind = "record", key = r.who } }
@@ -335,21 +440,61 @@ local function BoardItems()
     return items, ""
 end
 
+--- A name by its first word: the character's own name, without the surname.
+local function FirstName(key)
+    local s = GK.Show(key)
+    return s:match("^[^ ]+") or s                   -- not %S: see GK.SameName
+end
+
+-- The seal a kill order puts over its target's nameplate, in a line of text: on Most wanted it says an
+-- order is out on them.
+local ORDER_MARK = ("|T%smark:20:20|t"):format(MEDIA)
+
+--- Whom of the guild an enemy killed, for their row on Most wanted: you first, then who most often - two
+--- of them by first name, with how often when more than once, and how many more there are:
+--- "killed you, Kriger x2 +1" (the x a multiplication sign). nil for nobody.
+local function Victims(w)
+    local list = {}
+    for who, n in pairs(w.victims or {}) do
+        list[#list + 1] = { who = who, n = tonumber(n) or 1, me = LIB.IsMyStoredName(who) and true or false }
+    end
+    if #list == 0 then return nil end
+    table.sort(list, function(a, b)
+        if a.me ~= b.me then return a.me end
+        if a.n ~= b.n then return a.n > b.n end
+        return a.who < b.who
+    end)
+    local said = {}
+    for i = 1, math.min(2, #list) do
+        local v = list[i]
+        said[i] = (v.me and "you" or FirstName(v.who)) .. (v.n > 1 and (" \195\151" .. v.n) or "")
+    end
+    local more = #list - #said
+    return "killed " .. table.concat(said, ", ") .. (more > 0 and (" +" .. more) or "")
+end
+
 --- Who has killed the guild most, every one of them. A page of its own since 2026-11-07: under the
 --- leaderboard they pushed it onto a second page ("en tab med most wanted og en tab med leaderboard",
---- the owner). The bounty column says what is on them now: gold, or an order for honour.
+--- the owner). Each row says whom of us they killed, how often in all with when last under it, and
+--- whether a kill order is out on them: its seal, and the gold on it when there is any. The last column
+--- was headed Bounty and said "order" in red for an order with no gold - the owner had to ask what that
+--- meant ("betyr order at det er lagt ut order?", 2026-11-14) - and the row said only when they killed last.
 local function WantedItems()
     local items, me = {}, LIB.Me()
     for _, e in ipairs(GK.MostWanted()) do
         local o = GK.OrderOn(e.key)
         local pot = o and (GK.Pot(o)) or 0
-        items[#items + 1] = { key = "w:" .. e.key, name = GK.Show(e.key), desc = Short(e.w.l, e.w.c, e.w.r),
-            face = { key = e.key, c = e.w.c }, sub = e.w.last and ("last kill " .. GK.Ago(e.w.last)) or nil,
-            c1 = tostring(e.total), killed = e.total, bounty = pot,
-            -- gold in the game's coins, as on the kill orders page; a red "85g" read as a word ("kjedelig at
-            -- kill order bounty ikke vise gold icon", the owner, 2026-11-10). An order for honour in red.
-            right = o and (pot > 0 and GK.Coins(pot) or "order") or "",
-            rightColour = (o and pot == 0) and BLOOD or nil, select = PosterSpec(e.key, e.w), ts = e.w.last,
+        -- their level: at their last kill on us, or what an order on them has them at since, if higher
+        items[#items + 1] = { key = "w:" .. e.key, name = GK.Show(e.key),
+            desc = Short(GK.HigherLevel(e.w.l, o and o.l), e.w.c, e.w.r),
+            class = e.w.c, face = { key = e.key, c = e.w.c }, sub = Victims(e.w),
+            c1 = tostring(e.total), c1under = e.w.last and GK.Ago(e.w.last) or nil, killed = e.total,
+            -- what the heading sorts by: those with an order first, the most gold first among them
+            bounty = o and (pot + 0.5) or 0,
+            -- the gold in the game's coins, as on the kill orders page ("kjedelig at kill order bounty ikke
+            -- vise gold icon", the owner, 2026-11-10)
+            right = o and (ORDER_MARK .. (pot > 0 and (" " .. GK.Coins(pot)) or "")) or "",
+            select = PosterSpec(e.key, e.w), ts = e.w.last,
             own = me and e.w.victims[me] and true or nil }            -- Only mine: those who killed you
     end
     return items, "Nobody has killed the guild yet - not that the Grudgekeeper heard of."
@@ -393,7 +538,7 @@ local function TrackedItems(items, c)
         end
         local look = f or e.t
         local you, they = f and (f.k or 0), f and (f.d or 0)
-        items[#items + 1] = { key = "t:" .. e.key, name = e.name, face = { key = e.key, c = look.c },
+        items[#items + 1] = { key = "t:" .. e.key, name = e.name, class = look.c, face = { key = e.key, c = look.c },
             desc = Short(look.l, look.c, look.r), sub = sub, score = f and { you, they } or nil,
             select = PosterSpec(e.key, look), you = you, they = they, ts = f and f.last or e.t.t, own = true }
     end
@@ -448,7 +593,7 @@ local function GrudgeItems()
         end
         -- the score is kills against deaths; assists go first under the name, where they aren't cut
         if (e.f.a or 0) > 0 then sub = Plural(e.f.a, "assist") .. " \194\183 " .. sub end
-        items[#items + 1] = { key = "f:" .. e.key, name = e.name, face = { key = e.key, c = e.f.c },
+        items[#items + 1] = { key = "f:" .. e.key, name = e.name, class = e.f.c, face = { key = e.key, c = e.f.c },
             desc = Short(e.f.l, e.f.c, e.f.r), sub = sub, score = { you, they },
             select = PosterSpec(e.key, e.f), you = you, they = they, ts = e.f.last, own = true }
     end
@@ -457,6 +602,8 @@ local function GrudgeItems()
         local e = c.log[i]
         local it ={ key = "l:" .. i, face = { key = e.n, c = e.c }, select = PosterSpec(e.n, e), ts = e.t, own = true,
             sub = table.concat({ e.z or "", GK.Ago(e.t) }, e.z and " - " or "") }
+        local said = e.k == "K" and "Killed %s" or (e.k == "A" and "Helped kill %s") or "Slain by %s"
+        if GK.Classic() then it.painted = { name = said:format(GK.InClass(GK.Show(e.n), e.c)) } end
         if e.k == "K" then
             it.name = "Killed " .. GK.Show(e.n)
             it.right = (e.p or 0) > 0 and ("+%d"):format(e.p) or "no points"
@@ -480,32 +627,98 @@ end
 local SAID = { K = "%s killed %s", H = "%s helped kill %s", D = "%s fell to %s", F = "%s fulfilled the order on %s",
     C = "%s put a price on %s", AU = "%s death put a price on %s", T = "%s added to the pot on %s" }
 
---- A name by its first word: the character's own name, without the surname.
-local function FirstName(key)
-    local s = GK.Show(key)
-    return s:match("^[^ ]+") or s                   -- not %S: see GK.SameName
+-- The news that is more than who killed whom, written in the page's other colour: an order fulfilled, a
+-- spree's milestone, a spree an enemy ended, a tormentor put down.
+local ACCENT = { F = true, S = true, E = true, M = true }
+
+-- A kill and the assists on it are one line: the killing blow first, then who helped. Each had a line of
+-- its own, so one enemy killed by three of us was three lines, and two such kills filled the first turn of
+-- the page ("når mange dreper 1.. blir det mye å legge ut så mange linjer eller?", the owner, 2026-11-14).
+-- Put together here, where the news is shown: what is kept and sent is a line each as before, and a
+-- guildie's card still says their own kills and assists. An assist is heard when its fight ends and the
+-- meter can be read - a minute on in the owner's screenshot, two at the most (Kills.lua) - so it joins the
+-- kill on the same enemy up to KILL_JOIN seconds before it.
+local KILL_JOIN = 150
+
+--- Which lines of the feed are one kill: [index in the feed] = its group, { k = the kill's own line (nil
+--- when the killing blow was nobody's we hear), h = the assists' lines, oldest first, p = their points
+--- together, own = one of them is ours, at = the index of the latest of its lines, where it is told }. A
+--- second kill on the same enemy, or a second line from the same guildie, starts a new one: they were
+--- killed again.
+local function KillGroups(feed)
+    local groupOf, latest = {}, {}
+    for i = #feed, 1, -1 do                        -- oldest first: a kill's line is heard before its assists
+        local e = feed[i]
+        if (e.kind == "K" or e.kind == "H") and e.n and e.who then
+            local name = GK.Show(e.n)
+            local g = latest[name]
+            if not g or math.abs((e.t or 0) - g.t) > KILL_JOIN or (e.kind == "K" and g.k) or g.who[e.who] then
+                g = { t = e.t or 0, h = {}, who = {}, p = 0 }
+                latest[name] = g
+            end
+            if e.kind == "K" then g.k = e else g.h[#g.h + 1] = e end
+            g.who[e.who] = true
+            g.p = g.p + (e.p or 0)
+            if LIB.IsMyStoredName(e.who) then g.own = true end
+            g.at = i                               -- oldest first, so the last one written is the latest line
+            groupOf[i] = g
+        end
+    end
+    return groupOf
 end
+
+-- A line that says nothing: what a kill's lines other than its latest are read as (NewsItems). It has
+-- no kind, so no words are found for it and no row made.
+local UNSAID = {}
 
 local function NewsItems(limit)
     local items = {}
-    for i, e in ipairs(GK.Store().feed) do
+    local feed = GK.Store().feed
+    local groupOf = KillGroups(feed)
+    -- In the Classic skin each name in a line is in its class's colour: the enemy's as the line has it, a
+    -- guildie's as the leaderboard does, yours as you are (GK.InClass)
+    local paint, board = GK.Classic(), GK.Store().board
+    local myClass = paint and GK.ValidClass(select(2, UnitClass("player"))) or nil
+    for i, newest in ipairs(feed) do
         if limit and #items >= limit then break end   -- the guild window's tab asks for a line or ten
+        -- A kill is told once, where the latest of its lines stands, in the words of the killing blow's
+        -- line - or the first assist's, where the blow was nobody's we hear - with the others named after.
+        local g = groupOf[i]
+        local e, with = newest, nil
+        if g and g.at ~= i then
+            e = UNSAID
+        elseif g then
+            e = g.k or g.h[1]
+            with = {}
+            for _, h in ipairs(g.h) do
+                if h ~= e then with[#with + 1] = h.who end
+            end
+        end
         -- your own news says You: your full name and surname first left "Critical Mango killed Seedkek..."
         -- no room for whom (the owner, 2026-11-06)
         local mine = e.who ~= nil and LIB.IsMyStoredName(e.who)
         local kind = (e.kind == "C" and e.au) and "AU" or e.kind
         local said = SAID[kind]
-        local line, short, right
+        local line, short, shortest, right, painted
+        local function ClassOf(k)
+            if k == e.n then return e.c end
+            if LIB.IsMyStoredName(k) then return myClass end
+            local b = board[k]
+            return b and b.c
+        end
+        -- a name as a line says it, in its class's colour when tint is asked for (the Classic skin only)
+        local function Named(text, k, tint) return tint and GK.InClass(text, ClassOf(k)) or text end
         if said then
             local function Who(n)
                 if kind == "AU" then return mine and "Your" or (n .. "'s") end
                 return mine and "You" or n
             end
-            -- an order got together: everyone who was there, the killing blow first (GK.WhoGotThem)
-            local function Who2(show)
-                local names = { Who(show(e.who)) }
-                if kind == "F" and type(e.h) == "table" then
-                    for _, k in ipairs(e.h) do names[#names + 1] = LIB.IsMyStoredName(k) and "you" or show(k) end
+            -- an order got together, or a kill: everyone who was there, the killing blow first (GK.WhoGotThem)
+            local others = (kind == "F" and type(e.h) == "table" and e.h) or with
+            local function Who2(show, tint)
+                local names = { Named(Who(show(e.who)), e.who, tint) }
+                for _, k in ipairs(others or {}) do
+                    names[#names + 1] = Named(LIB.IsMyStoredName(k) and "you" or show(k), k, tint)
                 end
                 if #names == 1 then return names[1] end
                 return table.concat(names, ", ", 1, #names - 1) .. " and " .. names[#names]
@@ -513,22 +726,76 @@ local function NewsItems(limit)
             -- the short form, for a line too long for its row (FillRow): first names only
             line = said:format(Who2(GK.Show), GK.Show(e.n))
             short = said:format(Who2(FirstName), FirstName(e.n))
+            if paint then
+                painted = { name = said:format(Who2(GK.Show, true), Named(GK.Show(e.n), e.n, true)),
+                    short = said:format(Who2(FirstName, true), Named(FirstName(e.n), e.n, true)) }
+            end
+            -- The shortest, where even first names run past the row: you if you were in it, else whoever
+            -- leads the line, and how many more. Three of us by first name cut the one name that mattered,
+            -- whom: "Mezmerizing, you and Umulius killed Ade..." (the owner's screenshot, 2026-11-14).
+            if others and #others > 0 then
+                local you = mine
+                for _, k in ipairs(others) do you = you or LIB.IsMyStoredName(k) end
+                shortest = said:format((you and "You" or FirstName(e.who)) .. " +" .. #others, FirstName(e.n))
+                if painted then
+                    local lead = you and Named("You", LIB.Me(), true) or Named(FirstName(e.who), e.who, true)
+                    painted.shortest = said:format(lead .. " +" .. #others, Named(FirstName(e.n), e.n, true))
+                end
+            end
+        end
+        -- A spree's news (GK.SpreeNews), each in words of its own: a milestone is about the guildie - their
+        -- face, their record at a click, the tier's name at the right - and has no enemy in it; a spree ended
+        -- and a tormentor put down are about the enemy, as every other line is.
+        local under, face, sel
+        if kind == "S" then
+            local function Line(show, tint)
+                return ("%s: %d kills in a row"):format(Named(mine and "You" or show(e.who), e.who, tint), e.s or 0)
+            end
+            line, short, right = Line(GK.Show), Line(FirstName), e.tr
+            if paint then painted = { name = Line(GK.Show, true), short = Line(FirstName, true) } end
+            local b = GK.Store().board[e.who]
+            face = { key = e.who, rf = b and b.rf, sx = b and b.sx, c = b and b.c }
+            sel = { kind = "record", key = e.who }
+        elseif kind == "E" then
+            local function Line(show, tint)
+                return ("%s ended %s %d-kill spree"):format(Named(show(e.n), e.n, tint),
+                    Named(mine and "your" or (show(e.who) .. "'s"), e.who, tint), e.s or 0)
+            end
+            line, short = Line(GK.Show), Line(FirstName)
+            if paint then painted = { name = Line(GK.Show, true), short = Line(FirstName, true) } end
+        elseif kind == "M" then
+            local function Line(show, tint)
+                return ("%s put an end to %s"):format(Named(mine and "You" or show(e.who), e.who, tint),
+                    Named(show(e.n), e.n, tint))
+            end
+            line, short = Line(GK.Show), Line(FirstName)
+            if paint then painted = { name = Line(GK.Show, true), short = Line(FirstName, true) } end
+            under = ("had killed %d of us"):format(e.s or 0)
         end
         if kind == "K" or kind == "H" then
-            right = (e.p or 0) > 0 and ("+%d"):format(e.p) or nil
-        elseif kind == "F" then
+            -- what the kill was worth to the guild: everyone's points for it together
+            local points = g and g.p or (e.p or 0)
+            right = points > 0 and ("+%d"):format(points) or nil
+        elseif kind == "F" or kind == "C" then
+            -- the gold on the order, or nothing: an order with none said "honour" here (and one a death
+            -- posted, AU, said nothing else), a word the owner did not want for it (2026-11-14)
             right = (e.p or 0) > 0 and GK.MoneyText(e.p) or nil
-        elseif kind == "AU" then
-            right = "honour"
-        elseif kind == "C" then
-            right = (e.p or 0) > 0 and GK.MoneyText(e.p) or "honour"
         elseif kind == "T" then
             right = GK.MoneyText(e.p or 0)
         end
         if line then
-            items[#items + 1] = { key = "n:" .. i, name = line, short = short, face = { key = e.n, c = e.c }, right = right,
-                sub = table.concat({ e.z or "", GK.Ago(e.t) }, e.z and " - " or ""), select = PosterSpec(e.n, e),
-                ts = e.t, own = e.who and LIB.IsMyStoredName(e.who) or nil }
+            -- an order fulfilled in the page's other colour, the line and its bounty: among the lines of who
+            -- killed whom it was one more of them, and the one a guildie who was not there looks for
+            -- ("det er mer listene og oversikten", the owner, 2026-11-14). A spree's news the same.
+            local accent = ACCENT[kind] and BLOOD or nil
+            local bits = { under }
+            if e.z then bits[#bits + 1] = e.z end
+            bits[#bits + 1] = GK.Ago(e.t)
+            local own = (g and g.own) or (e.who and LIB.IsMyStoredName(e.who)) or nil
+            items[#items + 1] = { key = "n:" .. i, name = line, short = short, shortest = shortest, painted = painted,
+                face = face or { key = e.n, c = e.c },
+                right = right, sub = table.concat(bits, " - "), select = sel or PosterSpec(e.n, e),
+                ts = e.t, own = own, ink = accent, rightColour = accent }
         end
     end
     return items, "Nothing yet. Kills, deaths and kill orders from everyone in your guild who runs Grudgekeeper "
@@ -580,9 +847,10 @@ end
 --- anything else is over the left page. Folded, the page's group hangs down the frame's side. A page with links and a sub
 --- line has the sub text after the links, on their line.
 GK.LedgerPages = {
-    { name = "Kill orders", items = OrderItems, icon = MEDIA .. "mark",
-      headings = { { "Name", 48, nil, "name", "name, A to Z" }, { "Bounty", COL_RIGHT, "RIGHT", "bounty", "bounty" } },
-      sortable = true, add = { text = "Post a kill order", kind = "order" },
+    -- no heading row, no line under the title and nothing to sort by: the list starts right under the
+    -- title and has a row more (ListFrame). In its own order: what was got lately, the gold, the rest.
+    { name = "Kill orders", items = OrderItems, icon = MEDIA .. "mark", headings = {},
+      add = { text = "Post a kill order", kind = "order" },
       -- with nothing on the page at all, your own record rather than a blank page; otherwise the first
       -- open order, or the first of who killed us most (a closed order alone is not chosen by itself)
       default = function(items)
@@ -591,11 +859,6 @@ GK.LedgerPages = {
           end
           -- nothing but headings - the closed orders folded under theirs - is a page with nothing on it
           return { key = "me", select = { kind = "record", key = LIB.Me() } }
-      end,
-      sub = function()
-          local rank, of = GK.MyRank()
-          return ("%s  -  you: %s, #%d of %d"):format(Plural(#GK.OpenOrders(), "open order"),
-              Plural(GK.char.points, "point"), rank, of)
       end },
     { name = "Leaderboard", items = BoardItems, icon = MEDIA .. "rank_1",
       headings = { { "#", 12 }, { "Name", NAME_X_RANKED + 4 }, { "K", BOARD_K, "CENTER" }, { "D", BOARD_D, "CENTER" },
@@ -604,24 +867,25 @@ GK.LedgerPages = {
           return { { text = "This week", on = weekly, click = function() weekly = true end },
                    { text = "All time", on = not weekly, click = function() weekly = false end } }
       end,
-      linksTail = ResetText,
-      default = function(items)
-          for _, it in ipairs(items) do
-              if it.mine then return it end
-          end
-      end },
+      linksTail = ResetText },                    -- the first row chosen by itself: the week's leader, as any page's top
     { name = "Most wanted", items = WantedItems, sortable = true, max = LIST_MAX,
       icon = ICONS .. "Ability_Hunter_SniperShot",          -- the hunter's mark: marked to be hunted
       headings = { { "Name", 48, nil, "name", "name, A to Z" },
           { "Killed us", COL1, "CENTER", "killed", "how often they killed us" },
-          { "Bounty", COL_RIGHT, "RIGHT", "bounty", "bounty" } },
+          { "Kill order", COL_RIGHT, "RIGHT", "bounty", "kill order, the most gold first" } },
       add = { text = "Post a kill order", kind = "order" },
       sub = function() return "Who has killed the guild most" end },
     -- no heading row: each grudge says its own score, and the order is a word on the section's line
     { name = "Grudges", items = GrudgeItems, headings = {}, icon = ICONS .. "Ability_DualWield",
       add = { text = "Track someone", kind = "track" },
       sub = function() return "Who you have a history with" end,       -- not everyone: LIST_MAX of them
-      default = function() return { key = "me", select = { kind = "record", key = LIB.Me() } } end },
+      -- its first row, the top of Tracked where you track anyone; your own record only on a page with none
+      default = function(items)
+          for _, it in ipairs(items) do
+              if not it.header then return nil end
+          end
+          return { key = "me", select = { kind = "record", key = LIB.Me() } }
+      end },
     { name = "News", items = NewsItems, sortable = true, max = LIST_MAX, icon = ICONS .. "INV_Scroll_03",
       headings = { { "What happened", 48 } },
       sub = function() return "What the guild has been up to" end },
@@ -663,7 +927,8 @@ end
 --- own order, without Only mine, is left alone. Each section is sorted on its own, under its heading: the
 --- open kill orders among themselves, the closed ones folded under theirs - sorted together, a FULFILLED
 --- stood among the open orders ("sortering i kill orders burde ikke ta med fulfulled og withdrawn", the
---- owner, 2026-11-10). A heading Only mine left with no rows goes. Names go A to Z, numbers the biggest
+--- owner, 2026-11-10; that page has had no headings to sort by since 2026-11-14, and the rule stands for
+--- any page of sections). A heading Only mine left with no rows goes. Names go A to Z, numbers the biggest
 --- first; ties go A to Z. A page with a max keeps that many, the first in its own order, after Only mine and
 --- before the sort: Most wanted by name is still the 25 who killed us most, A to Z, and Only mine finds the
 --- one who killed you if they are 40th. Returns a new list, or the same one untouched, and how many rows
@@ -845,6 +1110,11 @@ local function BuildRow(parent, i)
     end
     row.c1, row.c2, row.c3 = Col(COL1, "CENTER"), Col(COL2, "CENTER"), Col(BOARD_A, "CENTER")
     row.wide, row.right = Col(COL_WIDE), Col(COL_RIGHT, "RIGHT")
+    -- a word under the first count, which then stands a little higher (FillRow): on Most wanted, when
+    -- they killed last under how often
+    row.c1under = row:CreateFontString(nil, "ARTWORK")
+    Ink(row.c1under, FADED, TEXT_FONT, 10)
+    row.c1under:SetPoint("CENTER", row, "LEFT", COL1 - 4, -C1_UNDER)
     -- A grudge's score, read like a match's: "0 - 1", the leader's number in colour, and under it who
     -- leads. Two bare columns of 0 and 1 under YOU and THEY were "litt dårlig vist" (the owner,
     -- 2026-11-07), and their heading row stood over the page's own big headings.
@@ -873,7 +1143,10 @@ local function BuildRow(parent, i)
             Refresh()
         end
     end)
-    row:SetScript("OnEnter", function(self)
+    -- The mouse on a row: its hover, and a tooltip where the row has more to say. Kept as row.enter too,
+    -- for FillRow to put back when the page is drawn again under a still mouse (Rehover).
+    local function Enter(self)
+        self.hovered = true
         local it = self.item
         if it and not it.header and not self.chosen then Wash(self.wash, 0.07) end
         if it and it.header and it.click then
@@ -882,16 +1155,31 @@ local function BuildRow(parent, i)
             GameTooltip:AddLine(it.clickTip or "Click to sort", 1, 1, 1)
             GameTooltip:Show()
             self.tipped = true
-        elseif it and not it.header and self.cut then
-            -- a line the row had to shorten or cut, whole (FillRow)
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:AddLine(it.name or "", 1, 1, 1, true)
+        elseif it and not it.header then
+            -- Every row says what it is, whole: its name or line, what they are, and the line under it. Only a
+            -- row the page had to cut had one, and next to a row with a tooltip a row without read as broken
+            -- ("jeg prøver å vise hover og tooltip funker på en men ikke andre", the owner, 2026-11-14). Beside
+            -- the ledger's left edge: at the row's right it lay over the card, the page that row opens. A
+            -- player's name is in their class's colour - the tooltip is dark in either skin.
+            GameTooltip:SetOwner(self, "ANCHOR_NONE")
+            GameTooltip:ClearAllPoints()
+            GameTooltip:SetPoint("RIGHT", self, "LEFT", -TIP_GAP, 0)
+            local c = it.class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[it.class]
+            if type(c) == "table" and c.r then
+                GameTooltip:AddLine(it.name or "", c.r, c.g, c.b, true)
+            else
+                GameTooltip:AddLine(it.name or "", 1, 1, 1, true)
+            end
+            if it.desc and it.desc ~= "" then GameTooltip:AddLine(it.desc, 0.8, 0.8, 0.8) end
             if it.sub and it.sub ~= "" then GameTooltip:AddLine(it.sub, 0.8, 0.8, 0.8, true) end
             GameTooltip:Show()
             self.tipped = true
         end
-    end)
+    end
+    row.enter = Enter
+    row:SetScript("OnEnter", Enter)
     row:SetScript("OnLeave", function(self)
+        self.hovered = false
         if self.fill then self.fill() end
         if self.tipped then
             self.tipped = false
@@ -899,6 +1187,21 @@ local function BuildRow(parent, i)
         end
     end)
     return row
+end
+
+--- A row drawn again while the mouse is on it gets its hover back, and a tooltip for what it says now.
+--- Every guild message draws the page again (GRUDGEKEEPER_CHANGED), which puts each row's wash back to its
+--- own, and the game sends no new OnEnter to a frame the mouse never left: the hover was gone until the
+--- mouse left the row and came back, and a tooltip went on saying what the row said before ("ikke alltid
+--- hover funker", the owner, 2026-11-14). Asked of the mouse itself, not only of what the row last heard:
+--- a row hidden or turned away under the mouse may not have heard it leave.
+local function Rehover(row)
+    if not row.hovered then return end
+    if row.tipped then
+        row.tipped = false
+        GameTooltip:Hide()
+    end
+    if row:IsMouseOver() then row.enter(row) else row.hovered = false end
 end
 
 local function FillRow(row, it, chosen)
@@ -924,9 +1227,11 @@ local function FillRow(row, it, chosen)
         row.open:Hide()
         row.rule:Show()
         row.c1:SetText("") row.c2:SetText("") row.c3:SetText("") row.wide:SetText("") row.right:SetText("")
+        row.c1under:SetText("")
         row.score:SetText("") row.lead:SetText("")
         row.order:SetText(it.order or "")
         row.cut = false
+        Rehover(row)
         return
     end
     row.rule:Hide()
@@ -971,18 +1276,26 @@ local function FillRow(row, it, chosen)
     -- A line too long for its room steps down a size, then says its short form (first names only, where
     -- the item has one), and only then is cut - whole in the row's tooltip. "Hellig Bro added to the pot
     -- on Ikka Levici" lost its last name in the news (the owner, 2026-11-07).
-    local colour = it.mine and BLOOD or (it.faded and FADED or INK)
+    -- In the Classic skin a row that is one player's name is in their class's colour, and a line with
+    -- names in it has each in its own (painted) - not a closed order's, which is faded as the past is.
+    local colour = it.ink or (not it.faded and GK.ClassInk(it.class)) or (it.mine and BLOOD or (it.faded and FADED or INK))
+    local painted = GK.Classic() and it.painted or nil
+    local function Words(form) return painted and painted[form] or it[form] end
     Ink(row.name, colour, TEXT_FONT, 13)
-    row.name:SetText(it.name or "")
+    row.name:SetText(Words("name") or "")
     if TextWidth(row.name) > room then
         Ink(row.name, colour, TEXT_FONT, 12)
-        if TextWidth(row.name) > room and it.short then row.name:SetText(it.short) end
+        if TextWidth(row.name) > room and it.short then row.name:SetText(Words("short")) end
+        -- and for a line with several of us in it, the shortest: who and how many more (NewsItems)
+        if TextWidth(row.name) > room and it.shortest then row.name:SetText(Words("shortest")) end
     end
     Ink(row.sub, FADED, TEXT_FONT, 11)
     row.sub:SetText(it.sub or "")
-    row.cut = row.name:GetText() ~= (it.name or "") or TextWidth(row.name) > room or TextWidth(row.sub) > room
+    -- the line under the name stops short of a word under the first count, which is on its line
+    local subRoom = it.c1under and math.min(room, COL1 - C1_UNDER_W - x0) or room
+    row.cut = row.name:GetText() ~= (Words("name") or "") or TextWidth(row.name) > room or TextWidth(row.sub) > subRoom
     row.name:SetWidth(room)
-    row.sub:SetWidth(room)
+    row.sub:SetWidth(subRoom)
     -- the description after the name's own width, only when all of it fits before the stop: a cut
     -- "35 Orc Ro..." says less than none, and the name keeps its room
     local nameW = math.ceil(TextWidth(row.name))
@@ -1002,7 +1315,8 @@ local function FillRow(row, it, chosen)
     row.face:Set(it.face or {})
     -- with a third count (the leaderboard) the first two move closer, to make it room
     row.c1:ClearAllPoints()
-    row.c1:SetPoint("CENTER", row, "LEFT", (it.c3 and BOARD_K or COL1) - 4, 0)
+    row.c1:SetPoint("CENTER", row, "LEFT", (it.c3 and BOARD_K or COL1) - 4, it.c1under and C1_LIFT or 0)
+    row.c1under:SetText(it.c1under or "")
     row.c2:ClearAllPoints()
     row.c2:SetPoint("CENTER", row, "LEFT", (it.c3 and BOARD_D or COL2) - 4, 0)
     row.c1:SetText(it.c1 or "")
@@ -1011,6 +1325,7 @@ local function FillRow(row, it, chosen)
     row.wide:SetText(it.wide or "")
     row.mark:SetShown(chosen and not Folded())
     row.open:SetShown(Folded())
+    Rehover(row)
 end
 
 local function BuildList(page)
@@ -1153,7 +1468,7 @@ local function BuildList(page)
     underline:SetPoint("TOPRIGHT", -8, -(LIST_TOP - 4))
     page.underline = underline                         -- a page with no heading row has no line under it
     page.rows = {}
-    for i = 1, ROWS do page.rows[i] = BuildRow(page, i) end
+    for i = 1, ROWS + 1 do page.rows[i] = BuildRow(page, i) end        -- one more than most pages show (ListFrame)
     page.empty = page:CreateFontString(nil, "ARTWORK")
     Ink(page.empty, FADED, TEXT_FONT, 12)
     page.empty:SetPoint("TOPLEFT", 12, -(LIST_TOP + 12))
@@ -1960,6 +2275,12 @@ end
 
 local function SelectTab(i)
     tab, offset, turned = i, 0, false
+    showFree = nil                                   -- a page chosen starts afresh: No bounty by its own rule
+    -- ...and on the right page the top name of its list, not the row chosen there the last time it was up:
+    -- "når vi bytter tabs, burde høyre page swappe til top navn i hvilken enn liste den tabben har" (the
+    -- owner, 2026-11-14). Whatever opens a page on a row of its own (GK.OpenOrder, GK.ShowLedgerPage) sets
+    -- it after this; the window opened again with no page asked for (GK.OpenWindow()) keeps what it had.
+    selected[i] = nil
     -- the game's chosen look: the tab raised and joined to the frame, and not clickable again
     for j, t in ipairs(win.tabs) do
         t.selected = j == i
@@ -2177,7 +2498,7 @@ local function Chosen(items)
     local first = def.default and def.default(items)
     if first then return first end
     for _, it in ipairs(items) do
-        if not it.header and not it.faded then return it end
+        if not it.header and not it.faded and not it.past then return it end
     end
     return nil
 end
@@ -2225,9 +2546,7 @@ Refresh = function()
     list.sub:SetText(def.sub and def.sub(items, all) or "")
     list.add:SetShown(def.add ~= nil)
     list.underline:SetShown(#def.headings > 0)
-    -- A page with no heading row starts its list where the headings would be: the Grudges page's list
-    -- sat a heading row's height too far down ("trenger ikke bli dytta så langt inn", the owner, 2026-11-07).
-    local top = #def.headings > 0 and LIST_TOP or LIST_TOP - 30
+    local top, perPage = ListFrame(def)
     if list.top ~= top then
         list.top = top
         for i, row in ipairs(list.rows) do row:SetPoint("TOPLEFT", 4, -(top + (i - 1) * ROW_H)) end
@@ -2253,7 +2572,7 @@ Refresh = function()
         end
     end
     -- whole pages: the page the offset falls in, and where it stops
-    local starts = GK.PageStarts(items)
+    local starts = GK.PageStarts(items, perPage)
     list.starts = starts
     local at = 1
     for i, s in ipairs(starts) do
@@ -2314,7 +2633,10 @@ end
 --- The kill orders page, on this order (by its key) when it has a row there; else the page as it was.
 function GK.OpenOrder(orderKey)
     GK.OpenWindow(1)                                 -- first: choosing the tab starts the page afresh
-    if type(orderKey) == "string" and GK.Store().orders[orderKey] then
+    local o = type(orderKey) == "string" and GK.Store().orders[orderKey]
+    if o then
+        -- an open order with no gold may be folded under No bounty, where it has no row to choose
+        if o.state == "o" and (GK.Pot(o)) == 0 then showFree = true end
         selected[1] = "o:" .. orderKey
         turned = turned or Folded()                  -- folded: the page turned to it
         Refresh()
