@@ -2983,6 +2983,70 @@ test("spree: dying with less than 3 ends nothing to announce, but still resets i
     eq(#GK.news, 0, "and nothing for the news")
 end)
 
+--- Our death, resolved as the game would tell it: the recap's hits ({ name, spell, at, overkill }) and the
+--- meter's ({ name, amount }). Only GANK ("Gank Master") and "Hunt Master" are enemy players we saw.
+local function dieTo(GK, recap, meter)
+    _G.C_DeathRecap = { GetRecapEvents = function()
+        local events = {}
+        for _, h in ipairs(recap or {}) do
+            events[#events + 1] = { sourceName = h[1], spellName = h[2], timestamp = h[3], overkill = h[4] or -1 }
+        end
+        return events
+    end }
+    _G.Enum.DamageMeterType.DamageTaken = 3
+    _G.C_DamageMeter.GetCombatSessionSourceFromType = function(session, kind)
+        if kind ~= 3 then return nil end
+        local list = {}
+        for _, h in ipairs(meter or {}) do
+            list[#list + 1] = { totalAmount = h[2], combatSpellDetails = { unitName = h[1] } }
+        end
+        return { combatSpells = list }
+    end
+    W.fight.combat = false
+    local players = { ["Gank Master"] = { key = GANK, guid = FOE_GUID, c = "ROGUE", r = "Orc", l = 65 },
+        ["Hunt Master"] = { key = "Hunt Master-Realm", guid = "Player-1-77", c = "HUNTER", r = "Orc", l = 62 } }
+    GK.SeenByName = function(name) return players[name] end
+    GK.ResolveDeath()
+end
+
+test("death: a pet's killing blow goes to its hunter, who shot us before", function()
+    local GK = bootSpree()
+    for i = 1, 4 do killOf(GK, i) end
+    local deaths = GK.char.deaths
+    dieTo(GK, { { "Fluffy", "Bite", 105, 40 }, { "Hunt Master", "Arcane Shot", 103 }, { "Fluffy", "Claw", 101 } })
+    eq(GK.char.deaths, deaths + 1, "a PvP death")
+    eq(GK.char.streak, 0)
+    eq(GK.char.spree, 0)
+    local log = GK.char.log[1]
+    eq(log.k, "D")
+    eq(log.n, "Hunt Master-Realm", "the hunter's, not the pet's")
+    eq(log.s, "Arcane Shot", "with the hunter's own hit")
+end)
+
+test("death: a mob's killing blow goes to the last enemy player who hit us", function()
+    local GK = bootSpree()
+    dieTo(GK, { { "Stormwind Guard", "Strike", 210, 80 }, { "Hunt Master", "Steady Shot", 207 },
+        { "Gank Master", "Sinister Strike", 202 } })
+    eq(GK.char.log[1].n, "Hunt Master-Realm", "the latest player hit, not the first")
+end)
+
+test("death: a mob or a pet alone is no PvP death, and the streak goes on", function()
+    local GK = bootSpree()
+    for i = 1, 4 do killOf(GK, i) end
+    local deaths = GK.char.deaths
+    dieTo(GK, { { "Fluffy", "Bite", 105, 40 }, { "Murloc", "Slap", 101 } }, { { "Fluffy", 900 }, { "Murloc", 50 } })
+    eq(GK.char.deaths, deaths)
+    eq(GK.char.streak, 4)
+    eq(GK.char.spree, 4)
+end)
+
+test("death: a player who hit us early, out of the recap, is found in the damage meter", function()
+    local GK = bootSpree()
+    dieTo(GK, { { "Fluffy", "Bite", 105, 40 } }, { { "Fluffy", 900 }, { "Hunt Master", 400 } })
+    eq(GK.char.log[1].n, "Hunt Master-Realm")
+    eq(GK.char.streak, 0)
+end)
+
 test("tormentor: three of the guild dead, then our kill ends them and the count goes to 0", function()
     local GK, _, heard = bootSpree()
     local G = GK.Store()
