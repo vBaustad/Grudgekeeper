@@ -3251,7 +3251,7 @@ local function bootAnnounce()
         if method == "SetTexture" then
             return function(f, path)
                 if rawget(f, "mask") then return end
-                for _, built in ipairs({ "glow$", "flames$", "shine$", "spark$", "\\fx_" }) do
+                for _, built in ipairs({ "glow$", "flames$", "shine$", "spark$", "stamp_paid$", "\\fx_" }) do
                     if tostring(path):find(built) then return end
                 end
                 table.insert(A.tex, tostring(path))
@@ -3895,6 +3895,35 @@ test("effects: every one plays from start to fade without an error, twice in a r
             local splash = A.frames[1]
             eq(splash.fx, GK.FX[name], name)
             for step = 0, 50 do splash.OnUpdate(splash, step == 0 and 0 or 0.1) end
+        end
+    end
+end)
+
+test("effects: a toast's own effects play from start to fade without an error, and a pooled toast starts clean", function()
+    local GK, LIB, A = bootAnnounce()
+    GK.db.spreeMine = "toast"
+    GK.db.announceTime = 3                  -- so five seconds take a toast through its fade and back to the pool
+    eq(GK.ToastEffect("spree", true), "spree_burn")
+    eq(GK.ToastEffect("spree", false), nil, "a guildie's spree stays plain")
+    eq(GK.ToastEffect("tormentor", false), "debt_paid")
+    local cases = {
+        { "burn", "spree_burn", function() LIB.Fire("GK_SPREE", ME, 7, "Butcher", true, "butcher") end },
+        { "burn with the count", "spree_burn", function() LIB.Fire("GK_SPREE", ME, 20, "Grudgebound", true, "grudgebound") end },
+        { "paid", "debt_paid", function() LIB.Fire("GK_TORMENTOR", ME, "Gankalot", 6, true) end },
+        { "plain", nil, function() LIB.Fire("GK_SPREE", KARI, 7, "Butcher", false, "butcher") end },
+    }
+    for round = 1, 2 do
+        for _, c in ipairs(cases) do
+            local before = #A.frames
+            c[3]()
+            local toast
+            for _, f in ipairs(A.frames) do
+                if f.age == 0 then toast = f end        -- the one just shown, new or from the pool
+            end
+            assert(toast, c[1] .. ": a toast was shown")
+            eq(toast.fx, c[2] and GK.TOASTFX[c[2]], c[1])
+            for _ = 1, 50 do toast.OnUpdate(toast, 0.1) end
+            assert(#A.frames <= 1 or round == 1 or #A.frames == before, c[1] .. ": the pool is reused")
         end
     end
 end)
