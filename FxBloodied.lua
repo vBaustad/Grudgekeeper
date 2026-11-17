@@ -55,7 +55,7 @@ local function Update(splash, age, P)
         local len = math.max(1, d.len * P.prog(age, d.t, 0.55, E.outC))
         local y0, on = SEAL_EDGE * 0.25, age >= d.t and 1 or 0
         P.Set(splash, r.trail, { x = d.x, y = y0 + len / 2, w = 16, h = 64, sy = len / 64, a = on * 0.9 })
-        P.Set(splash, r.head, { x = d.x, y = y0 + len, w = 32, h = 32, a = on })
+        P.Set(splash, r.head, { x = d.x, y = y0 + len, w = 16, h = 16, a = on })   -- the drop fills ~22x28 of its 32 px art: the lab's 11x14
     end
 end
 
