@@ -158,7 +158,7 @@ function GK.SettingsChapters()
             -- that page is full.
             { kind = "choice", key = "reaperEffect", label = "Reaper's splash",
               options = { { "scythe", "Scythe" }, { "smoke", "Smoke" } },
-              get = function() return GK.db.reaperEffect or "scythe" end,
+              get = function() return GK.db.reaperEffect or "smoke" end,
               set = function(value) GK.db.reaperEffect = value end },
           } },
     }

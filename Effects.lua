@@ -33,7 +33,7 @@ local KIND = { ended = "ended_shatter", tormentor = "debt_paid" }
 function GK.SpreeEffect(kind, key, spree, db)
     if kind ~= "spree" then return KIND[kind] end
     if key == "reaper" then
-        return (db and db.reaperEffect == "smoke") and "reaper_smoke" or "reaper_scythe"
+        return (db and db.reaperEffect == "scythe") and "reaper_scythe" or "reaper_smoke"
     end
     if key == "grudgebound" and spree then
         if spree == 100 then return "hundred" end

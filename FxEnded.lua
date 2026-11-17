@@ -13,7 +13,7 @@ local GREY = { 0.79, 0.76, 0.72 }     -- the line, greyed out rather than red
 -- E1's sounds: two dying heartbeats, the crack, the shatter over its boom, the defeat stinger; the voice after the
 -- dust settles
 local ended = { land = 0, voice = B + 1.1,
-    cues = { { 0, "endpulse" }, { B - 0.05, "crack" }, { B, "endshatter" }, { B + 0.05, "sting_ended" } } }
+    cues = { { 0, "endpulse" }, { B, "endshatter" }, { B + 0.05, "sting_ended" } } }
 GK.FX.ended_shatter = ended
 
 function ended.build(splash, P)

@@ -118,8 +118,8 @@ GK.FX.hundred = {
     land = 0,
     -- M11's sounds: the reward swells through the freeze (it starts 0.4 s before R) and lands with a boom as time
     -- snaps back, then the voice
-    voice = HUNDRED.R + 0.5,
-    cues = { { HUNDRED.R - 0.4, "sting_hundred" }, { HUNDRED.R, "boom" } },
+    voice = false,                      -- its own call instead of the tier's
+    cues = { { HUNDRED.R - 0.4, "sting_hundred" }, { HUNDRED.R, "boom" }, { HUNDRED.R + 0.5, "vo_one_hundred" } },
     build = function(splash, P)
         local st, R = State(splash, "hundred"), HUNDRED.R
         st.wave = P.Tex(splash, "spree_glow", "ARTWORK", 1, true)

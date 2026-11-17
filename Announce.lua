@@ -275,6 +275,7 @@ local function ShowSplash(item)
     splash.fx, splash.land = fx, fx and fx.land or 0
     -- a voice at 0 comes at once, as with no effect, so the call and the splash are never a frame apart
     splash.voiceAt, splash.voiceItem = fx and fx.voice and fx.voice > 0 and fx.voice or nil, item
+    splash.noVoice = fx ~= nil and fx.voice == false   -- an effect with a call of its own (a cue)
     if fx and fx.start then fx.start(splash, item, GK.FxKit) end
     -- the hold counts from when the seal lands, so a long arrival never eats it
     splash.age, splash.hold = 0, splash.land + SplashHold()
@@ -427,7 +428,7 @@ local drainTimer = false
 local function Show(item)
     if item.style == "splash" then ShowSplash(item) else ShowToast(item) end
     -- a splash with an effect plays it at the effect's voice time (its OnUpdate), the rest at once
-    if item.style == "splash" and splash.voiceAt then return end
+    if item.style == "splash" and (splash.voiceAt or splash.noVoice) then return end
     PlayVoice(item)
 end
 

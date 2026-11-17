@@ -11,7 +11,7 @@ GK.FX.merciless_cross = {
     land = H,
     -- C4's sounds: a whoosh for each cut, the hit and the crack where they cross. The card has no fanfare.
     voice = H + 0.08,
-    cues = { { 0, "whoosh" }, { 0.13, "whoosh" }, { H, "boom" }, { H, "crack" } },
+    cues = { { 0, "whoosh" }, { 0.13, "whoosh" }, { H, "boom" } },   -- the lab's crack hissed: left out
 
     build = function(splash, P)
         -- below the seal, as the lab draws them before its core

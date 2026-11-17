@@ -3849,12 +3849,12 @@ test("effects: each tier its own, Butcher's blood bloom, Reaper by its setting",
     eq(GK.SpreeEffect("spree", "bloodied", 3, GK.db), "bloodied_drops")
     eq(GK.SpreeEffect("spree", "merciless", 5, GK.db), "merciless_cross")
     eq(GK.SpreeEffect("spree", "butcher", 7, GK.db), "butcher_bloom")
-    eq(GK.db.reaperEffect, "scythe", "the scythe out of the box")
-    eq(GK.SpreeEffect("spree", "reaper", 10, GK.db), "reaper_scythe")
-    GK.db.reaperEffect = "smoke"
+    eq(GK.db.reaperEffect, "smoke", "the smoke out of the box")
     eq(GK.SpreeEffect("spree", "reaper", 10, GK.db), "reaper_smoke")
+    GK.db.reaperEffect = "scythe"
+    eq(GK.SpreeEffect("spree", "reaper", 10, GK.db), "reaper_scythe")
     GK.db.reaperEffect = "something old"
-    eq(GK.SpreeEffect("spree", "reaper", 10, GK.db), "reaper_scythe", "anything else: the scythe")
+    eq(GK.SpreeEffect("spree", "reaper", 10, GK.db), "reaper_smoke", "anything else: the smoke")
 end)
 
 test("effects: Grudgebound's crown at 15, the number on every 5 after it, the hundred at 100", function()
