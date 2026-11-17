@@ -78,6 +78,7 @@ local FIRE = {
     reaper = { size = 2.32, alpha = 1, embers = 14 },
     grudgebound = { size = 2.54, alpha = 1, embers = 22 },
 }
+GK.SPREE_FIRE = FIRE             -- for a toast's effect (FxToast.lua), which burns as the splash does
 local MAX_EMBERS = 0
 for _, fire in pairs(FIRE) do MAX_EMBERS = math.max(MAX_EMBERS, fire.embers) end
 -- spree_flames.tga is a 4x4 sheet of a 16-frame loop, played at 12 frames a second
@@ -311,7 +312,8 @@ local function BuildToast()
     t.seal:SetPoint("TOPLEFT", t, "TOPLEFT", 0, 0)
     t.ribbon = t:CreateTexture(nil, "ARTWORK")
     t.ribbon:SetSize(256, 64)
-    t.ribbon:SetPoint("TOPLEFT", t.seal, "TOPRIGHT", 4, 0)
+    -- from the toast, not the seal: an effect moves the seal and the ribbon each its own way
+    t.ribbon:SetPoint("TOPLEFT", t, "TOPLEFT", 68, 0)
     -- a size up from the first try, which was hard to read by the letter icon (dakristia, 2026-11-12)
     t.line = t:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     Outline(t.line)
@@ -326,19 +328,53 @@ local function BuildToast()
         local hold = self.hold or ToastHold()
         if age >= hold + TOAST_FADE then
             RemoveToast(self)
+            return
         elseif age > hold then
             self:SetAlpha(1 - (age - hold) / TOAST_FADE)
         end
+        if self.fx and self.fx.update then self.fx.update(self, age, GK.FxKit) end
     end)
     return t
+end
+
+--- A toast's effect for an item (FxToast.lua), built the first time this toast plays it; nil for none.
+local function ToastEffectFor(t, item)
+    local fx = item.toastEffect and GK.TOASTFX and GK.TOASTFX[item.toastEffect]
+    if not fx then return nil end
+    t.fxBuilt = t.fxBuilt or {}
+    if fx.build and not t.fxBuilt[item.toastEffect] then
+        fx.build(t, GK.FxKit)
+        t.fxBuilt[item.toastEffect] = true
+    end
+    return fx
+end
+
+--- Put a pooled toast's parts back where BuildToast had them: an effect moved, turned, tinted or hid them.
+local function ResetToast(t)
+    t.seal:ClearAllPoints()
+    t.seal:SetPoint("TOPLEFT", t, "TOPLEFT", 0, 0)
+    t.seal:SetSize(64, 64)
+    t.seal:SetRotation(0)
+    t.seal:SetVertexColor(1, 1, 1)
+    t.seal:SetTexCoord(0, 1, 0, 1)
+    t.seal:SetAlpha(1)
+    t.seal:Show()
+    t.ribbon:ClearAllPoints()
+    t.ribbon:SetPoint("TOPLEFT", t, "TOPLEFT", 68, 0)
+    t.ribbon:SetSize(256, 64)
+    t.ribbon:SetAlpha(1)
+    t.line:SetAlpha(1)
+    if GK.FxKit then GK.FxKit.HideAll(t) end        -- the last effect's textures, whatever this one is
 end
 
 local function ShowToast(item)
     if #active >= MAX_TOASTS then RemoveToast(active[1]) end
     local t = table.remove(pool) or BuildToast()
+    ResetToast(t)
     t.seal:SetTexture(item.seal)
     t.ribbon:SetTexture(item.ribbon)
     t.ribbon:SetShown(item.ribbon ~= nil)
+    t.hasRibbon = item.ribbon ~= nil
     t.line:SetText(item.line)
     -- centred under its ribbon, as the splash's line is under its own; with no ribbon, beside the seal. It
     -- stood at the toast's left edge, under the seal: "teksten under det lille banneret er det left aligned
@@ -355,6 +391,10 @@ local function ShowToast(item)
     end
     t.age, t.hold = 0, ToastHold()
     t:SetAlpha(1)
+    local fx = ToastEffectFor(t, item)
+    t.fx = fx
+    if fx and fx.start then fx.start(t, item, GK.FxKit) end
+    if fx and fx.update then fx.update(t, 0, GK.FxKit) end     -- so the first frame is the effect's, not the plain toast
     active[#active + 1] = t
     Relayout()
     t:Show()
@@ -452,7 +492,8 @@ LIB.Listen("GK_SPREE", function(who, spree, tierName, mine, key)
     if not mine then line = Name(who) .. ": " .. line end
     Add(mine and "spreeMine" or "spreeGuild", mine, { seal = MEDIA .. "spree_" .. key,
         ribbon = MEDIA .. "spree_" .. key .. "_name", line = line, sound = key, fire = key,
-        effect = GK.SpreeEffect and GK.SpreeEffect("spree", key, spree, GK.db), spree = spree })
+        effect = GK.SpreeEffect and GK.SpreeEffect("spree", key, spree, GK.db), spree = spree,
+        toastEffect = GK.ToastEffect and GK.ToastEffect("spree", mine) })
 end)
 
 LIB.Listen("GK_SPREE_ENDED", function(who, spree, killerName, mine)
@@ -469,7 +510,8 @@ end)
 LIB.Listen("GK_TORMENTOR", function(who, enemyName, count, mine)
     local line = ("%s put an end to %s, who had killed %d of us"):format(mine and "You" or Name(who), Hide(enemyName), count)
     Add("spreeTormentor", mine, { seal = MEDIA .. "seal_black", line = line, sound = "tormentor",
-        effect = GK.SpreeEffect and GK.SpreeEffect("tormentor", nil, count, GK.db) })
+        effect = GK.SpreeEffect and GK.SpreeEffect("tormentor", nil, count, GK.db),
+        toastEffect = GK.ToastEffect and GK.ToastEffect("tormentor", mine) })
 end)
 
 -- A guildie got the target of a kill order (Guild.lua, the F we heard): told as it happens, to everyone -
