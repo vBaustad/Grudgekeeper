@@ -11,6 +11,9 @@ local SPLATS = {
 
 GK.FX.butcher_bloom = {
     land = 0,
+    -- the tier's fanfare with the voice at once, the splat as the blood blooms (the lab's card)
+    voice = 0,
+    cues = { { 0, "sting_butcher" }, { 0.2, "splat" } },
 
     build = function(splash, P)
         -- after the glow and flames, before the seal: above the flames, below the seal, drawn plain, not as light

@@ -252,8 +252,3 @@ function P.Cues(frame, fx, age)
     end
     frame.cueN = n
 end
-
--- butcher_bloom cues (to move into FxButcher.lua)
--- BU2, the lab's card: the tier's fanfare with the voice at 0, the splat at 0.2 s.
---   voice = 0,
---   cues = { { 0, "sting_butcher" }, { 0.2, "splat" } },
