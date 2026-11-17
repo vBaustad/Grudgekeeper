@@ -15,19 +15,6 @@ end
 -- The layers, as the lab's: what it draws without a z lies over the seal and under the ribbon (ARTWORK 1 here),
 -- the number's parts over the ribbon.
 
--- The darkening round the screen's edges: Grudgebound is the one tier that may dim. It is anchored to the whole
--- screen, not the seal, so it is set by hand rather than with P.Set. Returns draw(age).
-local function Dim(splash, P, T)
-    local dim = P.Tex(splash, "fx_dim", "BACKGROUND", -8)
-    dim:ClearAllPoints()
-    dim:SetAllPoints(UIParent)
-    return function(age)
-        local a = P.env(age, T - 0.3, T, T + 1.2, T + 2) * 0.8
-        dim:SetAlpha(a)
-        dim:SetShown(a > 0.001)
-    end
-end
-
 -- The crown of chains: falls onto the seal at L from 2.4x scale, spinning, then a small wobble, with sparks.
 -- L is when it lands. Returns draw(age).
 local function Crown(splash, P, L)
@@ -51,13 +38,13 @@ local function Crown(splash, P, L)
     end
 end
 
--- GB1: the seal rises out of the dark, the crown falls on it.
+-- GB1: the seal rises, the crown falls on it. The lab's card darkened the screen's edges too; that is left out
+-- ("fades to black on the edges ... we don't want", Daniel, 2026-11-17).
 GK.FX.grudgebound_crown = {
     land = 0.5,
     build = function(splash, P)
         local st = State(splash, "crown")
         local T = 0.5                    -- when the seal comes up
-        st.dim = Dim(splash, P, T)
         st.flash = P.Tex(splash, "spree_glow", "ARTWORK", 1, true)
         st.sparks = P.Burst(splash, 24, { t0 = T, speed = 560, life = 0.65, size = 12, stretch = 2.6, gravity = 380,
             drag = 2.2, seed = 7 })
@@ -65,7 +52,6 @@ GK.FX.grudgebound_crown = {
     end,
     update = function(splash, age, P)
         local st, T = State(splash, "crown"), 0.5
-        st.dim(age)
         if age >= T then
             -- it comes up 30 px over 0.35 s, with no punch-in
             P.Set(splash, splash.seal, { w = P.SEAL, h = P.SEAL, y = 30 * (1 - P.prog(age, T, 0.35, P.E.outC)) })
