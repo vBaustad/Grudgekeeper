@@ -3470,7 +3470,7 @@ test("announce: toasts stack up to four, and /grudge spree shows a sample of bot
     eq(A.txt[7], "7 kills in a row")
     local seal7 = shownAt(A, 7)
     eq(seal7, MEDIA .. "spree_butcher")
-    eq(A.txt[8], "Glue Enjoyer: 7 kills in a row")
+    eq(A.txt[8], "7 kills in a row")
     A.combat = true
     local before = #A.played
     GK.AnnounceSample()

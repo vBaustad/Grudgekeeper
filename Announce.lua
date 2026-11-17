@@ -81,8 +81,7 @@ local FIRE = {
 GK.SPREE_FIRE = FIRE             -- for a toast's effect (FxToast.lua), which burns as the splash does
 local MAX_EMBERS = 0
 for _, fire in pairs(FIRE) do MAX_EMBERS = math.max(MAX_EMBERS, fire.embers) end
--- spree_flames.tga is a 4x4 sheet of a 16-frame loop, played at 12 frames a second
-local FLAME_FRAMES, FLAME_COLS, FLAME_ROWS, FLAME_FPS = 16, 4, 4, 12
+-- spree_flames.tga is a sheet of a looping flame: its numbers are GK.FxKit.FLAMES (Effects.lua)
 local SHINE_START, SHINE_TIME, SHINE_WIDTH = 0.35, 0.6, 60
 
 --- A dark outline on a line of text, so it reads over snow and sunlit sand as well as at night.
@@ -125,7 +124,8 @@ local function BuildSplash()
     splash.seal = splash:CreateTexture(nil, "ARTWORK")
     splash.seal:SetSize(SEAL, SEAL)
     splash.seal:SetPoint("CENTER", splash, "TOP", 0, -SEAL / 2)
-    splash.ribbon = splash:CreateTexture(nil, "ARTWORK")
+    -- over the seal with room between (sublevel 1) for what the lab draws on the seal and under the ribbon
+    splash.ribbon = splash:CreateTexture(nil, "ARTWORK", nil, 2)
     splash.ribbon:SetSize(2 * SEAL, SEAL / 2)
     splash.ribbon:SetPoint("TOP", splash, "TOP", 0, -SEAL + 4)
     -- A light sweeps across the ribbon as it lands, kept to the ribbon's shape by a mask of the ribbon itself.
@@ -174,9 +174,8 @@ local function BuildSplash()
         local fire = self.fire
         self.flames:SetShown(fire ~= nil and on)
         if fire and on then
-            local i = math.floor(age * FLAME_FPS) % FLAME_FRAMES
-            local col, row = i % FLAME_COLS, math.floor(i / FLAME_COLS)
-            self.flames:SetTexCoord(col / FLAME_COLS, (col + 1) / FLAME_COLS, row / FLAME_ROWS, (row + 1) / FLAME_ROWS)
+            local c = GK.FxKit.FlameCell(age)
+            self.flames:SetTexCoord(c[1], c[2], c[3], c[4])
             self.flames:SetAlpha(fire.alpha * math.min(1, k / SPLASH_POP))
             local catching = math.min(1, k / 0.3)
             for n = 1, fire.embers do
@@ -355,9 +354,9 @@ local function ResetToast(t)
     t.seal:ClearAllPoints()
     t.seal:SetPoint("TOPLEFT", t, "TOPLEFT", 0, 0)
     t.seal:SetSize(64, 64)
+    t.seal:SetTexCoord(0, 1, 0, 1)                  -- before the turn: the last of the two set wins
     t.seal:SetRotation(0)
     t.seal:SetVertexColor(1, 1, 1)
-    t.seal:SetTexCoord(0, 1, 0, 1)
     t.seal:SetAlpha(1)
     t.seal:Show()
     t.ribbon:ClearAllPoints()
@@ -534,13 +533,19 @@ local SAMPLE_KILLS = { bloodied = 3, merciless = 5, butcher = 7, reaper = 10, sc
 
 --- /grudge spree: a sample splash and a sample toast, whatever the settings and the when-rules say.
 --- what: a tier's key, "scythe" or "smoke" (Reaper's two), a spree's kills ("20", "100"), "ended" or
---- "tormentor"; none: Butcher, as before. Only the splash for anything but a tier.
+--- "tormentor"; none: Butcher, as before. A tier's toast is as your own spree's, with its effect; a spree
+--- ended has only the splash.
 function GK.AnnounceSample(what)
     what = what and what:lower() or "butcher"
     if what == "ended" or what == "tormentor" then
-        Show({ style = "splash", seal = MEDIA .. (what == "ended" and "seal_broken" or "seal_black"), sound = what,
-            line = what == "ended" and "Your 12-kill spree ended (Glue Enjoyer)" or "You put an end to Glue Enjoyer, who had killed 4 of us",
+        local tormentor = what == "tormentor"
+        local seal = MEDIA .. (tormentor and "seal_black" or "seal_broken")
+        local line = tormentor and "You put an end to Glue Enjoyer, who had killed 4 of us" or "Your 12-kill spree ended (Glue Enjoyer)"
+        Show({ style = "splash", seal = seal, sound = what, line = line,
             effect = GK.SpreeEffect(what, nil, 12, GK.db), spree = 12 })
+        if tormentor then
+            Show({ style = "toast", seal = seal, line = line, silent = true, toastEffect = GK.ToastEffect("tormentor", true) })
+        end
         return
     end
     local kills = tonumber(what) or SAMPLE_KILLS[what] or 7
@@ -551,7 +556,8 @@ function GK.AnnounceSample(what)
     Show({ style = "splash", seal = MEDIA .. "spree_" .. key, ribbon = MEDIA .. "spree_" .. key .. "_name",
         line = ("%d kills in a row"):format(kills), sound = key, fire = key, effect = effect, spree = kills })
     Show({ style = "toast", seal = MEDIA .. "spree_" .. key, ribbon = MEDIA .. "spree_" .. key .. "_name",
-        line = ("Glue Enjoyer: %d kills in a row"):format(kills), silent = true, spree = kills, mine = false })
+        line = ("%d kills in a row"):format(kills), silent = true, fire = key, spree = kills,
+        toastEffect = GK.ToastEffect("spree", true) })
 end
 
 -- ---------------------------------------------------------------------------

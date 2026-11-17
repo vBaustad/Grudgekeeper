@@ -2,9 +2,8 @@
 -- See Effects.lua for how an effect is played and the kit (P) it is drawn with.
 local ADDON, GK = ...
 
-local SEAL = 170
 local NUM_X, NUM_Y = 150, -40         -- the seal's shoulder, where the number slams in
-local NUM_R = -0.14
+local NUM_R = -0.14                   -- the number's lean
 
 -- What each effect keeps per splash (the splash is built once, its effects' parts with it).
 local function State(splash, name)
@@ -12,6 +11,9 @@ local function State(splash, name)
     splash.fxGB[name] = splash.fxGB[name] or {}
     return splash.fxGB[name]
 end
+
+-- The layers, as the lab's: what it draws without a z lies over the seal and under the ribbon (ARTWORK 1 here),
+-- the number's parts over the ribbon.
 
 -- The darkening round the screen's edges: Grudgebound is the one tier that may dim. It is anchored to the whole
 -- screen, not the seal, so it is set by hand rather than with P.Set. Returns draw(age).
@@ -27,10 +29,10 @@ local function Dim(splash, P, T)
 end
 
 -- The crown of chains: falls onto the seal at L from 2.4x scale, spinning, then a small wobble, with sparks.
--- Returns draw(age).
+-- L is when it lands. Returns draw(age).
 local function Crown(splash, P, L)
-    local ring = P.Tex(splash, "fx_crown_ring", "OVERLAY", -1)
-    local hot = P.Tex(splash, "fx_crown_ring_hot", "OVERLAY", 0, true)
+    local ring = P.Tex(splash, "fx_crown_ring", "ARTWORK", 1)
+    local hot = P.Tex(splash, "fx_crown_ring_hot", "ARTWORK", 1, true)
     local sparks = P.Burst(splash, 26, { t0 = L, speed = 480, life = 0.6, size = 12, stretch = 2.5, gravity = 300, seed = 31 })
     return function(age)
         local p = P.prog(age, L - 0.3, 0.3, P.E.inQ)
@@ -54,9 +56,9 @@ GK.FX.grudgebound_crown = {
     land = 0.5,
     build = function(splash, P)
         local st = State(splash, "crown")
-        local T = 0.5
+        local T = 0.5                    -- when the seal comes up
         st.dim = Dim(splash, P, T)
-        st.flash = P.Tex(splash, "spree_glow", "ARTWORK", 3, true)
+        st.flash = P.Tex(splash, "spree_glow", "ARTWORK", 1, true)
         st.sparks = P.Burst(splash, 24, { t0 = T, speed = 560, life = 0.65, size = 12, stretch = 2.6, gravity = 380,
             drag = 2.2, seed = 7 })
         st.crown = Crown(splash, P, T + 0.55)
@@ -66,8 +68,8 @@ GK.FX.grudgebound_crown = {
         st.dim(age)
         if age >= T then
             -- it comes up 30 px over 0.35 s, with no punch-in
-            P.Set(splash, splash.seal, { w = SEAL, h = SEAL, y = 30 * (1 - P.prog(age, T, 0.35, P.E.outC)) })
-            P.Set(splash, st.flash, { w = SEAL * 2.4, h = SEAL * 2.4, s = 0.5 + P.prog(age, T, 0.3),
+            P.Set(splash, splash.seal, { w = P.SEAL, h = P.SEAL, y = 30 * (1 - P.prog(age, T, 0.35, P.E.outC)) })
+            P.Set(splash, st.flash, { w = P.SEAL * 2.4, h = P.SEAL * 2.4, s = 0.5 + P.prog(age, T, 0.3),
                 a = math.max(0, 1.2 - (age - T) * 4) })
         end
         st.sparks(age)
@@ -81,7 +83,7 @@ GK.FX.grudgebound_repeat = {
     land = 0,
     build = function(splash, P)
         local st = State(splash, "repeat")
-        local H = 0.55 + 0.45
+        local H = 0.55 + 0.45            -- when the number slams in, after the crown lands
         st.crown = Crown(splash, P, 0.55)
         st.num = P.Number(splash, 5)
         st.flash = P.Tex(splash, "spree_glow", "OVERLAY", 3, true)
@@ -114,18 +116,16 @@ GK.FX.grudgebound_repeat = {
 -- slams in burning, a shockwave rolls out, the crown comes down and sparks fly. No dim, flash or vignette.
 -- The beat is only the quiet before R here: the splash's own
 -- flames and glow keep moving through it, as the base cannot be paused.
-local FLAME_W = { x = 141, ["0"] = 128, ["1"] = 90, ["2"] = 122, ["3"] = 125, ["4"] = 126, ["5"] = 124,
-    ["6"] = 135, ["7"] = 122, ["8"] = 132, ["9"] = 124 }
-local HUNDRED = { Z = 0.35, F = 0.35 }
+local HUNDRED = { Z = 0.35, F = 0.35 }    -- Z: the beat before the freeze, F: the freeze; R: when time snaps back
 HUNDRED.R = HUNDRED.Z + HUNDRED.F
 
 GK.FX.hundred = {
     land = 0,
     build = function(splash, P)
         local st, R = State(splash, "hundred"), HUNDRED.R
-        st.wave = P.Tex(splash, "spree_glow", "ARTWORK", 3, true)
+        st.wave = P.Tex(splash, "spree_glow", "ARTWORK", 1, true)
         st.rays = P.Tex(splash, "fx_rays", "BACKGROUND", -2, true)
-        st.crown = P.Tex(splash, "fx_crown_ring", "OVERLAY", -1)
+        st.crown = P.Tex(splash, "fx_crown_ring", "ARTWORK", 1)
         st.num = P.Number(splash, 5)
         st.num.set("×100")
         -- a fire behind each numeral
@@ -138,7 +138,7 @@ GK.FX.hundred = {
         local st, R, F = State(splash, "hundred"), HUNDRED.R, HUNDRED.F
         local k = age - R
         local live = age < HUNDRED.Z and age or age < R and HUNDRED.Z or age - F   -- the lab's frozen clock
-        P.Set(splash, st.rays, { w = 170 * 3.6, h = 170 * 3.6, r = live * 0.2, s = 1 + 0.1 * math.sin(age * 3),
+        P.Set(splash, st.rays, { w = P.SEAL * 3.6, h = P.SEAL * 3.6, r = live * 0.2, s = 1 + 0.1 * math.sin(age * 3),
             a = P.env(age, R, R + 0.3, R + 2.4, R + 3.2) })
         P.Set(splash, st.wave, { w = 400, h = 400, s = k >= 0 and 0.5 + k * 9 or 0, a = k >= 0 and math.max(0, 1 - k * 1.4) or 0 })
         P.Set(splash, st.crown, { w = 290, h = 290, r = live * 0.1, s = k >= 0 and 1 + 0.1 * math.exp(-k * 8) or 0,
@@ -146,24 +146,16 @@ GK.FX.hundred = {
         -- the number at the seal's shoulder, and each numeral's fire where the number laid it
         local X, Y, H, r = 160, -40, 110, NUM_R
         local scale = k >= 0 and 1 + 0.3 * math.exp(-k * 9) * math.cos(k * 30) or 0
-        st.num.place({ x = X, y = Y, h = H, r = r, s = scale, a = k >= 0 and 1 or 0,
+        local at = st.num.place({ x = X, y = Y, h = H, r = r, s = scale, a = k >= 0 and 1 or 0,
             heat = k >= 0 and math.max(0.8, 1.5 * math.exp(-k * 2)) or 0 })
-        local chars, total = st.num.chars, 0
-        for _, ch in ipairs(chars) do total = total + FLAME_W[ch] * 0.88 end
-        if #chars > 0 then total = total + FLAME_W[chars[#chars]] * 0.12 end
-        local kk, cx = H / 200 * scale, -total / 2
         for i, fire in ipairs(st.fires) do
-            local ch = chars[i]
-            if not ch or k < 0 then
+            local c = at[i]
+            if not c or k < 0 then
                 fire:Hide()
             else
-                local w = FLAME_W[ch]
-                local lx = (cx + w / 2) * kk
-                cx = cx + w * 0.88
-                P.Set(splash, fire, { x = X + lx * math.cos(r), y = Y + lx * math.sin(r) - 8, w = 150, h = 150,
-                    s = 1.15, r = r })
-                local f = math.floor(math.max(0, age + (i - 1) * 0.3) * 12) % 16
-                fire:SetTexCoord((f % 4) / 4, (f % 4 + 1) / 4, math.floor(f / 4) / 4, (math.floor(f / 4) + 1) / 4)
+                -- the flame sheet's cell, a little apart for each numeral
+                P.Set(splash, fire, { x = c.x, y = c.y - 8, w = 150, h = 150, s = 1.15, r = r,
+                    coord = P.FlameCell(age, (i - 1) * 0.3) })
             end
         end
         st.sparks(age)
