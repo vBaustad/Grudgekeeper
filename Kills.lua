@@ -10,10 +10,11 @@
 -- a stranger finished has no killer in your group and is no assist. Taken, with fixes, from dakristia's
 -- vBaustad/Grudgekeeper#2.
 -- A death: the game's death recap names whoever hit us last (the "You died" chat line carries its id),
--- and the damage meter everyone who hit us in the fight. It counts as a PvP death only when one of them
--- is an enemy player we saw - a name alone can't tell a rogue from a murloc - and it goes to the last of
--- them, whoever landed the blow: the pet or the mob was their weapon. A pet alone is no PvP death, as the
--- recap names the pet, never its owner.
+-- and, only when the recap is empty, the damage meter everyone who hit us in the fight. It counts as a
+-- PvP death only when one of them is an enemy player we saw - by GUID when the recap's can be read, as a
+-- name alone can't tell a rogue from a murloc - and it goes to the last of them, whoever landed the
+-- blow: the pet or the mob was their weapon. A pet alone is no PvP death, as the recap names the pet,
+-- never its owner.
 local ADDON, GK = ...
 local LIB = LibStub("LibForever-1.0")
 local Secret = GK.Secret
@@ -319,8 +320,8 @@ end
 -- ---------------------------------------------------------------------------
 -- Deaths
 -- ---------------------------------------------------------------------------
---- The hits the game's death recap holds, the latest first: { { name, spell } }, or nil. The blow that
---- killed (the one that overkilled) goes first when the hits carry no time.
+--- The hits the game's death recap holds, the latest first: { { name, guid, spell } }, or nil. The blow
+--- that killed (the one that overkilled) goes first when the hits carry no time. guid is nil when secret.
 local function FromRecap(id)
     if not (C_DeathRecap and C_DeathRecap.GetRecapEvents) then return nil end
     local ok, events = pcall(C_DeathRecap.GetRecapEvents, id)
@@ -331,7 +332,9 @@ local function FromRecap(id)
             local at = not Secret(e.timestamp) and type(e.timestamp) == "number" and e.timestamp or nil
             local blow = not Secret(e.overkill) and type(e.overkill) == "number" and e.overkill > 0
             timed = timed and at ~= nil
-            hits[#hits + 1] = { name = e.sourceName, at = at, blow = blow, i = i,
+            local guid = (not Secret(e.sourceGUID) and type(e.sourceGUID) == "string" and e.sourceGUID ~= "")
+                and e.sourceGUID or nil
+            hits[#hits + 1] = { name = e.sourceName, guid = guid, at = at, blow = blow, i = i,
                 spell = (not Secret(e.spellName) and type(e.spellName) == "string") and e.spellName or nil }
         end
     end
@@ -372,13 +375,21 @@ local function FromMeter()
 end
 
 --- The first of these hits by an enemy player we saw: their sighting and the hit, or nil and why not.
---- A name that could be several players is passed over, as a grudge against the wrong one is worse.
+--- A GUID we can read settles it: a player's is looked up as it is, a pet's or a mob's is no player at
+--- all. Without one the name is asked, and a name that could be several players is passed over, as a
+--- grudge against the wrong one is worse.
 local function PlayerIn(hits)
     local why
     for _, h in ipairs(hits or {}) do
-        local s, w = GK.SeenByName(h.name)
+        local player = h.guid and h.guid:sub(1, 7) == "Player-"
+        local s = player and GK.Seen(nil, h.guid)
         if s then return s, h end
-        why = why or w
+        if player or not h.guid then
+            local w
+            s, w = GK.SeenByName(h.name)
+            if s then return s, h end
+            why = why or w
+        end
     end
     return nil, why
 end
@@ -495,26 +506,20 @@ function GK.ResolveDeath()
     end
     -- The kill is the last enemy player's who hit us: a mob they pulled or a pet's bite is their weapon.
     -- No player among the hits at all is a death to a mob, or to a pet whose owner never touched us,
-    -- and it is no PvP death: the streak goes on.
-    local recap = FromRecap(id)
-    if not recap and id then recap = FromRecap(nil) end
-    local how = "the death recap"
-    local s, hit, why = PlayerIn(recap)
+    -- and it is no PvP death: the streak goes on. The meter is asked only when the recap is empty, as it
+    -- holds the whole fight: a player who hit us once and left would get a death a mob gave us.
+    local hits, how = FromRecap(id), "the death recap"
+    if not hits and id then hits = FromRecap(nil) end
+    if not hits then hits, how = FromMeter(), "the damage meter" end
+    if not hits then
+        lastDeath = "neither the death recap nor the damage meter named anyone"
+        return
+    end
+    local s, hit, why = PlayerIn(hits)
     if not s then
-        local meter = FromMeter()
-        local s2, hit2, why2 = PlayerIn(meter)
-        if s2 then
-            s, hit, how = s2, hit2, "the damage meter"
-        elseif not (recap or meter) then
-            lastDeath = "neither the death recap nor the damage meter named anyone"
-            return
-        else
-            why = why or why2
-            local first = (recap or meter)[1].name
-            lastDeath = ("%s and the rest - %s, so not counted"):format(GK.Clean(first, 40) or "?",
-                why == "several" and "a name several enemy players we saw go by" or "no enemy player we saw")
-            return
-        end
+        lastDeath = ("%s and the rest, by %s - %s, so not counted"):format(GK.Clean(hits[1].name, 40) or "?", how,
+            why == "several" and "a name several enemy players we saw go by" or "no enemy player we saw")
+        return
     end
     lastDeath = ("%s, by %s"):format(s.key, how)
     GK.RecordDeath({ key = s.key, guid = s.guid, c = s.c, r = s.r, l = s.l, spell = GK.Clean(hit.spell, 40) })

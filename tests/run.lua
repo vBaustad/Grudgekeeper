@@ -2983,13 +2983,15 @@ test("spree: dying with less than 3 ends nothing to announce, but still resets i
     eq(#GK.news, 0, "and nothing for the news")
 end)
 
---- Our death, resolved as the game would tell it: the recap's hits ({ name, spell, at, overkill }) and the
---- meter's ({ name, amount }). Only GANK ("Gank Master") and "Hunt Master" are enemy players we saw.
+--- Our death, resolved as the game would tell it: the recap's hits ({ name, spell, at, overkill, guid })
+--- and the meter's ({ name, amount }). Only GANK ("Gank Master") and "Hunt Master" are enemy players we
+--- saw, by name, and FOE_GUID and "Player-1-77" by GUID.
 local function dieTo(GK, recap, meter)
     _G.C_DeathRecap = { GetRecapEvents = function()
         local events = {}
         for _, h in ipairs(recap or {}) do
-            events[#events + 1] = { sourceName = h[1], spellName = h[2], timestamp = h[3], overkill = h[4] or -1 }
+            events[#events + 1] = { sourceName = h[1], spellName = h[2], timestamp = h[3], overkill = h[4] or -1,
+                sourceGUID = h[5] }
         end
         return events
     end }
@@ -3005,7 +3007,10 @@ local function dieTo(GK, recap, meter)
     W.fight.combat = false
     local players = { ["Gank Master"] = { key = GANK, guid = FOE_GUID, c = "ROGUE", r = "Orc", l = 65 },
         ["Hunt Master"] = { key = "Hunt Master-Realm", guid = "Player-1-77", c = "HUNTER", r = "Orc", l = 62 } }
+    local byGuid = {}
+    for _, s in pairs(players) do byGuid[s.guid] = s end
     GK.SeenByName = function(name) return players[name] end
+    GK.Seen = function(_, guid) return guid and byGuid[guid] end
     GK.ResolveDeath()
 end
 
@@ -3040,11 +3045,41 @@ test("death: a mob or a pet alone is no PvP death, and the streak goes on", func
     eq(GK.char.spree, 4)
 end)
 
-test("death: a player who hit us early, out of the recap, is found in the damage meter", function()
+test("death: with the recap empty, the damage meter names the player", function()
     local GK = bootSpree()
-    dieTo(GK, { { "Fluffy", "Bite", 105, 40 } }, { { "Fluffy", 900 }, { "Hunt Master", 400 } })
+    dieTo(GK, {}, { { "Fluffy", 900 }, { "Hunt Master", 400 } })
     eq(GK.char.log[1].n, "Hunt Master-Realm")
     eq(GK.char.streak, 0)
+end)
+
+test("death: a player only in the meter, not in the recap's last hits, is no PvP death", function()
+    local GK = bootSpree()
+    for i = 1, 4 do killOf(GK, i) end
+    local deaths = GK.char.deaths
+    dieTo(GK, { { "Murloc", "Slap", 105, 40 } }, { { "Murloc", 900 }, { "Hunt Master", 400 } })
+    eq(GK.char.deaths, deaths, "the meter holds the whole fight, so it is not asked over the recap")
+    eq(GK.char.streak, 4)
+end)
+
+test("death: a player's GUID finds them when the name would not", function()
+    local GK = bootSpree()
+    dieTo(GK, { { "Gank", "Sinister Strike", 105, 40, FOE_GUID } })
+    eq(GK.char.log[1].n, GANK)
+end)
+
+test("death: a pet's GUID is no player, even with a player's name", function()
+    local GK = bootSpree()
+    for i = 1, 4 do killOf(GK, i) end
+    local deaths = GK.char.deaths
+    dieTo(GK, { { "Hunt Master", "Bite", 105, 40, "Pet-0-1-2-3-4" } })
+    eq(GK.char.deaths, deaths)
+    eq(GK.char.streak, 4)
+end)
+
+test("death: a player's GUID we never saw falls back to the name", function()
+    local GK = bootSpree()
+    dieTo(GK, { { "Hunt Master", "Steady Shot", 105, 40, "Player-9-99" } })
+    eq(GK.char.log[1].n, "Hunt Master-Realm")
 end)
 
 test("tormentor: three of the guild dead, then our kill ends them and the count goes to 0", function()
