@@ -235,6 +235,14 @@ end
 function GK.NoticeUpdate(landed, silent, fading)
     if not GK.char then return end
     if not btn then Build() end
+    -- in a battleground the letter is out of sight, and silent (GK.InBattleground); Letters.lua shows it
+    -- again as you leave. Placing it (/grudge notice) still shows it: that is the player's own ask.
+    if GK.InBattleground() and not placing then
+        btn.breathe:Stop()
+        btn.vanish:Stop()
+        btn:Hide()
+        return
+    end
     local unread, first = GK.Unread()
     local warning = GetTime() < warnUntil
     if unread == 0 and not warning and not placing then
@@ -498,6 +506,8 @@ end
 --- soundKey: whom the sound is for (a player's key, a guild), so it plays for them once in NEAR_SOUND_GAP;
 --- none, and it plays every time.
 function GK.Warn(text, urgent, ownSound, target, soundKey)
+    -- none in a battleground (GK.InBattleground): a warning is about now, so it is not kept for later
+    if GK.InBattleground() then return end
     if not btn then Build() end
     btn.warnText = text
     btn.line:SetText(text)

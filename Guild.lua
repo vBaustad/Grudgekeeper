@@ -715,6 +715,9 @@ function GK.PostOrder(t, reward, note, auto)
     Touched()
     Trim(s)
     SendOrder(o)
+    -- the zone and the pin on the map, when we saw them a moment ago: after the order, so the guild has it to
+    -- put the sighting on (Sightings.lua)
+    if GK.SightOnPost then GK.SightOnPost(o) end
     AddFeed({ t = now, who = me, kind = "C", n = t.key, c = t.c, l = t.l, p = reward, au = auto and true or nil })
     GK.Changed()
     return o
@@ -841,6 +844,10 @@ function GK.Fulfil(o, zone)
     AddFeed({ t = o.doneAt, who = me, kind = "F", n = o.n, c = o.c, l = o.l, p = o.reward, z = zone,
         own = own or nil, h = o.helpers })
     GK.CompleteLetter(o)
+    -- and told as it happens, as a guildie's is (Announce.lua): the hunter had the letter alone, which waits
+    -- for the fight to end, and nothing on the screen ("dukker det opp en splash eller noe?", the owner,
+    -- 2026-11-16). Yours (mine = true): a splash.
+    LIB.Fire("GK_ORDER_DONE", me, o.helpers, o.n, (GK.Pot(o)), true)
 end
 
 --- One line in guild chat, for the guildies who don't run Grudgekeeper. Chat sent as the player, so:
@@ -1501,8 +1508,9 @@ local function OnFulfil(sender, f)
     AddFeed({ t = o.doneAt, who = sender, kind = "F", n = o.n, c = o.c, l = o.l, p = o.reward, z = o.doneZone,
         own = o.by == sender or nil, h = o.helpers })
     -- for whatever tells it as it happens (Announce.lua). A guildie's, always: the F of our own kill finds
-    -- the order closed already (GK.Fulfil), and so does one said a second time
-    LIB.Fire("GK_ORDER_DONE", sender, o.helpers, o.n, (GK.Pot(o)))
+    -- the order closed already (GK.Fulfil), and so does one said a second time. Got with you there: yours
+    -- too (mine), as it is on your profile below.
+    LIB.Fire("GK_ORDER_DONE", sender, o.helpers, o.n, (GK.Pot(o)), Helped(o) or nil)
     local me = LIB.Me()
     local share = (o.by == me and (o.reward or 0)) or (o.pot and o.pot[me]) or 0
     if o.by == me then SendOrder(o) end               -- the poster's word settles who was first

@@ -6,14 +6,14 @@ local U = {}
 --- Install the stand-ins on GK and the globals, then load NotesUI.lua as the game would.
 function U.load(M, GK)
     local env = _G
-    M.opened, M.poster, M.card, M.played = nil, nil, nil, {}
+    M.opened, M.poster, M.card, M.cardKey, M.played = nil, nil, nil, nil, {}
     M.warned, M.menus = {}, {}
     M.mobs, M.hostile, M.order, M.tipLine, M.seen = {}, {}, nil, nil, {}
     M.group = { raid = false, size = 0 }
 
     -- the other files' functions NotesUI calls or wraps
     GK.LedgerPages = { { name = "Kill orders" }, { name = "Leaderboard" }, { name = "Most wanted" }, { name = "Grudges" },
-        { name = "News" } }
+        { name = "News" }, { name = "You" } }
     GK.AddLedgerPage = function(def)        -- as Window.lua's: def.before names the page to sit in front of
         for i, page in ipairs(GK.LedgerPages) do
             if def.before and page.name == def.before then return table.insert(GK.LedgerPages, i, def) end
@@ -24,7 +24,7 @@ function U.load(M, GK)
     GK.OpenWindow = function(page) M.opened = page end
     GK.OpenOptions = function() M.optionsOpened = true end
     GK.ShowPoster = function(t) M.poster = t end
-    GK.ShowCard = function(make) M.card = make end
+    GK.ShowCard = function(make, key) M.card, M.cardKey = make, key end
     GK.MenuKey = function() return M.menuKey end
     GK.OrderOn = function() return M.order end
     GK.Seen = function(key) return M.seen[key] end

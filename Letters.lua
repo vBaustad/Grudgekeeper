@@ -123,6 +123,8 @@ end
 FadeDue = function()
     fadePending = false
     if GK.db.keepLetters then return end
+    -- out of sight in a battleground, nothing fades: each letter's while starts again as you leave
+    if GK.InBattleground() then return end
     local now, soonest, faded = GetTime(), nil, false
     for _, L in ipairs(GK.char.letters) do
         local at = landedAt[L]
@@ -163,11 +165,12 @@ Release = function()
     for L, at in pairs(holding) do
         if at > now then
             soonest = math.min(soonest or math.huge, at - now)
-        elseif not InCombatLockdown() then
+        elseif not InCombatLockdown() and not GK.InBattleground() then
             holding[L], landed = nil, true
             Landed(L)
         end
-        -- its minute is up but you are fighting: PLAYER_REGEN_ENABLED calls this again
+        -- its minute is up but you are fighting: PLAYER_REGEN_ENABLED calls this again; or in a
+        -- battleground: leaving it does (GK.StartLetters)
     end
     if soonest and not releasePending then
         releasePending = true
@@ -193,7 +196,8 @@ local function Add(kind, data, silent, hold)
     local list = GK.char.letters
     list[#list + 1] = data
     Prune()
-    if hold then Hold(data) else Landed(data) end
+    -- in a battleground it waits like a kill's letter, and lands once you are out (GK.InBattleground)
+    if hold or GK.InBattleground() then Hold(data) else Landed(data) end
     GK.NoticeUpdate(not hold, silent)
     GK.Changed()
     return data
@@ -1661,6 +1665,24 @@ function GK.StartLetters(fresh)
     end
     GK.NoticeUpdate(false)
     LIB.On("PLAYER_REGEN_ENABLED", function() if next(holding) then Release() end end)
+    -- Into a battleground (GK.InBattleground) the letter goes out of sight. Out of one, the letters by the
+    -- icon get their while again, as they stood out of sight; what waited there lands; the letter shows
+    -- again. Only on the way in and out - on every change of zone, a letter would never fade on a long ride.
+    local inBattleground = GK.InBattleground()
+    local function PlaceChanged()
+        local now = GK.InBattleground()
+        if now == inBattleground then return end
+        inBattleground = now
+        if not now then
+            for _, L in ipairs(GK.char.letters) do
+                if landedAt[L] then Landed(L) end
+            end
+            if next(holding) then Release() end
+        end
+        GK.NoticeUpdate(false)
+    end
+    LIB.On("PLAYER_ENTERING_WORLD", PlaceChanged)
+    LIB.On("ZONE_CHANGED_NEW_AREA", PlaceChanged)
     -- An open letter follows changes to its order (taken, paid, closed).
     LIB.Listen("GRUDGEKEEPER_CHANGED", function()
         local L = index and GK.char.letters[index]

@@ -1,9 +1,11 @@
 -- Grudgekeeper - the window (/grudge, the minimap button): the Grudgekeeper's ledger, a sheet of parchment
 -- in the game's own frame (SettingsFrameTemplate, which Forever draws in bronze), as Guildhall's window is.
---   The game's tabs under the frame, one per page of GK.LedgerPages: Kill orders, Leaderboard, Grudges,
---   Marked and News, then a step apart Shame and Kudos (NotesUI.lua adds the three lists).
+--   The game's tabs under the frame, one per page of GK.LedgerPages: Kill orders, Leaderboard, Most wanted,
+--   Grudges, News and You, then a step apart Shame and Kudos (NotesUI.lua adds those two lists; Marked is
+--   a section of the kill orders page).
 --   On the left that page's table; on the right the row you clicked - an enemy's wanted poster, a
---   guildie's record (Profile.lua writes both, for the small cards and for here).
+--   guildie's record (Profile.lua writes both, for here and the Inspect tab). Whatever opens a player's
+--   card from outside the book opens it here (GK.ShowInLedger).
 -- The red arrow beside the X (the spells panel's) folds it to one page: the table, and a click on a row
 -- turns that page to the row, with Back to return. GK.db.ledgerFolded keeps the choice.
 -- Nothing here ever opens by itself: this is where you come to look.
@@ -174,6 +176,9 @@ local tab = 1
 local weekly = true          -- the leaderboard shows this week until you ask for all time
 local offset = 0             -- the first row shown, per the list as it stands
 local selected = {}          -- [tab] = the key of the row whose detail is shown
+-- A card opened from outside the book (GK.ShowInLedger) for someone no page has a row for: a select spec,
+-- shown on the right over whatever page is up, with no row marked, until a row or a tab is chosen.
+local pinned
 local turned = false         -- folded: the page shows the detail, not the list
 
 --- The book's art toned down: the generated parchment was "veldig bright" in the game. A part
@@ -544,6 +549,32 @@ local function TrackedItems(items, c)
     end
 end
 
+local NO_LOG = "No kills or deaths yet. Only the open world counts: dungeons and battlegrounds hide who is who."
+
+--- One line of your log (GK.AddLog) as a row, the i-th from the newest: a kill, an assist or a death, a
+--- click from the enemy's poster. The Grudges page's Lately and the You page list them alike.
+local function LogRow(e, i)
+    local it = { key = "l:" .. i, face = { key = e.n, c = e.c }, select = PosterSpec(e.n, e), ts = e.t, own = true,
+        sub = table.concat({ e.z or "", GK.Ago(e.t) }, e.z and " - " or "") }
+    local said = e.k == "K" and "Killed %s" or (e.k == "A" and "Helped kill %s") or "Slain by %s"
+    if GK.Classic() then it.painted = { name = said:format(GK.InClass(GK.Show(e.n), e.c)) } end
+    if e.k == "K" then
+        it.name = "Killed " .. GK.Show(e.n)
+        it.right = (e.p or 0) > 0 and ("+%d"):format(e.p) or "no points"
+    elseif e.k == "A" then
+        it.name = "Helped kill " .. GK.Show(e.n)
+        if e.w then it.sub = it.sub .. " - with " .. e.w end
+        it.right = (e.p or 0) > 0 and ("+%d"):format(e.p) or "no points"
+    else
+        -- the spell at the end of the line under the name, not in the right-hand column: there
+        -- "Judgement of Righteousness" left the name "Slain by I..." and the place "Wetlands -..."
+        -- (the owner, 2026-11-06). At the end it is what gets cut, if anything does.
+        it.name = "Slain by " .. GK.Show(e.n)
+        if e.s then it.sub = it.sub .. " - " .. e.s end
+    end
+    return it
+end
+
 local function GrudgeItems()
     local items, c = {}, GK.char
     TrackedItems(items, c)
@@ -553,8 +584,12 @@ local function GrudgeItems()
         if e.n and not lastOf[e.n] then lastOf[e.n] = e end
     end
     local foes = {}
+    -- not one you track: Tracked above has them, with the same score (one row each, 2026-11-16)
+    local tracked = c.tracked or {}
     for k, v in pairs(c.foes) do
-        if (v.k or 0) + (v.d or 0) + (v.a or 0) > 0 then foes[#foes + 1] = { key = k, f = v, name = GK.Show(k) } end
+        if (v.k or 0) + (v.d or 0) + (v.a or 0) > 0 and not tracked[k] then
+            foes[#foes + 1] = { key = k, f = v, name = GK.Show(k) }
+        end
     end
     local how = GRUDGE_ORDERS[grudgeOrder][1]
     local function Before(a, b, by)
@@ -597,30 +632,31 @@ local function GrudgeItems()
             desc = Short(e.f.l, e.f.c, e.f.r), sub = sub, score = { you, they },
             select = PosterSpec(e.key, e.f), you = you, they = they, ts = e.f.last, own = true }
     end
-    if #c.log > 0 then items[#items + 1] = { header = true, name = "Lately" } end
-    for i = 1, math.min(#c.log, LIST_MAX) do                   -- the latest: your log is newest first
-        local e = c.log[i]
-        local it ={ key = "l:" .. i, face = { key = e.n, c = e.c }, select = PosterSpec(e.n, e), ts = e.t, own = true,
-            sub = table.concat({ e.z or "", GK.Ago(e.t) }, e.z and " - " or "") }
-        local said = e.k == "K" and "Killed %s" or (e.k == "A" and "Helped kill %s") or "Slain by %s"
-        if GK.Classic() then it.painted = { name = said:format(GK.InClass(GK.Show(e.n), e.c)) } end
-        if e.k == "K" then
-            it.name = "Killed " .. GK.Show(e.n)
-            it.right = (e.p or 0) > 0 and ("+%d"):format(e.p) or "no points"
-        elseif e.k == "A" then
-            it.name = "Helped kill " .. GK.Show(e.n)
-            if e.w then it.sub = it.sub .. " - with " .. e.w end
-            it.right = (e.p or 0) > 0 and ("+%d"):format(e.p) or "no points"
-        else
-            -- the spell at the end of the line under the name, not in the right-hand column: there
-            -- "Judgement of Righteousness" left the name "Slain by I..." and the place "Wetlands -..."
-            -- (the owner, 2026-11-06). At the end it is what gets cut, if anything does.
-            it.name = "Slain by " .. GK.Show(e.n)
-            if e.s then it.sub = it.sub .. " - " .. e.s end
-        end
-        items[#items + 1] = it
-    end
-    return items, "No kills or deaths yet. Only the open world counts: dungeons and battlegrounds hide who is who."
+    -- Your log is the You page's: it stood here under Lately as well, the same 25 rows twice (2026-11-16).
+    -- Grudges is who you have a history with; what you did is on the You page.
+    return items, NO_LOG
+end
+
+--- The You page: you at the top, a click from your own card wherever you were on the page, and under you
+--- the latest of your log. "vi har ikke en egen grudgekeeper profil? vi må finne oss selv og trykke på for
+--- å se?" (the owner, 2026-11-16): your card was the kill orders page's stand-in for a page with nothing on
+--- it, your row on the leaderboard, or the Debug panel. LIST_MAX of the log, as every list here: "ikke
+--- evig pages" (the owner, 2026-11-10).
+local function YouItems()
+    local c, me = GK.char, LIB.Me()
+    local _, class = UnitClass("player")
+    class = GK.ValidClass(class)
+    local race, raceFile = UnitRace("player")
+    local p = c.points or 0
+    local items = { { key = "me", name = GK.Show(me), class = class, sub = GK.Title(p),
+        face = { key = me, c = class, rf = raceFile, sx = UnitSex("player") },
+        desc = Short(UnitLevel("player"), class, race), right = Plural(p, "point"),
+        select = { kind = "record", key = me }, own = true } }
+    -- a heading even with nothing under it: the page says what will be there, as the others' empty text
+    -- does (that text shows only on a page with no row at all, and you are always on this one)
+    items[2] = { header = true, name = #c.log > 0 and "Lately" or "No kills or deaths yet" }
+    for i = 1, math.min(#c.log, LIST_MAX) do items[#items + 1] = LogRow(c.log[i], i) end
+    return items, NO_LOG
 end
 
 -- What the news says, by kind: who, then whom. "AU" is a C whose poster's death posted it.
@@ -679,6 +715,21 @@ local function NewsItems(limit)
     -- guildie's as the leaderboard does, yours as you are (GK.InClass)
     local paint, board = GK.Classic(), GK.Store().board
     local myClass = paint and GK.ValidClass(select(2, UnitClass("player"))) or nil
+    -- the orders got, by their target and the hunter, the latest first: a fulfilled order's line opens that
+    -- order's card - who posted it, the bounty, where - and says its whole bounty, not the poster's part
+    -- (by when it was got, as the line was written then; else the hunter's latest on that target, for a
+    -- line whose time the poster's own copy of the order moved since)
+    local gotAt, got = {}, {}
+    for _, o in pairs(GK.Store().orders) do
+        if o.doneBy and o.doneAt and (o.state == "d" or o.state == "p") then
+            gotAt[o.n .. "|" .. o.doneAt] = o
+            local k = o.n .. "|" .. o.doneBy
+            if not got[k] or got[k].doneAt < o.doneAt then got[k] = o end
+        end
+    end
+    local function OrderGot(e)
+        return gotAt[tostring(e.n) .. "|" .. tostring(e.t)] or got[tostring(e.n) .. "|" .. tostring(e.who)]
+    end
     for i, newest in ipairs(feed) do
         if limit and #items >= limit then break end   -- the guild window's tab asks for a line or ten
         -- A kill is told once, where the latest of its lines stands, in the words of the killing blow's
@@ -778,8 +829,12 @@ local function NewsItems(limit)
             right = points > 0 and ("+%d"):format(points) or nil
         elseif kind == "F" or kind == "C" then
             -- the gold on the order, or nothing: an order with none said "honour" here (and one a death
-            -- posted, AU, said nothing else), a word the owner did not want for it (2026-11-14)
-            right = (e.p or 0) > 0 and GK.MoneyText(e.p) or nil
+            -- posted, AU, said nothing else), a word the owner did not want for it (2026-11-14). A fulfilled
+            -- one says all of it, backers' shares too, and opens the order's own card.
+            local o = kind == "F" and OrderGot(e)
+            local gold = o and (GK.Pot(o)) or e.p or 0
+            right = gold > 0 and GK.MoneyText(gold) or nil
+            if o then sel = PosterSpec(e.n, o, o) end
         elseif kind == "T" then
             right = GK.MoneyText(e.p or 0)
         end
@@ -889,6 +944,10 @@ GK.LedgerPages = {
     { name = "News", items = NewsItems, sortable = true, max = LIST_MAX, icon = ICONS .. "INV_Scroll_03",
       headings = { { "What happened", 48 } },
       sub = function() return "What the guild has been up to" end },
+    -- your own page, the last of the enemy's side: your card on the right, opened by itself (your row is
+    -- the first). Past the first two, so nothing opened by number moves (GK.AddLedgerPage).
+    { name = "You", items = YouItems, headings = {}, icon = ICONS .. "Ability_Warrior_BattleShout",
+      sub = function() return "Your record, and what you did lately" end },
 }
 
 --- Adds a page, after the ledger's own unless def.before names the page (by its name) to sit in front of;
@@ -979,7 +1038,7 @@ local function DetailCard(spec)
     if not spec then return nil end
     if spec.kind == "card" then return spec.make() end
     if spec.kind == "record" then
-        local d = GK.RecordCard(spec.key)
+        local d = GK.RecordCard(spec.key, spec.unit)
         if d then d.buttons = {} end            -- its one button opens the leaderboard: we are in it
         return d
     end
@@ -989,6 +1048,21 @@ local function DetailCard(spec)
         local word = STATE_WORD[o.state] or "CLOSED"
         local rows = { { "Closed", ("%s%s, %s"):format(word:sub(1, 1) .. word:sub(2):lower(),
             o.doneBy and (" by " .. GK.WhoGotThem(o.doneBy, o.helpers)) or "", GK.Ago(o.paidAt or o.doneAt)) } }
+        -- where they were got, the bounty it carried, who posted it and why: what a guildie who was not
+        -- there asks, from the news line of it ("når man trykker på den linjen i news så burde det være mer
+        -- info om hvem som la ut kill order, for hvor mye og slikt", the owner, 2026-11-16)
+        if o.doneZone and o.doneZone ~= "" and o.state ~= "x" and o.state ~= "e" then
+            rows[#rows + 1] = { "Where", o.doneZone }
+        end
+        local pot, backers = GK.Pot(o)
+        local givers = backers + ((o.reward or 0) > 0 and 1 or 0)
+        rows[#rows + 1] = { "Bounty", pot > 0 and ("%s from %s"):format(GK.Coins(pot), Plural(givers, "guildie"))
+            or "None" }
+        local byMe = LIB.IsMyStoredName(o.by)
+        local poster = byMe and "You" or GK.Show(o.by)
+        if o.auto then poster = (byMe and "Your" or (poster .. "'s")) .. " death" end
+        rows[#rows + 1] = { "Posted by", ("%s, %s"):format(poster, GK.Ago(o.t)) }
+        if o.note and o.note ~= "" then rows[#rows + 1] = { "Why", o.note } end
         -- what we owe on it: a part to each hunter, the bounty shared (GK.Owed)
         local owe = {}
         for _, e in ipairs(GK.Owed()) do
@@ -1044,7 +1118,7 @@ local MakePortrait = GK.MakePortrait
 local Refresh                -- below; the rows and buttons call it
 
 local function Select(item)
-    selected[tab] = item.key
+    selected[tab], pinned = item.key, nil
     if Folded() then turned = true end
     GK.Sound("IG_ABILITY_PAGE_TURN")
     Refresh()
@@ -2280,7 +2354,7 @@ local function SelectTab(i)
     -- "når vi bytter tabs, burde høyre page swappe til top navn i hvilken enn liste den tabben har" (the
     -- owner, 2026-11-14). Whatever opens a page on a row of its own (GK.OpenOrder, GK.ShowLedgerPage) sets
     -- it after this; the window opened again with no page asked for (GK.OpenWindow()) keeps what it had.
-    selected[i] = nil
+    selected[i], pinned = nil, nil
     -- the game's chosen look: the tab raised and joined to the frame, and not clickable again
     for j, t in ipairs(win.tabs) do
         t.selected = j == i
@@ -2480,8 +2554,12 @@ local function Build()
     win:Hide()
     if LIB.RegisterWindow then LIB.RegisterWindow(win, GK.db, "window") end
     win:HookScript("OnShow", function() Refresh() end)
-    -- a sheet opened on the ledger (a note, a kill order, the who-picker) closes with it (Letters.lua)
-    win:HookScript("OnHide", function() GK.CloseLedgerSheets() end)
+    -- a sheet opened on the ledger (a note, a kill order, the who-picker) closes with it (Letters.lua); a
+    -- card pinned from outside goes too, a look at one player: opened again, the page is as it was
+    win:HookScript("OnHide", function()
+        pinned = nil
+        GK.CloseLedgerSheets()
+    end)
     Layout()
     SelectTab(tab)
 end
@@ -2511,7 +2589,10 @@ Refresh = function()
     local all = #items                                 -- before the page's max (GK.SortItems)
     if def.sortable then items, all = GK.SortItems(items, def) end
     local list, detail = win.list, win.detail
-    local chosen = Chosen(items)
+    -- a card pinned from outside marks no row; one that has nothing to show any more lets the page choose
+    local card = pinned and DetailCard(pinned)
+    if not card then pinned = nil end
+    local chosen = not pinned and Chosen(items) or nil
     -- the list page
     list.title:SetText(def.name)
     local links = def.links and def.links() or {}
@@ -2611,7 +2692,7 @@ Refresh = function()
     detail:SetShown(showDetail)
     detail.back:SetShown(folded)
     detail.back.text:SetText("\194\171 Back to " .. def.name:lower())
-    if showDetail then FillDetail(detail, DetailCard(chosen and chosen.select), #items > 0) end
+    if showDetail then FillDetail(detail, card or DetailCard(chosen and chosen.select), #items > 0) end
 end
 
 function GK.OpenWindow(page)
@@ -2638,6 +2719,13 @@ function GK.OpenOrder(orderKey)
         -- an open order with no gold may be folded under No bounty, where it has no row to choose
         if o.state == "o" and (GK.Pot(o)) == 0 then showFree = true end
         selected[1] = "o:" .. orderKey
+        -- the turn of the list its row is on, so the row marked is in sight (Refresh finds the turn's start)
+        for n, it in ipairs(GK.LedgerPages[1].items()) do
+            if it.key == selected[1] then
+                offset = n - 1
+                break
+            end
+        end
         turned = turned or Folded()                  -- folded: the page turned to it
         Refresh()
     end
@@ -2645,6 +2733,79 @@ end
 
 function GK.ToggleWindow()
     if win and win:IsShown() then win:Hide() else GK.OpenWindow() end
+end
+
+-- Where a card opened from outside the book looks for a row about them, after the page that is up: an
+-- enemy on your Grudges, then Most wanted (an open order on them goes first of all, GK.ShowInLedger); a
+-- guildie or you on the You page (yours) and the leaderboard; a note's card on the lists it is from.
+local HOMES = { poster = { "Grudges", "Most wanted" }, record = { "You", "Leaderboard" },
+    card = { "Shame", "Kudos", "Kill orders" } }
+
+--- Is this row about whom the spec is: the same kind of card, on the same player (GK.SameName: another
+--- realm spelling, a surname one side left off). A card made by a function says whose it is with key.
+local function About(it, spec)
+    local s = it.select
+    if it.header or it.faded or not s or s.kind ~= spec.kind then return false end
+    local a, b
+    if s.kind == "poster" then a, b = s.t and s.t.key, spec.t and spec.t.key
+    else a, b = s.key, spec.key end
+    if type(a) ~= "string" or type(b) ~= "string" then return false end
+    if s.kind == "record" and LIB.IsMyStoredName(a) and LIB.IsMyStoredName(b) then return true end
+    return a == b or GK.SameName(a, b)
+end
+
+--- A page's row about them: its place in the page's items and its key, or nil.
+local function RowAbout(i, spec)
+    local def = GK.LedgerPages[i]
+    local items = def.items()
+    if def.sortable then items = GK.SortItems(items, def) end
+    for n, it in ipairs(items) do
+        if About(it, spec) then return n, it.key end
+    end
+end
+
+--- Open the ledger on someone's card: whatever opened a card of its own before - the right-click menu on a
+--- player, a kill order's pin on the map, a note's menu - opens it here, the card the ledger and the
+--- Inspect tab draw. The small card of its own said less in a note's frame ("den 'profil' ved høyreklikk er
+--- jo bare message boksen", the owner, 2026-11-16). spec: a row's select, { kind = "poster", t }, { kind =
+--- "record", key, unit } or { kind = "card", make, key }. On the row about them: on the page that is up
+--- if it has one, else an open kill order on them, else the first of their HOMES; on none, the card
+--- pinned over the page as it is. Folded, the page is turned to it.
+function GK.ShowInLedger(spec)
+    if type(spec) ~= "table" or not DetailCard(spec) then return end
+    if not win then Build() end
+    local at, n, key
+    if win:IsShown() then
+        n, key = RowAbout(tab, spec)
+        if n then at = tab end
+    end
+    local o = not at and spec.kind == "poster" and GK.OrderOn(spec.t.key, spec.t.guid)
+    if o and o.state == "o" and o.key then
+        GK.OpenOrder(o.key)            -- as a letter opens it: folded under No bounty, it is shown
+        return
+    end
+    for _, name in ipairs(not at and HOMES[spec.kind] or {}) do
+        for i, def in ipairs(GK.LedgerPages) do
+            if def.name == name then
+                n, key = RowAbout(i, spec)
+                if n then at = i end
+                break
+            end
+        end
+        if at then break end
+    end
+    if at and at ~= tab then SelectTab(at) end
+    if at then
+        selected[at], pinned = key, nil
+        offset = n - 1                 -- the turn of the list the row is on (Refresh finds its start)
+    else
+        pinned = spec
+    end
+    turned = Folded() or turned
+    win:Show()
+    win:Raise()
+    GK.Sound("IG_ABILITY_PAGE_TURN")
+    Refresh()
 end
 
 --- The ledger open at a page found by its name, on the row with this key when the page has one; the book

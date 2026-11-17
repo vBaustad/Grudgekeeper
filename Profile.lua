@@ -1,25 +1,18 @@
--- Grudgekeeper - profiles: what the guild knows about one player, on a card in the same iron frame as
--- the small letters. Two kinds:
+-- Grudgekeeper - profiles: what the guild knows about one player, as a card the ledger draws on its right
+-- page (Window.lua) and the Inspect tab on its own. Two kinds:
 --   a guildie's RECORD   title and points, kills and deaths this week and all time, place on the board,
 --                        kill streak, kill orders fulfilled and the bounties on them, nemesis, and the
 --                        latest the news has on them
 --   a WANTED poster      an enemy player: how often they killed us and whom, how often we got them,
 --                        your own score with them, where they were last seen, the order and its pot
 -- It opens from the game's right-click menu on a player (the target frame, party and raid frames, a
--- name in chat, the guild roster), from a name in the window and from a pin on the world map. Like
--- every window here, it never opens by itself.
+-- name in chat, the guild roster), from a name in the window and from a pin on the world map - each of
+-- them the ledger open on that player (GK.ShowInLedger). Like every window here, it never opens by itself.
 -- Everything on a card is what this client has heard: a guildie who never runs Grudgekeeper has no
 -- record, and kills made while you were offline count once the killer's next kill tells their total.
 local ADDON, GK = ...
 local LIB = LibStub("LibForever-1.0")
 
-local MEDIA = "Interface\\AddOns\\Grudgekeeper\\Media\\"
-local TITLE_FONT = "Fonts\\MORPHEUS.ttf"
-local TEXT_FONT = "Fonts\\FRIZQT__.TTF"
-local CLASS_ICONS = "Interface\\TargetingFrame\\UI-Classes-Circles"
-local INK = { 0.22, 0.13, 0.05 }
-local FADED = { 0.42, 0.33, 0.22 }
-local BLOOD = { 0.47, 0.06, 0.04 }
 local LABEL = "Grudgekeeper profile"
 local NAMES = 3                  -- names on a line before "and 2 more"
 local QUIET_FOR = 7 * GK.DAY     -- a guildie not heard from in this long: the card says when they were
@@ -139,8 +132,9 @@ end
 -- ---------------------------------------------------------------------------
 -- What a card says. Plain data, so the smoke test can read it without a frame:
 -- { title, name, info, lines, big, caption, seal, blood, buttons = { { text, fn } }, c, unit, key, rich }
--- title, name, info, lines, big and caption are the card as the small profile card and the Inspect tab
--- draw it: a line that starts "Label: " is a label and its value there, in two columns.
+-- title, name, info, lines, big and caption are the card as a page without room for rich draws it (the
+-- Inspect tab; a note's card, which has no rich): a line that starts "Label: " is a label and its value
+-- there, in two columns.
 -- rich is the same card for a page with room for it, the ledger's (Window.lua, FillRich), as previewed
 -- with the owner (2026-11-06): every number in a tile with a name and a line that says something, then
 -- sections of facts.
@@ -565,147 +559,29 @@ function GK.HasRecord(key)
 end
 
 -- ---------------------------------------------------------------------------
--- The card
+-- The card: on the ledger's right page
 -- ---------------------------------------------------------------------------
-local card            -- the frame, made on first use
-local showing         -- { poster = t } or { record = key, unit = unit } or { make = fn }
-
-local function Ink(fs, colour, font, size)
-    GK.SetFont(fs, font, size)                   -- a family: names in Cyrillic too (Core.lua)
-    fs:SetTextColor(colour[1], colour[2], colour[3])
-    fs:SetShadowOffset(0, 0)
-end
-
-local function Build()
-    local f = GK.MakeNoteFrame("GrudgekeeperProfile")
-    f.title = f:CreateFontString(nil, "ARTWORK")
-    Ink(f.title, BLOOD, TITLE_FONT, 22)
-    f.title:SetPoint("TOPLEFT", 172, -60)
-    f.name = f:CreateFontString(nil, "ARTWORK")
-    Ink(f.name, INK, TITLE_FONT, 17)
-    f.name:SetPoint("TOPLEFT", f.title, "BOTTOMLEFT", 0, -4)
-    f.info = f:CreateFontString(nil, "ARTWORK")
-    Ink(f.info, FADED, TEXT_FONT, 11)
-    f.info:SetPoint("TOPLEFT", f.name, "BOTTOMLEFT", 0, -3)
-    f.body = f:CreateFontString(nil, "ARTWORK")
-    Ink(f.body, INK, TEXT_FONT, 12)
-    f.body:SetPoint("TOPLEFT", f.info, "BOTTOMLEFT", 0, -10)
-    f.body:SetWidth(320)
-    f.body:SetJustifyH("LEFT")
-    f.body:SetSpacing(3)
-    -- Under the portrait, the card's one number: points, the bounty, or how often they killed us.
-    f.big = f:CreateFontString(nil, "ARTWORK")
-    Ink(f.big, BLOOD, TITLE_FONT, 30)
-    f.big:SetPoint("TOP", f.disc, "BOTTOM", 0, -12)
-    f.caption = f:CreateFontString(nil, "ARTWORK")
-    Ink(f.caption, INK, TEXT_FONT, 11)
-    f.caption:SetPoint("TOP", f.big, "BOTTOM", 0, -2)
-    -- WANTED wears the red seal from their nameplate, top right
-    f.seal = f:CreateTexture(nil, "OVERLAY")
-    f.seal:SetSize(54, 54)
-    f.seal:SetPoint("TOPRIGHT", -46, -54)
-    local sign = f:CreateFontString(nil, "ARTWORK")
-    Ink(sign, INK, TITLE_FONT, 16)
-    sign:SetPoint("BOTTOMRIGHT", -50, 54)
-    sign:SetText("- the Grudgekeeper")
-    f.buttons = {}
-    for i = 1, 2 do
-        local b = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-        b:SetSize(140, 22)
-        if i == 1 then b:SetPoint("BOTTOMLEFT", 46, 50) else b:SetPoint("LEFT", f.buttons[1], "RIGHT", 6, 0) end
-        f.buttons[i] = b
-    end
-    -- The game's own X, as on the letter in the same frame; our own Hide, so closing works in combat too.
-    GK.MakeGameCloseButton(f, function() f:Hide() end)
-    if LIB.RegisterWindow then LIB.RegisterWindow(f, GK.db, "profile") end
-    card = f
-end
-
---- Their race's portrait when we know race and sex, with their class on its shoulder; else their class
---- crest; else the Grudgekeeper himself. Never their own face, even with them targeted: the same player
---- looked one way here and another everywhere else (GK.MakePortrait's note).
-local function Portrait(f, d)
-    local coords = d.c and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[d.c]
-    local kind = GK.SetPortrait(f.portrait, d)
-    if kind == "seal" then
-        f.portrait:SetTexture(MEDIA .. "portrait")
-        f.portrait:SetTexCoord(0, 1, 0, 1)
-    end
-    local badge = kind == "race" and coords
-    f.badge:SetShown(badge and true or false)
-    f.badgeRing:SetShown(badge and true or false)
-    if badge then
-        f.badge:SetTexture(CLASS_ICONS)
-        f.badge:SetTexCoord(unpack(coords))
-    end
-end
-
-local Refill
-
-local function Fill(d)
-    local f = card
-    f.title:SetText(d.title or "")
-    f.name:SetText(d.name or "")
-    f.info:SetText(d.info or "")
-    f.body:SetText(table.concat(d.lines, "\n"))
-    f.big:SetText(d.big or "")
-    f.caption:SetText(d.caption or "")
-    f.seal:SetShown(d.seal ~= nil)
-    if d.seal then f.seal:SetTexture(MEDIA .. d.seal) end
-    f.blood:SetShown(d.blood == true)
-    Portrait(f, d)
-    for i, b in ipairs(f.buttons) do
-        local spec = d.buttons[i]
-        b:SetShown(spec ~= nil)
-        if spec then
-            b:SetText(spec[1])
-            b:SetScript("OnClick", function()
-                spec[2]()
-                Refill()
-            end)
-        end
-    end
-end
-
-Refill = function()
-    if not (card and card:IsShown() and showing) then return end
-    local d
-    if showing.make then d = showing.make()
-    elseif showing.poster then d = GK.PosterCard(showing.poster)
-    else d = GK.RecordCard(showing.record, showing.unit) end
-    if d then Fill(d) else card:Hide() end
-end
-
-local function Open(d)
-    if not card then Build() end
-    Fill(d)
-    card:Show()
-    card:Raise()
-    GK.Sound("IG_ABILITY_PAGE_TURN")
-end
+-- These opened a small card of their own, in a note's frame, with less on it than the ledger's page and
+-- the Inspect tab drew from the same card tables ("den 'profil' ved høyreklikk er jo bare message
+-- boksen", the owner, 2026-11-16). Now each opens the ledger on that player (GK.ShowInLedger, Window.lua).
 
 --- The wanted poster for an enemy player. t = { key, guid, c, r, l, unit }.
 function GK.ShowPoster(t)
     if not (t and t.key) then return end
-    showing = { poster = t }
-    Open(GK.PosterCard(t))
+    GK.ShowInLedger({ kind = "poster", t = t })
 end
 
---- A guildie's record (or yours). unit: the unit it was opened from, for their face.
+--- A guildie's record (or yours). unit: the unit it was opened from, if any.
 function GK.ShowRecord(key, unit)
-    local d = GK.RecordCard(key, unit)
-    if not d then return end
-    showing = { record = d.key, unit = unit }
-    Open(d)
+    if type(key) ~= "string" then return end
+    GK.ShowInLedger({ kind = "record", key = key, unit = unit })
 end
 
 --- Any other card, for a file that builds its own: make() returns a card table (see above) and is called
---- again whenever the card refills. Nothing opens if make() has nothing to show.
-function GK.ShowCard(make)
-    local d = make()
-    if not d then return end
-    showing = { make = make }
-    Open(d)
+--- again whenever the page refills; key: whose card it is, so the ledger opens on their row where a page
+--- has one (GK.NotesItems' rows say theirs). Nothing opens if make() has nothing to show.
+function GK.ShowCard(make, key)
+    GK.ShowInLedger({ kind = "card", make = make, key = key })
 end
 
 -- ---------------------------------------------------------------------------
@@ -783,7 +659,6 @@ local function OnFriendlyMenu(_, root, ctx)
 end
 
 function GK.StartProfiles()
-    LIB.Listen("GRUDGEKEEPER_CHANGED", Refill)
     if not (Menu and Menu.ModifyMenu) then return end
     -- pcall: a menu tag this client doesn't have must not stop the others
     pcall(Menu.ModifyMenu, "MENU_UNIT_ENEMY_PLAYER", OnEnemyMenu)

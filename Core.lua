@@ -55,7 +55,7 @@ local defaults = {
     spreeGuild = "toast",    -- a guildie's spree milestone
     spreeEnded = "toast",    -- a spree of ours or a guildie's that an enemy ended
     spreeTormentor = "toast", -- one of the guild put an end to a tormentor
-    orderDone = "toast",     -- a guildie got the target of a kill order
+    orderDone = "toast",     -- a guildie got the target of a kill order; yours is a splash unless "off" (Announce.lua)
     announceWhenMine = "always",       -- when yours may come: "always", "noCombat", "noCombatInInstance" or "noInstance"
     announceWhenGuild = "noCombat",    -- the same for a guildie's; one held back waits, then comes in order
     announceTime = 7,                  -- how many seconds a toast shows; a splash half of it (Announce.lua)
@@ -457,6 +457,17 @@ function GK.InWorld()
         worldNow = not inside
     end
     return worldNow
+end
+
+--- A battleground or an arena, where Grudgekeeper sleeps: "grudgekeeper kan IKKE være aktiv i
+--- battlegrounds" (the owner, 2026-11-15). Nothing is counted there (GK.InWorld says so already), and
+--- nothing is told: no warning, announcement, letter or letter icon, no Shame alert for the battleground's
+--- raid. What the guild sends meanwhile is kept, and told once you are out. The instance type is the
+--- client's own test for one (Blizzard_Game/Vanilla/EventImplementation.lua). Asked each time, never
+--- cached: Announce.lua and Letters.lua ask on the very event that changes it, whichever handler runs first.
+function GK.InBattleground()
+    local inside, kind = IsInInstance()
+    return (inside and (kind == "pvp" or kind == "arena")) and true or false
 end
 
 -- Spree tiers: the kill that makes a spree one of these numbers is a milestone. Grudgebound comes again at

@@ -435,6 +435,24 @@ local function Spotted(order, s)
     end
 end
 
+--- An order just posted on someone we saw a moment ago - our target, or whoever killed us for an order a
+--- death posts: where they were goes with it, as any sighting of an order's target does, so the guild's
+--- letter says the zone, the order's row and card say where they were seen, and the map has the pin for its
+--- fifteen minutes. "når man poster en kill order bør det stå zone og spilleren bør vises på map med marker
+--- en liten tid (samme som når noen ser en på kill list)" (the owner, 2026-11-16). Only a look in the last
+--- SHARE_GAP: whoever hears a sighting takes it as now, and the spot is where we stand - near them only
+--- while they are in sight. No "is near!" for an order we posted ourselves this moment. True when we had a
+--- look to go by.
+function GK.SightOnPost(order)
+    if not (order and order.state == "o" and order.key) then return false end
+    local s = GK.Seen(order.n, order.guid)
+    local now = GetTime()
+    if not s or now - s.t > SHARE_GAP then return false end
+    alerted[order.key] = now
+    Spotted(order, s)
+    return true
+end
+
 --- Look at a unit: remember an enemy player, mark their plate, warn about an order on them.
 --- Runs at every enemy nameplate, mouseover and target, so it reads straight into the record it
 --- keeps for them: no table per look, and the race is cleaned only when it isn't the one we have.

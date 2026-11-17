@@ -60,6 +60,7 @@ end
 --- Who is in the group now, and who just left it. Each member is read once, when they first show up.
 function GK.GroupChanged()
     if not (GK.db and GK.ReadPlayer) then return end      -- before login: nobody to read yet
+    if GK.InBattleground() then return end     -- a battleground's raid is not your group (GK.InBattleground)
     local was = {}
     for key, e in pairs(recent) do
         if e.now then was[key] = true end

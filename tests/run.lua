@@ -1337,11 +1337,11 @@ end
 -- and Most wanted say the rest ("most wanted og kill orders holder kanskje?", the owner).
 test("the list pages: Shame and Kudos on the right, none with links; Marked has none", function()
     local GK = bootUI()
-    eq(#GK.LedgerPages, 7)
-    local want = { { "Shame", "right", 6 }, { "Kudos", "right", 7 } }
+    eq(#GK.LedgerPages, 8)
+    local want = { { "Shame", "right", 7 }, { "Kudos", "right", 8 } }
     local order = {}
     for i, page in ipairs(GK.LedgerPages) do order[i] = page.name end
-    eq(table.concat(order, "|"), "Kill orders|Leaderboard|Most wanted|Grudges|News|Shame|Kudos")
+    eq(table.concat(order, "|"), "Kill orders|Leaderboard|Most wanted|Grudges|News|You|Shame|Kudos")
     for _, w in ipairs(want) do
         local page = GK.LedgerPages[w[3]]
         eq(page.name, w[1])
@@ -1350,8 +1350,8 @@ test("the list pages: Shame and Kudos on the right, none with links; Marked has 
         eq(page.links, nil, "the list is the tab")
         eq(#page.headings, 2)
     end
-    for i = 1, 5 do eq(GK.LedgerPages[i].side, nil) end
-    eq(GK.LedgerPages[6].headings[1][1], "Player")
+    for i = 1, 6 do eq(GK.LedgerPages[i].side, nil) end
+    eq(GK.LedgerPages[7].headings[1][1], "Player")
     eq(GK.db.notesList, nil, "the list is not a setting any more")
 end)
 
@@ -1361,9 +1361,9 @@ test("GK.OpenNotes opens the page of the list", function()
     GK.OpenNotes("kos")
     eq(W2.opened, 1, "Marked is on the kill orders page")
     GK.OpenNotes("watch")
-    eq(W2.opened, 6)
-    GK.OpenNotes("kudos")
     eq(W2.opened, 7)
+    GK.OpenNotes("kudos")
+    eq(W2.opened, 8)
     GK.OpenNotes("names")
     eq(W2.opened, 1, "the nice names' page is gone: the kill orders page, as for any unknown list")
     GK.OpenNotes("somewhere")
@@ -1382,10 +1382,10 @@ test("/grudge shame and /grudge watch open the same page", function()
     local GK = bootUI()
     local W2 = require("wow_mock")
     GK.RunNotesCommand("shame", "")
-    eq(W2.opened, 6)
+    eq(W2.opened, 7)
     GK.RunNotesCommand("kudos", "")
     GK.RunNotesCommand("watch", "")
-    eq(W2.opened, 6)
+    eq(W2.opened, 7)
     eq(GK.ParseNotesCommand("shame", "Gank Ster", nil, function() return false end).list, "watch")
 end)
 
@@ -1423,8 +1423,8 @@ test("the page's rows: newest first, with tags, the newest note, the score and m
     local rows = GK.NotesItems("watch")
     eq(#rows, 2)
     eq(rows[1].name, "Older Foe", "the newest news first")
-    eq(GK.LedgerPages[6].sub(rows), "2 players on Shame")
-    eq(#GK.LedgerPages[6].items(), 2)
+    eq(GK.LedgerPages[7].sub(rows), "2 players on Shame")
+    eq(#GK.LedgerPages[7].items(), 2)
 end)
 
 test("a noted player's card: title, who put them where, the notes with their votes, the score", function()
@@ -1688,11 +1688,11 @@ test("/grudge: our subcommands act, everything else is Core's, and the help grow
     slash("notes")
     eq(W2.opened, 1, "the kill orders page, where Marked is")
     slash("watch")
-    eq(W2.opened, 6)
-    slash("kudos")
     eq(W2.opened, 7)
+    slash("kudos")
+    eq(W2.opened, 8)
     slash("watch Nina Nice")
-    eq(W2.opened, 7, "with a name, watch adds")
+    eq(W2.opened, 8, "with a name, watch adds")
     eq(GK.MyMark(NICE), "watch")
     slash("note")
     assert(W.printed[#W.printed]:find("Usage: /grudge note"), W.printed[#W.printed])
@@ -1893,6 +1893,7 @@ test("the right-click menu: a submenu for any player but a mob or myself, with t
     assert(kid(sub, "Their notes"))
     kid(sub, "Their notes").fn()
     eq(W2.card().key, GANK)
+    eq(W2.cardKey, GANK, "whose card it is, so the ledger opens on their row")
     -- not a mob, not me, not when the setting is off
     W2.mobs.mouseover = true
     root = fakeNode("root")
@@ -2412,22 +2413,30 @@ test("fulfilled: who got them as a row says it - you as you, first names for a s
         "Kriger and Umulius", "first names")
 end)
 
-test("fulfilled: a guildie's F says so once, to whatever tells it - not ours, not one said again", function()
+-- Ours is told too since 2026-11-16, as ours (mine): the hunter had the letter alone ("dukker det opp en
+-- splash eller noe?", the owner).
+test("fulfilled: an order got says so once, to whatever tells it - ours as ours, not one said again", function()
     local GK, LIB = bootOrders()
     local told = {}
-    LIB.Listen("GK_ORDER_DONE", function(who, helpers, target, pot) told[#told + 1] = { who, helpers, target, pot } end)
+    LIB.Listen("GK_ORDER_DONE", function(who, helpers, target, pot, mine)
+        told[#told + 1] = { who, helpers, target, pot, mine }
+    end)
     local o = kariOrders(GK, "Aaa", "Bbb")
     GK.ReceiveForTest("Grudgekeeper", msg("F", 1, KARI, 101, "Hillsbrad Foothills", ""), "GUILD", EDVARD)
     eq(#told, 1)
     eq(told[1][1], EDVARD, "who got them")
     eq(told[1][3], "Aaa-Realm", "whom")
     eq(told[1][4], 2000, "the bounty")
+    eq(told[1][5], nil, "a guildie's, without us: not ours")
     GK.ReceiveForTest("Grudgekeeper", msg("F", 1, KARI, 101, "Hillsbrad Foothills", ""), "GUILD", EDVARD)
     eq(#told, 1, "said again: nothing")
-    -- our own kill: GK.Fulfil closes it, and the F that comes back to us finds it closed
+    -- our own kill: GK.Fulfil closes it and tells it, as ours; the F that comes back to us finds it closed
     GK.Fulfil(o.Bbb, "Arathi Highlands")
+    eq(#told, 2, "ours: told")
+    eq(told[2][1], ME, "...by us")
+    eq(told[2][5], true, "...as ours")
     GK.ReceiveForTest("Grudgekeeper", msg("F", 1, KARI, 102, "Arathi Highlands", ""), "GUILD", ME)
-    eq(#told, 1, "ours: nothing")
+    eq(#told, 2, "ours said again: nothing")
 end)
 
 -- ---------------------------------------------------------------------------

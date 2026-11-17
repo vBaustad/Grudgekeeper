@@ -322,8 +322,6 @@ local function Restore()
     end
     GK.InvalidateOrders()
     GK.CloseLetters()
-    local card = _G.GrudgekeeperProfile
-    if card and card:IsShown() then card:Hide() end
     local win = _G.GrudgekeeperFrame
     if win and win:IsShown() then win:Hide() end
     GK.NoticeUpdate(false)
@@ -370,8 +368,6 @@ local function ClearScreen()
     local win = _G.GrudgekeeperFrame
     if win and win:IsShown() then win:Hide() end
     GK.CloseLetters()
-    local card = _G.GrudgekeeperProfile
-    if card and card:IsShown() then card:Hide() end
     if GameTooltip then GameTooltip:Hide() end
 end
 
@@ -400,10 +396,12 @@ local SHOTS = {
         GK.ShowLetter(cast.titleLetter)
         return { _G.GrudgekeeperNote }
     end },
+    -- the poster as the right-click menu opens it: the ledger on them (GK.ShowInLedger)
     { "poster", "Wanted poster", function()
         GK.ShowPoster(cast.poster)
-        return { _G.GrudgekeeperProfile }
+        return GK.LedgerFrames()
     end },
+    { "you", "You", Ledger("You", nil, false) },
 }
 GK.shotList = SHOTS          -- for tools/smoke_grudgekeeper.py
 

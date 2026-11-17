@@ -5,10 +5,13 @@
 -- An assist: the same event, the blow landed by someone in your group (or their pet) on an enemy player
 -- you hurt in that fight. The game keeps the combat log from us, but its damage meter says who hit whom
 -- once the fight is over, so the kill waits for the end of combat and the meter is asked then: any
--- damage of yours (or your pet's) on the victim makes it an assist, none and it is not one. The meter
--- holds you and your group only, never a stranger (/grudge debug meter, 2026-11-11), so a kill a mob or
--- a stranger finished has no killer in your group and is no assist. Taken, with fixes, from dakristia's
--- vBaustad/Grudgekeeper#2.
+-- damage of yours (or your pet's) on the victim makes it an assist, none and it is not one. Taken, with
+-- fixes, from dakristia's vBaustad/Grudgekeeper#2.
+-- An enemy player a stranger, a guard or a mob finished: no PARTY_KILL names a killer of ours, but
+-- UNIT_DIED (or PLAYER_TARGET_DIED, for our target) says they died, and the meter holds our own damage on
+-- them whoever landed the blow - it holds you and your group only, never the stranger (/grudge debug
+-- meter, 2026-11-11). Any damage of ours makes it an assist too, its helper unknown ("jeg hjalp akkurat
+-- noen å drepe en horde men synes ikke i news? det var randoms", the owner, 2026-11-15).
 -- A death: the game's death recap names whoever landed the blow (the "You died" chat line carries its
 -- id), and the damage meter is asked when the recap is empty. It counts as a PvP death only when that
 -- name belongs to an enemy player we saw - a name alone can't tell a rogue from a murloc.
@@ -23,11 +26,25 @@ local lastAssist = "none this session"
 local pending = {}      -- [guid] = { v, at }: a groupmate's kill waiting for the meter to be readable
 local PENDING_FOR = 120 -- seconds a kill may wait for a readable meter before it is dropped
 local LOOK_BACK = 3     -- fights before "Current" asked too, when another one began before the meter was read
+-- A death no kill of ours named (GK.OnUnitDied): it waits DIED_WAIT for a PARTY_KILL that may still come,
+-- and a death a PARTY_KILL of ours or the group's took is left alone for SETTLED_FOR - UNIT_DIED may come
+-- after the assist was already settled. At most MAX_PENDING wait at once, however big the fight.
+local settled = {}      -- [guid] = GetTime() of our or a groupmate's PARTY_KILL on them
+local DIED_WAIT, SETTLED_FOR, MAX_PENDING = 1, 30, 40
 -- When the fight we are in began, at PLAYER_REGEN_DISABLED. A guildie who fell after that fell in this
 -- fight, and is avenged only in a later one (GK.Avenged): one of the group dying first made every kill
 -- and assist on their killer worth a point more, for the whole group - "trenger en combat reset i mellom"
 -- (the owner, 2026-11-12).
 local fightStart = time()
+-- Whether we are in a fight, and when the last one ended (GetTime()); and whether the death being resolved
+-- came in one. A death out of a fight - lava, a fall, drowning - has no enemy to it but its blow: the death
+-- recap keeps the last hits before a death however old they are, and the damage meter's latest fight is an
+-- older one. The owner killed two, jumped in lava three or four minutes later for a quest and got "spree
+-- ended" (2026-11-16): by elimination, the recap still held the earlier enemy's hits - not the meter, whose
+-- player rows went unread until MeterSource (not seen: the recap itself). Dying ends the fight a moment before the game says we died, so a fight that
+-- ended FIGHT_GRACE before still counts as the one we died in.
+local inFight, fightEndedAt, diedInFight = false, nil, false
+local FIGHT_GRACE = 5
 
 function GK.LastDeathDebug() return lastDeath end
 function GK.LastAssistDebug() return lastAssist end
@@ -274,11 +291,12 @@ local function Settle()
             end
         else
             pending[guid] = nil
+            local with = v.with or "someone outside your group"
             if dmg > 0 then
-                lastAssist = ("%s, with %s (%d damage from you)"):format(v.key, v.with, dmg)
+                lastAssist = ("%s, with %s (%d damage from you)"):format(v.key, with, dmg)
                 GK.RecordAssist(v)
             else
-                lastAssist = ("%s got %s, but the meter shows no damage from you"):format(v.with, v.key)
+                lastAssist = ("%s got %s, but the meter shows no damage from you"):format(with, v.key)
             end
         end
     end
@@ -296,12 +314,18 @@ function GK.OnPartyKill(attacker, target)
     if Secret(attacker) or Secret(target) or type(target) ~= "string" then return end
     if not target:find("^Player%-") or not GK.InWorld() then return end
     if Mine(attacker) then
+        settled[target] = GetTime()
+        -- our own blow just after their death was taken for a stranger's: a kill only. A groupmate's assist
+        -- waiting on them stays - it is from an earlier death of theirs (tests/run.lua's avenge case).
+        local p = pending[target]
+        if p and not p.v.with then pending[target] = nil end
         local v = Victim(target)
         if v then GK.RecordKill(v) end
         return
     end
     local with = Groupmate(attacker)
     if not with then return end
+    settled[target] = GetTime()
     local v = Victim(target)
     if not v then
         lastAssist = ("%s got a kill, but not of an enemy player we count"):format(with)
@@ -335,6 +359,21 @@ local function FromRecap(id)
     return blow.sourceName, (not Secret(spell) and type(spell) == "string") and spell or nil
 end
 
+--- Whose a damage meter row's damage is: the unit it names - a player, or a pet's owner, as Blizzard's meter
+--- lists a pet: its name in creatureName and its unit in unitName (Blizzard_DamageMeter's SpellEntry) - else
+--- the creature. Both are always strings, "" for none, so `creatureName or unitName` took the "" of a
+--- player's row and read no one: in the game a player's row is "from  / Critical Mango" (VERIFY.md, the
+--- meter's (a), 2026-11-11). A hunter's pet that landed the blow went to nobody (a guildie's report,
+--- 2026-11-17). Not seen in the game: that a pet's row names its owner in unitName.
+local function MeterSource(sp)
+    local function Named(v)
+        if type(v) == "string" and not Secret(v) and v ~= "" then return v end
+        return nil
+    end
+    local d = type(sp) == "table" and sp.combatSpellDetails
+    return (type(d) == "table" and Named(d.unitName)) or (type(sp) == "table" and Named(sp.creatureName)) or nil
+end
+
 --- The same from the game's damage meter: the source of the deadly hit. Readable only out of combat,
 --- which being dead is.
 local function FromMeter()
@@ -346,12 +385,66 @@ local function FromMeter()
     if not ok or type(src) ~= "table" or Secret(src) or type(src.combatSpells) ~= "table" then return nil end
     for _, sp in ipairs(src.combatSpells) do
         if type(sp) == "table" and not Secret(sp.isDeadly) and sp.isDeadly then
-            local d = sp.combatSpellDetails
-            local who = sp.creatureName or (type(d) == "table" and d.unitName)
-            if type(who) == "string" and not Secret(who) and who ~= "" then return who end
+            local who = MeterSource(sp)
+            if who then return who end
         end
     end
     return nil
+end
+
+--- When a mob, a guard or a fall landed the blow: the enemy player we saw who did the most of the damage in
+--- these rows ({ name, amount, spell }), their sighting and the spell of their biggest hit. Some let a mob
+--- finish you so the death costs durability ("hvis du blir last hittet av mob isteden ... burde vi at least
+--- tracke at de gjorde det/bidro", the owner, 2026-11-15). A name several enemies share counts for none of
+--- them, as for a blow (GK.SeenByName). nil when no enemy player we saw is in the rows.
+local function Hurter(rows)
+    local total, record, top, spellOf, best = {}, {}, {}, {}, nil
+    for _, r in ipairs(rows or {}) do
+        local s = GK.SeenByName(r[1])
+        if s then
+            total[s.key] = (total[s.key] or 0) + r[2]
+            record[s.key] = s
+            if r[2] > (top[s.key] or -1) then top[s.key], spellOf[s.key] = r[2], r[3] end
+            if not best or total[s.key] > total[best] then best = s.key end
+        end
+    end
+    if best then return record[best], spellOf[best] end
+end
+
+--- Every hit the death recap holds, as Hurter's rows; nil when it can't be read.
+local function RecapRows(id)
+    if not (C_DeathRecap and C_DeathRecap.GetRecapEvents) then return nil end
+    local ok, events = pcall(C_DeathRecap.GetRecapEvents, id)
+    if not ok or type(events) ~= "table" or Secret(events) then return nil end
+    local rows = {}
+    for _, e in ipairs(events) do
+        local who = type(e) == "table" and e.sourceName
+        if type(who) == "string" and not Secret(who) and who ~= "" then
+            -- a hit with no amount the recap gives us still says they hit us
+            local amount = (not Secret(e.amount) and tonumber(e.amount)) or 1
+            local spell = (not Secret(e.spellName) and type(e.spellName) == "string") and e.spellName or nil
+            if amount > 0 then rows[#rows + 1] = { who, amount, spell } end
+        end
+    end
+    return rows
+end
+
+--- Every source of the damage we took in the last fight, by the meter, as Hurter's rows: the recap holds a
+--- few last hits only, and the enemy may have stood back while the mob finished us. nil when unreadable.
+local function MeterRows()
+    local meter = C_DamageMeter
+    local types, sessions = Enum and Enum.DamageMeterType, Enum and Enum.DamageMeterSessionType
+    if type(meter) ~= "table" or not meter.GetCombatSessionSourceFromType or not (types and sessions) then return nil end
+    if InCombatLockdown() then return nil end
+    local ok, src = pcall(meter.GetCombatSessionSourceFromType, sessions.Current, types.DamageTaken, UnitGUID("player"))
+    if not ok or type(src) ~= "table" or Secret(src) or type(src.combatSpells) ~= "table" then return nil end
+    local rows = {}
+    for _, sp in ipairs(src.combatSpells) do
+        local who = MeterSource(sp)
+        local amount = type(sp) == "table" and not Secret(sp.totalAmount) and tonumber(sp.totalAmount)
+        if who and amount and amount > 0 then rows[#rows + 1] = { who, amount } end
+    end
+    return rows
 end
 
 --- /grudge debug meter: what the game's damage meter holds of the damage enemies took in the last fight,
@@ -423,6 +516,23 @@ function GK.MeterProbe()
             end
         end
     end
+    -- and what hit us in the last fight, as a death is read (MeterRows): after a death to a hunter's pet,
+    -- whether the pet's row names its owner in unitName (a guildie's report, 2026-11-17)
+    if types.DamageTaken and meter.GetCombatSessionSourceFromType then
+        local ok, src = pcall(meter.GetCombatSessionSourceFromType, sessions.Current, types.DamageTaken,
+            UnitGUID("player"))
+        if not ok or type(src) ~= "table" or Secret(src) or type(src.combatSpells) ~= "table" then
+            print(("%s meter, what hit you: nothing readable (%s)"):format(GK.TAG, ok and S(src) or tostring(src)))
+        else
+            print(("%s meter, what hit you in the last fight: %d rows"):format(GK.TAG, #src.combatSpells))
+            for j, sp in ipairs(src.combatSpells) do
+                if j > 6 then break end
+                local u = type(sp.combatSpellDetails) == "table" and sp.combatSpellDetails or {}
+                print(("  %s from %s / %s, pet %s, mob %s, deadly %s - read as %s"):format(S(sp.totalAmount),
+                    S(sp.creatureName), S(u.unitName), S(u.isPet), S(u.isMob), S(sp.isDeadly), S(MeterSource(sp))))
+            end
+        end
+    end
 end
 
 --- One death of ours to an enemy player. v = { key, guid, c, r, l, spell }
@@ -467,14 +577,37 @@ function GK.ResolveDeath()
     local how = "the death recap"
     local name, spell = FromRecap(id)
     if not name and id then name, spell = FromRecap(nil) end
-    if not name then
+    -- the meter's latest fight is this death's only when we died in a fight
+    if not name and diedInFight then
         name, how = FromMeter(), "the damage meter"
     end
+    local s, why
+    if name then s, why = GK.SeenByName(name) end
+    -- The blow was a mob's, a guard's or a fall's: the enemy player who did the most of the damage is who
+    -- we died to. Not when the blow was a name several enemies share - then it was one of them. Not out of a
+    -- fight: lava or a fall with no fight going had no enemy in it.
+    if not s and why ~= "several" and diedInFight then
+        local e, espell = Hurter(RecapRows(id))
+        local ehow = "the death recap"
+        if not e and id then e, espell = Hurter(RecapRows(nil)) end
+        if not e then e, espell, ehow = Hurter(MeterRows()), nil, "the damage meter" end
+        if e then
+            lastDeath = ("%s, by %s - the blow was %s"):format(e.key, ehow,
+                name and (GK.Clean(name, 40) or "?") .. "'s" or "nobody's we know")
+            GK.RecordDeath({ key = e.key, guid = e.guid, c = e.c, r = e.r, l = e.l, spell = GK.Clean(espell, 40) })
+            return
+        end
+    end
     if not name then
-        lastDeath = "neither the death recap nor the damage meter named anyone"
+        lastDeath = diedInFight and "neither the death recap nor the damage meter named anyone"
+            or "out of a fight (lava, a fall?), and the recap named no one: not counted"
         return
     end
-    local s, why = GK.SeenByName(name)
+    if not s and not diedInFight then
+        lastDeath = ("%s, by %s - out of a fight, so only the blow counts, and it was no enemy player we saw")
+            :format(GK.Clean(name, 40) or "?", how)
+        return
+    end
     if not s then
         lastDeath = ("%s, by %s - %s, so not counted"):format(GK.Clean(name, 40) or "?", how,
             why == "several" and "several enemy players we saw go by that name" or "not an enemy player we saw")
@@ -484,10 +617,42 @@ function GK.ResolveDeath()
     GK.RecordDeath({ key = s.key, guid = s.guid, c = s.c, r = s.r, l = s.l, spell = GK.Clean(spell, 40) })
 end
 
+--- UNIT_DIED (a GUID) or PLAYER_TARGET_DIED (our target's): an enemy player died, perhaps to a stranger, a
+--- guard or a mob. A moment later, if no PARTY_KILL of ours or the group's took it, it waits for the meter
+--- as a groupmate's kill does: our damage on them makes it an assist, with nobody named beside us.
+function GK.OnUnitDied(guid)
+    if Secret(guid) or type(guid) ~= "string" or not guid:find("^Player%-") or Mine(guid) then return end
+    if not GK.InWorld() or pending[guid] then return end
+    C_Timer.After(DIED_WAIT, function()
+        local now = GetTime()
+        for g, at in pairs(settled) do
+            if now - at >= SETTLED_FOR then settled[g] = nil end
+        end
+        if settled[guid] or pending[guid] then return end
+        local n = 0
+        for _ in pairs(pending) do n = n + 1 end
+        if n >= MAX_PENDING then return end
+        local v = Victim(guid)
+        if not v then return end
+        v.fight = fightStart
+        pending[guid] = { v = v, at = now }
+        settled[guid] = now         -- once: the same death heard again later is not a second assist
+        lastAssist = ("%s died, not to you or your group: waiting for the fight to end"):format(v.key)
+        if not InCombatLockdown() then SettleSoon() end
+    end)
+end
+
 function GK.StartKills()
     LIB.On("PARTY_KILL", function(attacker, target) GK.OnPartyKill(attacker, target) end)
-    LIB.On("PLAYER_REGEN_ENABLED", SettleSoon)
-    LIB.On("PLAYER_REGEN_DISABLED", function() fightStart = time() end)
+    LIB.On("UNIT_DIED", function(guid) GK.OnUnitDied(guid) end)
+    LIB.On("PLAYER_TARGET_DIED", function() GK.OnUnitDied(UnitGUID("target")) end)
+    LIB.On("PLAYER_REGEN_ENABLED", function()
+        inFight, fightEndedAt = false, GetTime()
+        SettleSoon()
+    end)
+    LIB.On("PLAYER_REGEN_DISABLED", function()
+        fightStart, inFight = time(), true
+    end)
     LIB.On("CHAT_MSG_SYSTEM", function(text)
         if type(text) ~= "string" or Secret(text) then return end
         local id = text:match("|Hdeath:(%d+)|h")
@@ -496,6 +661,11 @@ function GK.StartKills()
     LIB.On("PLAYER_DEAD", function()
         if deathPending then return end
         deathPending = true
+        -- in a fight, or one that ended a moment ago: dying ends it (FIGHT_GRACE). Read now, not when the
+        -- recap is: by then the fight has ended either way.
+        diedInFight = inFight or InCombatLockdown() or UnitAffectingCombat("player")
+            or (fightEndedAt ~= nil and GetTime() - fightEndedAt <= FIGHT_GRACE)
+        diedInFight = diedInFight and true or false
         -- The recap, and the chat line that names it, land just after the death itself.
         C_Timer.After(1.5, GK.ResolveDeath)
     end)

@@ -43,8 +43,6 @@ local function Restore()
     end
     GK.InvalidateOrders()
     GK.CloseLetters()
-    local card = _G.GrudgekeeperProfile
-    if card and card:IsShown() then card:Hide() end
     GK.NoticeUpdate(false)
     GK.Changed()
     Say("your record and the guild's are back as they were before the test panel.")

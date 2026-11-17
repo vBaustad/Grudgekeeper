@@ -1,7 +1,7 @@
 -- Grudgekeeper - the notes, as the ledger shows them (the data is Notes.lua). What you see of them:
---   the list pages      three tabs in the ledger: Marked (after Grudges, among the owner's), then Shame and
---                       Kudos over the right page
---   cards               the small card for a noted player, and a line or two on the
+--   the list pages      two tabs in the ledger, Shame and Kudos, over the right page; Marked is a section
+--                       of the kill orders page (Window.lua)
+--   cards               a noted player's card, on the ledger's right page, and a line or two on the
 --                       wanted poster and the record when there are notes on that player
 --   the note sheet      in the game's own frame: whom, the list, a tag, a few words, Save
 --   the right-click menu   a Grudgekeeper notes submenu on any player, friend or foe
@@ -223,8 +223,10 @@ end
 -- ---------------------------------------------------------------------------
 -- The three list pages
 -- ---------------------------------------------------------------------------
--- A page each, because the list is the tab: Marked is the enemy's page, on the left between Grudges and
--- News; Shame and Kudos are the friendly ones, over the right page (side = "right").
+-- A page each, because the list is the tab: Shame and Kudos are the friendly ones, over the right page
+-- (side = "right") - a blacklist and praise, two lists, not one ("vil ikke slå sammen shame og kudos for
+-- shame er blacklist og kudos er ros til spillere vi møter", the owner, 2026-11-16). Marked is on the kill
+-- orders page (Window.lua).
 local PAGE_WORD = { kos = "Marked", watch = "Shame", kudos = "Kudos" }
 local EMPTY = {
     kos = "Nobody is marked. Right-click an enemy and pick Grudgekeeper notes to mark them.",
@@ -265,7 +267,7 @@ function GK.NotesItems(list)
             face = { key = key, c = p.c, rf = p.rf, sx = p.sx },
             sub = table.concat(bits, " - "), right = e.score ~= 0 and ScoreText(e.score) or "", ts = e.ts,
             votes = e.score, own = (e.mine or VotedOn(p)) or nil,
-            select = { kind = "card", make = function() return GK.NoteCard(key, list) end } }
+            select = { kind = "card", key = key, make = function() return GK.NoteCard(key, list) end } }
     end
     -- the page's own order: the newest news first
     table.sort(items, function(a, b)
@@ -595,7 +597,7 @@ GK.UnitPlayerKey = PlayerKey
 GK.ReadPlayer = ReadPlayer
 
 local function ShowNotes(key)
-    GK.ShowCard(function() return GK.NoteCard(key) end)
+    GK.ShowCard(function() return GK.NoteCard(key) end, key)       -- on their row of a list, if one has them
 end
 
 local function OnNotesMenu(_, root, ctx)
@@ -790,6 +792,9 @@ end
 --- Who joined the group since the last update: Shame warns, Kudos says one friendly line.
 function GK.CheckNotesGroup()
     if not (GK.db and GK.char) then return end
+    -- a battleground's raid is nobody's group to warn about (GK.InBattleground). lastGroup stays as it was,
+    -- so the party you came in with is not new again when you are out.
+    if GK.InBattleground() then return end
     local current, shamed = {}, false
     local function Add(unit)
         local key = PlayerKey(unit)

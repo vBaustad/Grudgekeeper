@@ -163,9 +163,10 @@ function GK.SettingsChapters()
             Choice("choice", "spreeGuild", "Guildies' sprees", KINDS, "toast"),
             Choice("choice", "spreeEnded", "A spree ended", KINDS, "toast"),
             Choice("choice", "spreeTormentor", "A tormentor put down", KINDS, "toast"),
-            -- No spree, but told the same way and held by the same rule: a guildie's, so Show guildies'. Its
-            -- sound is not one to pick: the page is full.
-            Choice("choice", "orderDone", "A guildie's kill order fulfilled", KINDS, "toast"),
+            -- No spree, but told the same way and held by the same rules: a guildie's as picked here, by Show
+            -- guildies'; yours (your kill, or with you there) a splash unless this is Off, by Show mine
+            -- (Announce.lua). Its sound is not one to pick: the page is full.
+            Choice("choice", "orderDone", "A kill order fulfilled", KINDS, "toast"),
             Choice("pick", "announceWhenMine", "Show mine", WHEN, "always"),
             Choice("pick", "announceWhenGuild", "Show guildies'", WHEN, "noCombat"),
             -- how long one shows before it fades ("legg settings så folk kan sette lengde selv", the owner,

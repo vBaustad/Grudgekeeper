@@ -342,6 +342,15 @@ end
 --- Show what is ready: the toasts at once, the splashes in their own order, each when the one before it has
 --- had its time. A toast never waits for a splash.
 local function Drain()
+    -- None in a battleground, whatever the settings say (GK.InBattleground). Everything is shown through
+    -- here, so this one place holds them all: a new one, one released, one that was waiting its turn as
+    -- you went in. They go to the held ones, and PLAYER_ENTERING_WORLD tells them once you are out.
+    if GK.InBattleground() then
+        for _, item in ipairs(ready) do held[#held + 1] = item end
+        while #held > MAX_HELD do table.remove(held, 1) end
+        ready = {}
+        return
+    end
     local waiting = {}
     for _, item in ipairs(ready) do
         local wait = splashBusyUntil - GetTime()
@@ -440,12 +449,19 @@ end)
 -- egentlig mulig for meg, som ikke var med, å egentlig se det", the owner, 2026-11-14). The seal is the
 -- red wax a kill order's letter is sealed with: 128 across as the other two are, where the skull an order
 -- puts over a nameplate is 64, too few for a splash.
-LIB.Listen("GK_ORDER_DONE", function(who, helpers, targetKey, pot)
+-- Yours (mine: your kill got them, or a guildie's with you there, Guild.lua) is a splash whatever the setting
+-- says for a guildie's, unless that is off: the hunter had a letter alone, which waits for the fight to end
+-- ("det må og være lettere å se når noen fyller en kill order", the owner, 2026-11-16). The settings page has
+-- no room for a row of its own (Options.lua), and yours is the bounty, as rare as a spree's top tier.
+LIB.Listen("GK_ORDER_DONE", function(who, helpers, targetKey, pot, mine)
     local more = type(helpers) == "table" and #helpers or 0
-    local line = ("Kill order fulfilled: %s, by %s%s%s"):format(Name(targetKey), Name(who),
-        more > 0 and (" and %d more"):format(more) or "",
+    local line = ("Kill order fulfilled: %s, by %s%s%s"):format(Name(targetKey),
+        LIB.IsMyStoredName(who) and "you" or Name(who), more > 0 and (" and %d more"):format(more) or "",
         (tonumber(pot) or 0) > 0 and (" - " .. GK.MoneyText(pot)) or "")
-    Add("orderDone", false, { seal = MEDIA .. "seal_red", line = line, sound = "order" })
+    local style = Style("orderDone")
+    if not style then return end
+    Tell({ style = mine and "splash" or style, mine = mine and true or false, seal = MEDIA .. "seal_red",
+        line = line, sound = "order" })
 end)
 
 --- /grudge spree: a sample splash and a sample toast, whatever the settings and the when-rules say.
