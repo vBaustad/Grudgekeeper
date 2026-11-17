@@ -9,9 +9,12 @@
 -- holds you and your group only, never a stranger (/grudge debug meter, 2026-11-11), so a kill a mob or
 -- a stranger finished has no killer in your group and is no assist. Taken, with fixes, from dakristia's
 -- vBaustad/Grudgekeeper#2.
--- A death: the game's death recap names whoever landed the blow (the "You died" chat line carries its
--- id), and the damage meter is asked when the recap is empty. It counts as a PvP death only when that
--- name belongs to an enemy player we saw - a name alone can't tell a rogue from a murloc.
+-- A death: the game's death recap names whoever hit us last (the "You died" chat line carries its id),
+-- and, only when the recap is empty, the damage meter everyone who hit us in the fight. It counts as a
+-- PvP death only when one of them is an enemy player we saw - by GUID when the recap's can be read, as a
+-- name alone can't tell a rogue from a murloc - and it goes to the last of them, whoever landed the
+-- blow: the pet or the mob was their weapon. A pet alone is no PvP death, as the recap names the pet,
+-- never its owner.
 local ADDON, GK = ...
 local LIB = LibStub("LibForever-1.0")
 local Secret = GK.Secret
@@ -317,26 +320,35 @@ end
 -- ---------------------------------------------------------------------------
 -- Deaths
 -- ---------------------------------------------------------------------------
---- Who landed the killing blow, by the game's death recap: name and spell, or nil.
+--- The hits the game's death recap holds, the latest first: { { name, guid, spell } }, or nil. The blow
+--- that killed (the one that overkilled) goes first when the hits carry no time. guid is nil when secret.
 local function FromRecap(id)
     if not (C_DeathRecap and C_DeathRecap.GetRecapEvents) then return nil end
     local ok, events = pcall(C_DeathRecap.GetRecapEvents, id)
     if not ok or type(events) ~= "table" or Secret(events) or #events == 0 then return nil end
-    -- The blow that killed is the one that overkilled; the first event when none says so.
-    local blow = events[1]
-    for _, e in ipairs(events) do
-        if type(e) == "table" and not Secret(e.overkill) and type(e.overkill) == "number" and e.overkill > 0 then
-            blow = e
-            break
+    local hits, timed = {}, true
+    for i, e in ipairs(events) do
+        if type(e) == "table" and not Secret(e.sourceName) and type(e.sourceName) == "string" and e.sourceName ~= "" then
+            local at = not Secret(e.timestamp) and type(e.timestamp) == "number" and e.timestamp or nil
+            local blow = not Secret(e.overkill) and type(e.overkill) == "number" and e.overkill > 0
+            timed = timed and at ~= nil
+            local guid = (not Secret(e.sourceGUID) and type(e.sourceGUID) == "string" and e.sourceGUID ~= "")
+                and e.sourceGUID or nil
+            hits[#hits + 1] = { name = e.sourceName, guid = guid, at = at, blow = blow, i = i,
+                spell = (not Secret(e.spellName) and type(e.spellName) == "string") and e.spellName or nil }
         end
     end
-    if type(blow) ~= "table" or Secret(blow.sourceName) or type(blow.sourceName) ~= "string" then return nil end
-    local spell = blow.spellName
-    return blow.sourceName, (not Secret(spell) and type(spell) == "string") and spell or nil
+    if #hits == 0 then return nil end
+    table.sort(hits, function(a, b)
+        if timed and a.at ~= b.at then return a.at > b.at end
+        if a.blow ~= b.blow then return a.blow end
+        return a.i < b.i
+    end)
+    return hits
 end
 
---- The same from the game's damage meter: the source of the deadly hit. Readable only out of combat,
---- which being dead is.
+--- Everyone the game's damage meter says hit us in the last fight, the most damage first: { { name } },
+--- or nil. Readable only out of combat, which being dead is. The meter keeps no time, so not the latest.
 local function FromMeter()
     local meter = C_DamageMeter
     local types, sessions = Enum and Enum.DamageMeterType, Enum and Enum.DamageMeterSessionType
@@ -344,14 +356,42 @@ local function FromMeter()
     if InCombatLockdown() then return nil end
     local ok, src = pcall(meter.GetCombatSessionSourceFromType, sessions.Current, types.DamageTaken, UnitGUID("player"))
     if not ok or type(src) ~= "table" or Secret(src) or type(src.combatSpells) ~= "table" then return nil end
+    local byName, hits = {}, {}
     for _, sp in ipairs(src.combatSpells) do
-        if type(sp) == "table" and not Secret(sp.isDeadly) and sp.isDeadly then
-            local d = sp.combatSpellDetails
-            local who = sp.creatureName or (type(d) == "table" and d.unitName)
-            if type(who) == "string" and not Secret(who) and who ~= "" then return who end
+        local d = type(sp) == "table" and sp.combatSpellDetails
+        local who = type(sp) == "table" and (sp.creatureName or (type(d) == "table" and d.unitName))
+        if type(who) == "string" and not Secret(who) and who ~= "" then
+            local amount = (not Secret(sp.totalAmount) and type(sp.totalAmount) == "number") and sp.totalAmount or 0
+            if not byName[who] then
+                byName[who] = { name = who, amount = 0 }
+                hits[#hits + 1] = byName[who]
+            end
+            byName[who].amount = byName[who].amount + amount
         end
     end
-    return nil
+    if #hits == 0 then return nil end
+    table.sort(hits, function(a, b) return a.amount > b.amount end)
+    return hits
+end
+
+--- The first of these hits by an enemy player we saw: their sighting and the hit, or nil and why not.
+--- A GUID we can read settles it: a player's is looked up as it is, a pet's or a mob's is no player at
+--- all. Without one the name is asked, and a name that could be several players is passed over, as a
+--- grudge against the wrong one is worse.
+local function PlayerIn(hits)
+    local why
+    for _, h in ipairs(hits or {}) do
+        local player = h.guid and h.guid:sub(1, 7) == "Player-"
+        local s = player and GK.Seen(nil, h.guid)
+        if s then return s, h end
+        if player or not h.guid then
+            local w
+            s, w = GK.SeenByName(h.name)
+            if s then return s, h end
+            why = why or w
+        end
+    end
+    return nil, why
 end
 
 --- /grudge debug meter: what the game's damage meter holds of the damage enemies took in the last fight,
@@ -464,24 +504,25 @@ function GK.ResolveDeath()
         lastDeath = "in an instance: not counted"
         return
     end
-    local how = "the death recap"
-    local name, spell = FromRecap(id)
-    if not name and id then name, spell = FromRecap(nil) end
-    if not name then
-        name, how = FromMeter(), "the damage meter"
-    end
-    if not name then
+    -- The kill is the last enemy player's who hit us: a mob they pulled or a pet's bite is their weapon.
+    -- No player among the hits at all is a death to a mob, or to a pet whose owner never touched us,
+    -- and it is no PvP death: the streak goes on. The meter is asked only when the recap is empty, as it
+    -- holds the whole fight: a player who hit us once and left would get a death a mob gave us.
+    local hits, how = FromRecap(id), "the death recap"
+    if not hits and id then hits = FromRecap(nil) end
+    if not hits then hits, how = FromMeter(), "the damage meter" end
+    if not hits then
         lastDeath = "neither the death recap nor the damage meter named anyone"
         return
     end
-    local s, why = GK.SeenByName(name)
+    local s, hit, why = PlayerIn(hits)
     if not s then
-        lastDeath = ("%s, by %s - %s, so not counted"):format(GK.Clean(name, 40) or "?", how,
-            why == "several" and "several enemy players we saw go by that name" or "not an enemy player we saw")
+        lastDeath = ("%s and the rest, by %s - %s, so not counted"):format(GK.Clean(hits[1].name, 40) or "?", how,
+            why == "several" and "a name several enemy players we saw go by" or "no enemy player we saw")
         return
     end
     lastDeath = ("%s, by %s"):format(s.key, how)
-    GK.RecordDeath({ key = s.key, guid = s.guid, c = s.c, r = s.r, l = s.l, spell = GK.Clean(spell, 40) })
+    GK.RecordDeath({ key = s.key, guid = s.guid, c = s.c, r = s.r, l = s.l, spell = GK.Clean(hit.spell, 40) })
 end
 
 function GK.StartKills()
