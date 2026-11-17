@@ -51,7 +51,7 @@ local function Burst(toast, P, n, o)
     for i = 1, n do
         local ang = r() * math.pi * 2
         local sp, size = (o.speed or 300) * (0.4 + r() * 0.8), (o.size or 12) * (0.5 + r())
-        ps[i] = { t = P.Tex(toast, "spree_spark", "OVERLAY", 0, o.add ~= false), w = size, h = size * (o.stretch or 1),
+        ps[i] = { t = P.Tex(toast, o.file or "spree_spark", "OVERLAY", 0, o.add ~= false), w = size, h = size * (o.stretch or 1),
             vx = math.cos(ang) * sp, vy = math.sin(ang) * sp, life = (o.life or 0.8) * (0.6 + r() * 0.6),
             rot = o.stretch and ang + math.pi / 2 or r() * 6.28 }
     end
@@ -168,7 +168,7 @@ GK.TOASTFX.spree_burn = {
 -- T3: a tormentor's debt, the PAID stamp slamming onto the black seal
 -- ---------------------------------------------------------------------------
 -- The splash's card at 64 px: 150 down to 64 is 0.427 of it. stamp_paid is green, and a tint only multiplies,
--- so it is desaturated first and the red laid on that. The lab's dust has no texture here: grey sparks stand in.
+-- so it is desaturated first and the red laid on that. The dust is the lab's (fx_dust).
 local PAID_AT, PAID_K = 0.45, 64 / 150
 
 GK.TOASTFX.debt_paid = {
@@ -176,7 +176,7 @@ GK.TOASTFX.debt_paid = {
         local s = {}
         s.stamp = P.Tex(toast, "stamp_paid", "OVERLAY", 3)
         s.stamp:SetDesaturated(true)
-        s.dust = Burst(toast, P, 14, { t0 = PAID_AT, speed = 200 * PAID_K, life = 0.5, size = 18 * PAID_K, add = false,
+        s.dust = Burst(toast, P, 14, { file = "fx_dust", t0 = PAID_AT, speed = 200 * PAID_K, life = 0.5, size = 18 * PAID_K, add = false,
             tint = { 0.8, 0.75, 0.7 }, seed = 29 })
         toast.paid = s
     end,
