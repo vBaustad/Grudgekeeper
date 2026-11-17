@@ -57,4 +57,8 @@ local function Update(splash, age, P)
     end
 end
 
-GK.FX.bloodied_drops = { land = LAND, build = Build, update = Update }
+-- BL2's sounds: the slam's fall and impact, Bloodied's fanfare, and a soft splat (a third of its level) for each drop
+GK.FX.bloodied_drops = {
+    land = LAND, voice = 0.32, build = Build, update = Update,
+    cues = { { 0, "whoosh" }, { 0.24, "boom" }, { 0.24, "sting_bloodied" }, { 0.44, "splat_33" }, { 0.69, "splat_33" } },
+}

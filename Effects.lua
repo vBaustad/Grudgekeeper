@@ -227,3 +227,33 @@ end
 function P.HideAll(splash)
     for _, t in ipairs(splash.fxParts or {}) do t:Hide() end
 end
+
+-- ---------------------------------------------------------------------------
+-- Sounds
+-- ---------------------------------------------------------------------------
+-- An effect (or a toast's) may have cues = { { t, "name" }, ... }, sorted by t: t is the splash's age in seconds
+-- and name a file in Media/sfx, without .mp3. They are the lab's sounds (its api.cue), each played once as the age
+-- passes it. An effect's voice = t is when the splash plays the tier's voice line (api.vo), Announce.lua's.
+-- A toast whose cues depend on what it shows (K6's number) sets frame.cueList in its start.
+
+--- A new announcement on the frame: its cues start over.
+function P.CuesReset(frame)
+    frame.cueN, frame.cueList = 1, nil
+end
+
+--- Play the cues the age has passed. The ones passed while sound is off are dropped, not played late.
+function P.Cues(frame, fx, age)
+    local list = frame.cueList or (fx and fx.cues)
+    if not list then return end
+    local n = frame.cueN or 1
+    while list[n] and age >= list[n][1] do
+        if GK.db and GK.db.sound then PlaySoundFile(MEDIA .. "sfx\\" .. list[n][2] .. ".mp3", "Master") end
+        n = n + 1
+    end
+    frame.cueN = n
+end
+
+-- butcher_bloom cues (to move into FxButcher.lua)
+-- BU2, the lab's card: the tier's fanfare with the voice at 0, the splat at 0.2 s.
+--   voice = 0,
+--   cues = { { 0, "sting_butcher" }, { 0.2, "splat" } },

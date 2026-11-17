@@ -43,6 +43,9 @@ end
 
 GK.FX.reaper_scythe = {
     land = C,
+    -- RP1's sounds: a low whoosh under the draw-back, the fanfare, the steel schwing as the blade crosses the seal
+    voice = C + 0.05,
+    cues = { { 0, "whoosh_50" }, { C - 0.1, "sting_reaper" }, { C - 0.03, "schwing" } },
     build = function(splash, P)
         local fx = {}
         fx.gloom = Gloom(splash, P)
@@ -103,6 +106,9 @@ local PUFFS = 30
 
 GK.FX.reaper_smoke = {
     land = SC,
+    -- RP4's sounds: the shadow swell under the smoke, the fanfare as the seal sharpens
+    voice = SC + 0.05,
+    cues = { { 0, "shadow" }, { SC - 0.1, "sting_reaper" } },
     build = function(splash, P)
         local fx = { puffs = {} }
         fx.gloom = Gloom(splash, P)

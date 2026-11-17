@@ -1,6 +1,6 @@
 -- Grudgekeeper - spree effects: Merciless. C4, the cross cut: two blade slashes cross in an X and the seal punches out of it.
 -- See Effects.lua for how an effect is played and the kit (P) it is drawn with.
--- Left out of the lab's card: its sounds, the screen shake. The card has no full-screen layer.
+-- Left out of the lab's card: the screen shake. The card has no full-screen layer.
 local ADDON, GK = ...
 
 local H = 0.32                  -- when the cuts cross and the seal lands
@@ -9,6 +9,9 @@ local CUT_GAP = 0.13            -- the second cut follows the first
 
 GK.FX.merciless_cross = {
     land = H,
+    -- C4's sounds: a whoosh for each cut, the hit and the crack where they cross. The card has no fanfare.
+    voice = H + 0.08,
+    cues = { { 0, "whoosh" }, { 0.13, "whoosh" }, { H, "boom" }, { H, "crack" } },
 
     build = function(splash, P)
         -- below the seal, as the lab draws them before its core

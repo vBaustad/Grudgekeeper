@@ -42,6 +42,10 @@ end
 -- ("fades to black on the edges ... we don't want", Daniel, 2026-11-17).
 GK.FX.grudgebound_crown = {
     land = 0.5,
+    -- GB1's sounds: a riser into the fanfare (its take starts with the build-up), a flare as the seal comes up, the
+    -- crown's whoosh and chains
+    voice = 0.58,
+    cues = { { 0, "riser" }, { 0, "sting_grudgebound" }, { 0.5, "flare" }, { 0.8, "whoosh" }, { 1.05, "rattle" } },
     build = function(splash, P)
         local st = State(splash, "crown")
         local T = 0.5                    -- when the seal comes up
@@ -67,6 +71,11 @@ GK.FX.grudgebound_crown = {
 -- (multText's other modes are "times", a count of the 5s, and roman numerals).
 GK.FX.grudgebound_repeat = {
     land = 0,
+    -- X1's sounds: the crown's whoosh and chains, then the number's whoosh, the x-N fanfare, a boom and the iron.
+    -- The lab's climb (a higher pitch every 5 kills, a riser and a shimmer) is left out: it needs pitch.
+    voice = 0.08,
+    cues = { { 0.3, "whoosh" }, { 0.55, "rattle" }, { 0.82, "whoosh" }, { 1.0, "sting_repeat" }, { 1.0, "boom" },
+        { 1.0, "clang" } },
     build = function(splash, P)
         local st = State(splash, "repeat")
         local H = 0.55 + 0.45            -- when the number slams in, after the crown lands
@@ -107,6 +116,10 @@ HUNDRED.R = HUNDRED.Z + HUNDRED.F
 
 GK.FX.hundred = {
     land = 0,
+    -- M11's sounds: the reward swells through the freeze (it starts 0.4 s before R) and lands with a boom as time
+    -- snaps back, then the voice
+    voice = HUNDRED.R + 0.5,
+    cues = { { HUNDRED.R - 0.4, "sting_hundred" }, { HUNDRED.R, "boom" } },
     build = function(splash, P)
         local st, R = State(splash, "hundred"), HUNDRED.R
         st.wave = P.Tex(splash, "spree_glow", "ARTWORK", 1, true)

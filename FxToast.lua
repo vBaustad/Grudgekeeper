@@ -53,10 +53,15 @@ end
 -- ---------------------------------------------------------------------------
 -- It slides in from the right and punches, with the tier's fire behind the seal and embers; past Grudgebound's
 -- 15 the count slams onto the end of the ribbon, hot and cooling. Left out: the shine across the ribbon (a
--- toast has none), and the sound and shake.
+-- toast has none), and the shake.
 local NUM_AT = 0.6                                       -- when the count slams on
 local NUM_X, NUM_Y = RIB_X + 118, -20                    -- the count's middle, from the seal's: near the ribbon's end
 local FALLBACK_FIRE = { size = 2.15, alpha = 0.85, embers = 10 }
+
+-- K5's sounds, as K6 adds to them: a whoosh as it slides in (half level) and a thump at the punch; with the count,
+-- its whoosh (half level) and the iron (at 0.6). The voice is the toast's own, played at once.
+local BURN_CUES = { { 0, "whoosh_50" }, { 0.35, "thump" } }
+local BURN_NUM_CUES = { { 0, "whoosh_50" }, { 0.35, "thump" }, { NUM_AT - 0.1, "whoosh_50" }, { NUM_AT, "clang_60" } }
 
 GK.TOASTFX.spree_burn = {
     build = function(toast, P)
@@ -81,6 +86,7 @@ GK.TOASTFX.spree_burn = {
         s.hasNum = item.fire == "grudgebound" and (tonumber(item.spree) or 0) > top
         s.heat = s.hasNum and P.clamp((item.spree - top) / 35) or 0
         if s.hasNum then s.num.set("×" .. item.spree) end
+        toast.cueList = s.hasNum and BURN_NUM_CUES or BURN_CUES
     end,
     update = function(toast, age, P)
         local s = toast.burn
@@ -116,6 +122,7 @@ GK.TOASTFX.spree_burn = {
 local PAID_AT, PAID_K = 0.45, TOAST_SEAL / 150   -- when the stamp lands; the card's size, scaled
 
 GK.TOASTFX.debt_paid = {
+    cues = { { PAID_AT - 0.12, "whoosh_50" }, { PAID_AT, "stamp" } },     -- T3's, as the splash's
     build = function(toast, P)
         toast.fxOrigin = { point = "TOPLEFT", x = SEAL_CX, y = SEAL_CY }
         local s = {}
