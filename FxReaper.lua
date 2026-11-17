@@ -2,7 +2,6 @@
 -- See Effects.lua for how an effect is played and the kit (P) it is drawn with.
 local ADDON, GK = ...
 
-local SEAL = 170
 
 --- A shadow round the seal only (nothing covers the whole screen but Grudgebound's), soft to nothing at its edge.
 local function Gloom(splash, P)
@@ -20,7 +19,8 @@ local C = 0.24                                   -- the seal lands as the blade 
 local H = { x = -30, y = -290 }                  -- the pivot, from the seal's centre
 local LS = 260                                   -- the shaft, pivot to socket
 local K = 260 / 1024                             -- fx_scythe's scale: points below are read off the 1024 px art
-local SOCK = { (45 - 512) * K, -(450 - 256) * K } -- the socket and the tip, from the blade's centre, flipped
+local SOCK = { (45 - 512) * K, -(450 - 256) * K } -- the socket and the tip, from the blade's centre (the art is the
+                                                 -- lab's scythe.png mirrored top to bottom)
 local TIP = { (1005 - 512) * K, -(435 - 256) * K }
 local BLADE = { -SOCK[1], LS - SOCK[2] }         -- the blade's centre, from the pivot, unturned
 local TIP_AT = { TIP[1] - SOCK[1], LS + TIP[2] - SOCK[2] }
@@ -67,7 +67,7 @@ GK.FX.reaper_scythe = {
         local sx, sy = Around({ 0, (LS - 120) / 2 }, rr)
         P.Set(splash, fx.shaft, { x = sx, y = sy, w = 32, h = LS + 120, r = rr, a = a })
         local bx, by = Around(BLADE, rr)
-        P.Set(splash, fx.blade, { x = bx, y = by, w = 260, h = 130, r = rr, a = a, flipY = true })
+        P.Set(splash, fx.blade, { x = bx, y = by, w = 260, h = 130, r = rr, a = a })
         -- the arc: from the tip back to where it was 70 ms ago, brightest at the tip, with a wider smear inside it
         -- where the blade swept; it only runs in the stroke, and fades with the blade
         local fade = t < S0 and 0 or 1 - P.prog(t, S1, 0.15)
@@ -86,7 +86,7 @@ GK.FX.reaper_scythe = {
             P.Set(splash, fx.smear[i], { x = (m0x + m1x) / 2, y = (m0y + m1y) / 2, w = len * 1.6, h = 70, r = dir,
                 a = alpha * 0.45, cr = 0.55, cg = 0.9, cb = 0.65 })
         end
-        P.Set(splash, fx.flash, { w = SEAL * 2.6, h = SEAL * 2.6, s = 0.6 + P.prog(t, C, 0.4),
+        P.Set(splash, fx.flash, { w = P.SEAL * 2.6, h = P.SEAL * 2.6, s = 0.6 + P.prog(t, C, 0.4),
             a = t >= C and math.max(0, 1 - (t - C) * 2.5) or 0, cr = 0.55, cg = 1, cb = 0.65 })
     end,
 }
@@ -125,13 +125,13 @@ GK.FX.reaper_smoke = {
         -- the seal condenses out of the smoke: dark and faint, then sharp and in colour (the lab blurs it too)
         local t0 = SC - 0.4
         local q = P.prog(t, t0, 0.55, P.E.inOutC)
-        P.Set(splash, splash.seal, { w = SEAL, h = SEAL, s = 0.94 + 0.06 * q, b = 0.08 + 0.92 * q,
+        P.Set(splash, splash.seal, { w = P.SEAL, h = P.SEAL, s = 0.94 + 0.06 * q, b = 0.08 + 0.92 * q,
             a = t < t0 and 0 or math.min(1, q * 1.8) })
         -- the fire catches only once the seal is solid (the splash lit it at the landing, over 0.25 s)
         if splash.fire then
             splash.flames:SetAlpha(splash.fire.alpha * P.clamp((t - SC) / 0.25) * P.prog(t, t0 + 0.45, 0.4))
         end
-        P.Set(splash, fx.glow, { y = 45 - 40 * P.prog(t, 0, SC), w = SEAL * 2.3, h = SEAL * 2.3, s = 0.7 + 0.4 * P.prog(t, 0, SC),
+        P.Set(splash, fx.glow, { y = 45 - 40 * P.prog(t, 0, SC), w = P.SEAL * 2.3, h = P.SEAL * 2.3, s = 0.7 + 0.4 * P.prog(t, 0, SC),
             a = P.env(t, 0.05, SC - 0.1, SC - 0.05, SC + 0.2) * 0.45, cr = 0.55, cg = 1, cb = 0.65 })
         for _, u in ipairs(fx.puffs) do
             local k = t - u.t0

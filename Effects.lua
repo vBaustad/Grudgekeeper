@@ -98,8 +98,8 @@ function P.Tex(splash, file, layer, sub, add)
 end
 
 --- Place a texture as the lab does: o.x, o.y from the seal's centre (y down), o.w by o.h times o.s (and o.sx,
---- o.sy), turned o.r clockwise, at alpha o.a, brightness o.b (0..1). o.flipY / o.flipX mirror it. An alpha of 0
---- hides it.
+--- o.sy), turned o.r clockwise, at alpha o.a, brightness o.b (0..1), tinted o.cr, o.cg, o.cb. o.coord: the part
+--- of the texture to show, { left, right, top, bottom } (a cell of a sheet). An alpha of 0 hides it.
 function P.Set(splash, t, o)
     local a = o.a == nil and 1 or o.a
     if a <= 0.001 then t:Hide() return end
@@ -107,17 +107,14 @@ function P.Set(splash, t, o)
     t:ClearAllPoints()
     t:SetPoint("CENTER", splash, "TOP", o.x or 0, SEAL_Y - (o.y or 0))
     t:SetSize(math.max(0.01, (o.w or SEAL) * s * (o.sx or 1)), math.max(0.01, (o.h or SEAL) * s * (o.sy or 1)))
-    t:SetRotation(-(o.r or 0))
     t:SetAlpha(math.min(1, a))
     local b = o.b or 1
     t:SetVertexColor(b * (o.cr or 1), b * (o.cg or 1), b * (o.cb or 1))
-    if o.flipY or o.flipX then
-        local l, r = o.flipX and 1 or 0, o.flipX and 0 or 1
-        local top, bottom = o.flipY and 1 or 0, o.flipY and 0 or 1
-        t:SetTexCoord(l, r, top, bottom)
-    else
-        t:SetTexCoord(0, 1, 0, 1)
-    end
+    -- the texture's coordinates before its turn: the two share the texture's corners, so the last one set wins.
+    -- Art that is drawn mirrored is mirrored in its file for the same reason.
+    local c = o.coord
+    if c then t:SetTexCoord(c[1], c[2], c[3], c[4]) else t:SetTexCoord(0, 1, 0, 1) end
+    t:SetRotation(-(o.r or 0))
     t:Show()
 end
 
