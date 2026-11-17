@@ -112,7 +112,7 @@ GK.FX.grudgebound_repeat = {
 
 -- M11: the hundred. A beat of nothing (the lab freezes the seal for 0.35 s while the sound swells), then x100
 -- slams in burning, a shockwave rolls out, the crown comes down and sparks fly. No dim, flash or vignette.
--- The rays are left out: there is no rays texture. The beat is only the quiet before R here: the splash's own
+-- The beat is only the quiet before R here: the splash's own
 -- flames and glow keep moving through it, as the base cannot be paused.
 local FLAME_W = { x = 141, ["0"] = 128, ["1"] = 90, ["2"] = 122, ["3"] = 125, ["4"] = 126, ["5"] = 124,
     ["6"] = 135, ["7"] = 122, ["8"] = 132, ["9"] = 124 }
@@ -124,6 +124,7 @@ GK.FX.hundred = {
     build = function(splash, P)
         local st, R = State(splash, "hundred"), HUNDRED.R
         st.wave = P.Tex(splash, "spree_glow", "ARTWORK", 3, true)
+        st.rays = P.Tex(splash, "fx_rays", "BACKGROUND", -2, true)
         st.crown = P.Tex(splash, "fx_crown_ring", "OVERLAY", -1)
         st.num = P.Number(splash, 5)
         st.num.set("×100")
@@ -137,6 +138,8 @@ GK.FX.hundred = {
         local st, R, F = State(splash, "hundred"), HUNDRED.R, HUNDRED.F
         local k = age - R
         local live = age < HUNDRED.Z and age or age < R and HUNDRED.Z or age - F   -- the lab's frozen clock
+        P.Set(splash, st.rays, { w = 170 * 3.6, h = 170 * 3.6, r = live * 0.2, s = 1 + 0.1 * math.sin(age * 3),
+            a = P.env(age, R, R + 0.3, R + 2.4, R + 3.2) })
         P.Set(splash, st.wave, { w = 400, h = 400, s = k >= 0 and 0.5 + k * 9 or 0, a = k >= 0 and math.max(0, 1 - k * 1.4) or 0 })
         P.Set(splash, st.crown, { w = 290, h = 290, r = live * 0.1, s = k >= 0 and 1 + 0.1 * math.exp(-k * 8) or 0,
             a = k >= 0 and 1 or 0 })
