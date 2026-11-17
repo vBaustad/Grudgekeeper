@@ -39,6 +39,7 @@ Notice.lua
 Effects.lua
 FxBloodied.lua
 FxMerciless.lua
+FxButcher.lua
 FxReaper.lua
 FxGrudgebound.lua
 FxEnded.lua

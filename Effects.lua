@@ -1,7 +1,7 @@
 -- Grudgekeeper - the spree effects: how each splash arrives. Each tier has its own, picked by both of us
 -- on the Streak Lab's board (2026-11-15 and 17): Bloodied's slam and drops, Merciless's cross cut,
--- Reaper's scythe or smoke (a setting), Grudgebound's crown of chains, its number on every 5 after 15, the
--- hundred, a spree ended shattering and a tormentor's debt stamped paid. Butcher keeps 1.8.0's punch. The card
+-- Butcher's blood bloom, Reaper's scythe or smoke (a setting), Grudgebound's crown of chains, its number on
+-- every 5 after 15, the hundred, a spree ended shattering and a tormentor's debt stamped paid. The card
 -- names in the files (BL2, C4, RP1, RP4, GB1, X1, M11, E1, T3, K6) are the Streak Lab's: the board where the
 -- guild picked each effect, so a reader can find the card an effect was ported from.
 --
@@ -25,7 +25,7 @@ GK.FX = GK.FX or {}
 -- ---------------------------------------------------------------------------
 -- Which effect
 -- ---------------------------------------------------------------------------
-local TIER = { bloodied = "bloodied_drops", merciless = "merciless_cross", grudgebound = "grudgebound_crown" }
+local TIER = { bloodied = "bloodied_drops", merciless = "merciless_cross", butcher = "butcher_bloom", grudgebound = "grudgebound_crown" }
 local KIND = { ended = "ended_shatter", tormentor = "debt_paid" }
 
 --- The effect a splash plays: kind is "spree", "ended" or "tormentor"; key the spree's tier; spree

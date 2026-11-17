@@ -3228,7 +3228,7 @@ end)
 --- Announce.lua over frames that do nothing but remember: A.tex has every texture it was given (a seal and a
 --- ribbon for each announcement, "nil" for no ribbon; not the glow), A.txt every line, A.played every sound.
 -- the effects, in the toc's order: the kit first, then one file a tier (or a kind)
-local EFFECT_FILES = { "Effects.lua", "FxBloodied.lua", "FxMerciless.lua", "FxReaper.lua", "FxGrudgebound.lua", "FxEnded.lua", "FxToast.lua" }
+local EFFECT_FILES = { "Effects.lua", "FxBloodied.lua", "FxMerciless.lua", "FxButcher.lua", "FxReaper.lua", "FxGrudgebound.lua", "FxEnded.lua", "FxToast.lua" }
 local function bootAnnounce()
     local GK, LIB = boot({ me = ME })
     local A = { tex = {}, txt = {}, played = {}, frames = {}, combat = false, instance = false, lockdown = false }
@@ -3844,11 +3844,11 @@ end)
 -- ---------------------------------------------------------------------------
 -- Spree effects (Effects.lua): which one a splash plays, and the helpers they are drawn with
 -- ---------------------------------------------------------------------------
-test("effects: each tier its own, Butcher as before, Reaper by its setting", function()
+test("effects: each tier its own, Butcher's blood bloom, Reaper by its setting", function()
     local GK = bootAnnounce()
     eq(GK.SpreeEffect("spree", "bloodied", 3, GK.db), "bloodied_drops")
     eq(GK.SpreeEffect("spree", "merciless", 5, GK.db), "merciless_cross")
-    eq(GK.SpreeEffect("spree", "butcher", 7, GK.db), nil, "Butcher keeps 1.8.0's punch")
+    eq(GK.SpreeEffect("spree", "butcher", 7, GK.db), "butcher_bloom")
     eq(GK.db.reaperEffect, "scythe", "the scythe out of the box")
     eq(GK.SpreeEffect("spree", "reaper", 10, GK.db), "reaper_scythe")
     GK.db.reaperEffect = "smoke"
