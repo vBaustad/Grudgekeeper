@@ -121,6 +121,89 @@ function P.Set(splash, t, o)
     t:Show()
 end
 
+--- A one-shot burst of n sparks from a point, as the lab's api.burst: returns draw(age), age the splash's. o: t0,
+--- cx, cy, speed, life, size, stretch, gravity, drag, angle and arc (radians; no arc: all round), file
+--- (spree_spark), seed, alpha, layer.
+function P.Burst(splash, n, o)
+    local r, ps = P.rng(o.seed or 23), {}
+    for i = 1, n do
+        local ang = (o.angle or 0) + (o.arc and (r() - 0.5) * o.arc or r() * math.pi * 2)
+        local sp, size = (o.speed or 300) * (0.4 + r() * 0.8), (o.size or 12) * (0.5 + r())
+        local t = P.Tex(splash, nil, o.layer or "OVERLAY", 0, o.add ~= false)
+        t:SetTexture(MEDIA .. (o.file or "spree_spark"))
+        ps[i] = { t = t, w = size, h = size * (o.stretch or 1), vx = math.cos(ang) * sp, vy = math.sin(ang) * sp,
+            life = (o.life or 0.8) * (0.6 + r() * 0.6), rot = o.stretch and ang + math.pi / 2 or r() * 6.28 }
+    end
+    return function(age)
+        local tt = age - (o.t0 or 0)
+        local drag = o.drag or 1.6
+        for _, p in ipairs(ps) do
+            if tt < 0 or tt > p.life then
+                p.t:Hide()
+            else
+                local k = (1 - math.exp(-drag * tt)) / drag
+                P.Set(splash, p.t, { x = (o.cx or 0) + p.vx * k, y = (o.cy or 0) + p.vy * k + 0.5 * (o.gravity or 0) * tt * tt,
+                    w = p.w, h = p.h, r = p.rot, a = (1 - tt / p.life) * (o.alpha or 1) })
+            end
+        end
+    end
+end
+
+-- The rimmed-iron numerals (Media/fx_num_<glyph>, with a hot copy fx_num_<glyph>_hot drawn as light): the lab's
+-- forged iron with a dark rim baked in, so they read on snow and sand. Each sits in the middle of a 256 by 256
+-- canvas, the glyph 200 high and as wide as here.
+local GLYPH_H = 200
+local GLYPH_W = { x = 141, ["0"] = 128, ["1"] = 90, ["2"] = 122, ["3"] = 125, ["4"] = 126, ["5"] = 124,
+    ["6"] = 135, ["7"] = 122, ["8"] = 132, ["9"] = 124 }
+local KERN = -0.12
+
+--- A number such as "×20" or "100" on the splash, up to max glyphs. num.set(text), then num.place(o) each frame,
+--- o: x, y (its middle), h (height, 90), s, r, a and heat (0..1.5, the hot copy's strength).
+function P.Number(splash, max)
+    local glyphs = {}
+    for i = 1, max or 4 do
+        glyphs[i] = { n = P.Tex(splash, nil, "OVERLAY", 1), hot = P.Tex(splash, nil, "OVERLAY", 2, true) }
+    end
+    local num = { chars = {} }
+    function num.set(text)
+        num.chars = {}
+        for ch in text:gsub("×", "x"):gmatch(".") do
+            if GLYPH_W[ch] then num.chars[#num.chars + 1] = ch end
+        end
+        for i, g in ipairs(glyphs) do
+            local ch = num.chars[i]
+            if ch then
+                g.n:SetTexture(MEDIA .. "fx_num_" .. ch)
+                g.hot:SetTexture(MEDIA .. "fx_num_" .. ch .. "_hot")
+            end
+        end
+    end
+    function num.place(o)
+        local chars, total = num.chars, 0
+        for _, ch in ipairs(chars) do total = total + GLYPH_W[ch] * (1 + KERN) end
+        if #chars > 0 then total = total - GLYPH_W[chars[#chars]] * KERN end
+        local k = (o.h or 90) / GLYPH_H * (o.s or 1)
+        local r, cx = o.r or 0, -total / 2
+        for i, g in ipairs(glyphs) do
+            local ch = chars[i]
+            if not ch then
+                g.n:Hide()
+                g.hot:Hide()
+            else
+                local w = GLYPH_W[ch]
+                local lx = (cx + w / 2) * k
+                cx = cx + w * (1 + KERN)
+                local at = { x = (o.x or 0) + lx * math.cos(r), y = (o.y or 0) + lx * math.sin(r), w = 256, h = 256,
+                    s = k, r = r, a = o.a }
+                P.Set(splash, g.n, at)
+                at.a = (o.a or 1) * math.min(1.5, o.heat or 0)
+                P.Set(splash, g.hot, at)
+            end
+        end
+    end
+    return num
+end
+
 --- Hide every effect texture on the splash (a new announcement starts clean).
 function P.HideAll(splash)
     for _, t in ipairs(splash.fxParts or {}) do t:Hide() end

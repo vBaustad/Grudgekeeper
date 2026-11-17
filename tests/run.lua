@@ -3228,7 +3228,7 @@ end)
 --- Announce.lua over frames that do nothing but remember: A.tex has every texture it was given (a seal and a
 --- ribbon for each announcement, "nil" for no ribbon; not the glow), A.txt every line, A.played every sound.
 -- the effects, in the toc's order: the kit first, then one file a tier (or a kind)
-local EFFECT_FILES = { "Effects.lua" }
+local EFFECT_FILES = { "Effects.lua", "FxBloodied.lua", "FxMerciless.lua", "FxReaper.lua", "FxGrudgebound.lua", "FxEnded.lua", "FxToast.lua" }
 local function bootAnnounce()
     local GK, LIB = boot({ me = ME })
     local A = { tex = {}, txt = {}, played = {}, frames = {}, combat = false, instance = false, lockdown = false }
