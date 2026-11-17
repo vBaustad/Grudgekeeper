@@ -10,7 +10,10 @@ local B = 0.9                          -- when it bursts
 local SHARDS = { { -40, -42, -.3 }, { 42, -44, .2 }, { -46, 6, .1 }, { 46, 8, -.1 }, { -30, 46, .2 }, { 34, 46, -.2 } }
 local GREY = { 0.79, 0.76, 0.72 }     -- the line, greyed out rather than red
 
-local ended = { land = 0 }
+-- E1's sounds: two dying heartbeats, the crack, the shatter over its boom, the defeat stinger; the voice after the
+-- dust settles
+local ended = { land = 0, voice = B + 1.1,
+    cues = { { 0, "endpulse" }, { B - 0.05, "crack" }, { B, "endshatter" }, { B + 0.05, "sting_ended" } } }
 GK.FX.ended_shatter = ended
 
 function ended.build(splash, P)
@@ -81,7 +84,8 @@ end
 local H = 0.45                         -- when the stamp lands
 local T3_SEAL = 150                    -- the card's seal: smaller than the splash's
 
-local paid = { land = 0 }
+-- T3's sounds: the stamp's swing (at half level) and the stamp; the voice after it
+local paid = { land = 0, voice = H + 0.35, cues = { { H - 0.12, "whoosh_50" }, { H, "stamp" } } }
 GK.FX.debt_paid = paid
 
 function paid.build(splash, P)

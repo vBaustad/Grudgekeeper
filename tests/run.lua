@@ -3899,6 +3899,80 @@ test("effects: every one plays from start to fade without an error, twice in a r
     end
 end)
 
+test("effects: cues play once each, in order, as the splash's age passes them, and not with sound off", function()
+    local GK, LIB, A = bootAnnounce()
+    GK.FX.test_cues = { land = 0, voice = 0.5, cues = { { 0, "a" }, { 0.3, "b" }, { 0.3, "c" }, { 1, "d" } } }
+    GK.SpreeEffect = function() return "test_cues" end
+    local function played() return table.concat(A.played, " ") end
+    LIB.Fire("GK_SPREE", ME, 3, "Bloodied", true, "bloodied")
+    local splash = A.frames[1]
+    eq(played(), "", "nothing before the first frame, the voice included")
+    splash.OnUpdate(splash, 0.2)
+    eq(played(), "a")
+    splash.OnUpdate(splash, 0.2)
+    eq(played(), "a b c", "two at the same time, in the order written")
+    splash.OnUpdate(splash, 0.2)
+    eq(played(), "a b c voice_bloodied", "the voice at its own time, not when the splash showed")
+    splash.OnUpdate(splash, 0.2)
+    eq(played(), "a b c voice_bloodied", "not yet d")
+    splash.OnUpdate(splash, 0.5)
+    splash.OnUpdate(splash, 0.5)
+    eq(played(), "a b c voice_bloodied d", "each once")
+    -- the next announcement on the same frame starts them over
+    W.advance(10)
+    LIB.Fire("GK_SPREE", ME, 3, "Bloodied", true, "bloodied")
+    eq(A.frames[1], splash)
+    splash.OnUpdate(splash, 0.2)
+    eq(played(), "a b c voice_bloodied d a", "again from the start")
+    -- sound off: the cues pass by, and are not played late when it comes back on
+    W.advance(10)
+    GK.db.sound = false
+    local before = #A.played
+    LIB.Fire("GK_SPREE", ME, 3, "Bloodied", true, "bloodied")
+    for _ = 1, 8 do splash.OnUpdate(splash, 0.2) end
+    eq(#A.played, before, "sound off mutes the cues and the voice")
+    GK.db.sound = true
+    splash.OnUpdate(splash, 0.2)
+    eq(#A.played, before, "and they are not played late")
+end)
+
+test("effects: a toast's cues play by its age; the count's come only with the count", function()
+    local GK, LIB, A = bootAnnounce()
+    GK.db.spreeMine = "toast"
+    local function toastOf() for _, f in ipairs(A.frames) do if f.age == 0 then return f end end end
+    LIB.Fire("GK_SPREE", ME, 7, "Butcher", true, "butcher")
+    local toast = toastOf()
+    eq(A.played[1], "voice_butcher", "a toast says its line at once")
+    toast.OnUpdate(toast, 0.1)
+    toast.OnUpdate(toast, 0.4)
+    eq(table.concat(A.played, " "), "voice_butcher whoosh_50 thump")
+    toast.OnUpdate(toast, 1)
+    eq(#A.played, 3, "no count, no more")
+    for _ = 1, 50 do toast.OnUpdate(toast, 0.1) end     -- back to the pool
+    A.played = {}
+    LIB.Fire("GK_SPREE", ME, 20, "Grudgebound", true, "grudgebound")
+    toast = toastOf()
+    eq(toast.cueN, 1, "a pooled toast starts its cues over")
+    toast.OnUpdate(toast, 1)
+    eq(table.concat(A.played, " "), "voice_grudgebound whoosh_50 thump whoosh_50 clang_60")
+end)
+
+test("effects: every cue and the voice time of every effect is in order and names a file in Media/sfx", function()
+    local GK = bootAnnounce()
+    local function check(name, fx)
+        local last = 0
+        for _, c in ipairs(fx.cues or {}) do
+            assert(c[1] >= last, name .. ": cues are sorted by time")
+            last = c[1]
+            local f = io.open("Media/sfx/" .. c[2] .. ".mp3", "rb")
+            assert(f, name .. ": no Media/sfx/" .. c[2] .. ".mp3")
+            f:close()
+        end
+    end
+    for name, fx in pairs(GK.FX) do check(name, fx) end
+    for name, fx in pairs(GK.TOASTFX) do check(name, fx) end
+end)
+
 test("effects: a toast's own effects play from start to fade without an error, and a pooled toast starts clean", function()
     local GK, LIB, A = bootAnnounce()
     GK.db.spreeMine = "toast"

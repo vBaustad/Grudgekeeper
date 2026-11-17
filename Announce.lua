@@ -42,6 +42,13 @@ local DEFAULT_SOUNDS = {
 }
 GK.SPREE_DEFAULT_SOUNDS = DEFAULT_SOUNDS     -- for the settings page, which shows these until one is picked
 
+--- An item's own sound: the player's pick for it, else the default (the tier's voice).
+local function PlayVoice(item)
+    if GK.db.sound and not item.silent then
+        GK.PlayChoice((GK.db.spreeSounds or {})[item.sound] or DEFAULT_SOUNDS[item.sound])
+    end
+end
+
 --- Whether an announcement may come now, by its when-setting and where we are.
 function GK.AnnounceAllowed(when, inCombat, inInstance)
     if when == "noCombat" then return not inCombat end
@@ -194,6 +201,13 @@ local function BuildSplash()
             self.shine:Hide()
         end
         if self.fx and self.fx.update then self.fx.update(self, age, GK.FxKit) end
+        if self.fx then GK.FxKit.Cues(self, self.fx, age) end
+        -- the voice comes at the effect's time, as the lab's does, not when the splash shows
+        if self.voiceAt and age >= self.voiceAt then
+            local item = self.voiceItem
+            self.voiceAt, self.voiceItem = nil, nil
+            PlayVoice(item)
+        end
         -- held: shown to be moved (Move.lua), so it stays until the mover closes
         if self.held then return end
         local hold = self.hold or SplashHold()
@@ -256,9 +270,10 @@ local function ShowSplash(item)
     Kindle(item.fire)
     splash.line:SetText(item.line)
     splash.line:SetTextColor(1, 1, 1, 1)   -- an effect may grey or fade it
-    if GK.FxKit then GK.FxKit.HideAll(splash) end
+    if GK.FxKit then GK.FxKit.HideAll(splash) GK.FxKit.CuesReset(splash) end
     local fx = EffectFor(item)
     splash.fx, splash.land = fx, fx and fx.land or 0
+    splash.voiceAt, splash.voiceItem = fx and fx.voice, item
     if fx and fx.start then fx.start(splash, item, GK.FxKit) end
     -- the hold counts from when the seal lands, so a long arrival never eats it
     splash.age, splash.hold = 0, splash.land + SplashHold()
@@ -333,6 +348,7 @@ local function BuildToast()
             self:SetAlpha(1 - (age - hold) / TOAST_FADE)
         end
         if self.fx and self.fx.update then self.fx.update(self, age, GK.FxKit) end
+        if self.fx then GK.FxKit.Cues(self, self.fx, age) end
     end)
     return t
 end
@@ -364,7 +380,7 @@ local function ResetToast(t)
     t.ribbon:SetSize(256, 64)
     t.ribbon:SetAlpha(1)
     t.line:SetAlpha(1)
-    if GK.FxKit then GK.FxKit.HideAll(t) end        -- the last effect's textures, whatever this one is
+    if GK.FxKit then GK.FxKit.HideAll(t) GK.FxKit.CuesReset(t) end   -- the last effect's textures and cues, whatever this one is
 end
 
 local function ShowToast(item)
@@ -409,9 +425,9 @@ local drainTimer = false
 --- What an item is shown with, and its sound: when it is shown, not when it was queued.
 local function Show(item)
     if item.style == "splash" then ShowSplash(item) else ShowToast(item) end
-    if GK.db.sound and not item.silent then
-        GK.PlayChoice((GK.db.spreeSounds or {})[item.sound] or DEFAULT_SOUNDS[item.sound])
-    end
+    -- a splash with an effect plays it at the effect's voice time (its OnUpdate), the rest at once
+    if item.style == "splash" and splash.voiceAt then return end
+    PlayVoice(item)
 end
 
 --- Show what is ready: the toasts at once, the splashes in their own order, each when the one before it has

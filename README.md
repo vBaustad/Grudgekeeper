@@ -42,5 +42,5 @@ death recap, and the enemy players you can see (nameplates, target, mouseover). 
 
 Uses LibForever-1.0 (fetched by the packager, see `.pkgmeta`). MIT licence.
 
-The Grudgekeeper's voice calling out each kill spree tier (`Media/voice_*.mp3`) was made with
-[ElevenLabs](https://elevenlabs.io).
+The Grudgekeeper's voice calling out each kill spree tier (`Media/voice_*.mp3`), and the sound effects and
+fanfares the spree effects play (`Media/sfx/*.mp3`), were made with [ElevenLabs](https://elevenlabs.io).
