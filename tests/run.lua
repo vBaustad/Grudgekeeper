@@ -3882,6 +3882,23 @@ test("effects: a splash with an effect holds from when its seal lands, not from 
     eq(splash.hold, 1 + GK.db.announceTime / 2)
 end)
 
+test("effects: every one plays from start to fade without an error, twice in a row", function()
+    local GK, LIB, A = bootAnnounce()
+    local names = {}
+    for name in pairs(GK.FX) do names[#names + 1] = name end
+    table.sort(names)
+    assert(#names >= 9, "every effect is registered: " .. #names)
+    for _, name in ipairs(names) do
+        for _ = 1, 2 do
+            GK.SpreeEffect = function() return name end
+            GK.AnnounceSample("20")
+            local splash = A.frames[1]
+            eq(splash.fx, GK.FX[name], name)
+            for step = 0, 50 do splash.OnUpdate(splash, step == 0 and 0 or 0.1) end
+        end
+    end
+end)
+
 test("effects: the lab's coordinates - y down from the seal's centre, clockwise radians", function()
     local GK = bootAnnounce()
     local P = GK.FxKit

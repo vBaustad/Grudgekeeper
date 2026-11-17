@@ -486,12 +486,29 @@ LIB.Listen("GK_ORDER_DONE", function(who, helpers, targetKey, pot)
     Add("orderDone", false, { seal = MEDIA .. "seal_red", line = line, sound = "order" })
 end)
 
+-- what /grudge spree <what> shows: a tier, a number of kills, Reaper's two, a spree ended or a tormentor
+local SAMPLE_KILLS = { bloodied = 3, merciless = 5, butcher = 7, reaper = 10, scythe = 10, smoke = 10, grudgebound = 15 }
+
 --- /grudge spree: a sample splash and a sample toast, whatever the settings and the when-rules say.
-function GK.AnnounceSample()
-    Show({ style = "splash", seal = MEDIA .. "spree_butcher", ribbon = MEDIA .. "spree_butcher_name",
-        line = "7 kills in a row", sound = "butcher", fire = "butcher" })
-    Show({ style = "toast", seal = MEDIA .. "spree_butcher", ribbon = MEDIA .. "spree_butcher_name",
-        line = "Glue Enjoyer: 7 kills in a row", silent = true })
+--- what: a tier's key, "scythe" or "smoke" (Reaper's two), a spree's kills ("20", "100"), "ended" or
+--- "tormentor"; none: Butcher, as before. Only the splash for anything but a tier.
+function GK.AnnounceSample(what)
+    what = what and what:lower() or "butcher"
+    if what == "ended" or what == "tormentor" then
+        Show({ style = "splash", seal = MEDIA .. (what == "ended" and "seal_broken" or "seal_black"), sound = what,
+            line = what == "ended" and "Your 12-kill spree ended (Glue Enjoyer)" or "You put an end to Glue Enjoyer, who had killed 4 of us",
+            effect = GK.SpreeEffect(what, nil, 12, GK.db), spree = 12 })
+        return
+    end
+    local kills = tonumber(what) or SAMPLE_KILLS[what] or 7
+    local _, key = GK.SpreeTierOf(kills)
+    key = key or "butcher"
+    local effect = GK.SpreeEffect("spree", key, kills, GK.db)
+    if what == "scythe" or what == "smoke" then effect = "reaper_" .. what end
+    Show({ style = "splash", seal = MEDIA .. "spree_" .. key, ribbon = MEDIA .. "spree_" .. key .. "_name",
+        line = ("%d kills in a row"):format(kills), sound = key, fire = key, effect = effect, spree = kills })
+    Show({ style = "toast", seal = MEDIA .. "spree_" .. key, ribbon = MEDIA .. "spree_" .. key .. "_name",
+        line = ("Glue Enjoyer: %d kills in a row"):format(kills), silent = true, spree = kills, mine = false })
 end
 
 -- ---------------------------------------------------------------------------

@@ -939,8 +939,8 @@ SlashCmdList.GRUDGEKEEPER = function(msg)
         if GK.ToggleMover then GK.ToggleMover() end
     elseif cmd == "notice reset" then
         GK.NoticeReset()
-    elseif cmd == "spree" then
-        GK.AnnounceSample()           -- a sample splash and toast (Announce.lua)
+    elseif cmd == "spree" or cmd:match("^spree ") then
+        GK.AnnounceSample(cmd:match("^spree (%S+)"))   -- a sample splash and toast (Announce.lua)
     elseif cmd == "options" or cmd == "settings" then
         GK.OpenOptions()
     elseif cmd == "guild" then
