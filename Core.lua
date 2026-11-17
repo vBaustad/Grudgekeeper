@@ -55,6 +55,7 @@ local defaults = {
     spreeGuild = "toast",    -- a guildie's spree milestone
     spreeEnded = "toast",    -- a spree of ours or a guildie's that an enemy ended
     spreeTormentor = "toast", -- one of the guild put an end to a tormentor
+    reaperEffect = "smoke", -- Reaper's splash: "smoke" or "scythe" (Effects.lua)
     orderDone = "toast",     -- a guildie got the target of a kill order; yours is a splash unless "off" (Announce.lua)
     announceWhenMine = "always",       -- when yours may come: "always", "noCombat", "noCombatInInstance" or "noInstance"
     announceWhenGuild = "noCombat",    -- the same for a guildie's; one held back waits, then comes in order
@@ -949,8 +950,8 @@ SlashCmdList.GRUDGEKEEPER = function(msg)
         if GK.ToggleMover then GK.ToggleMover() end
     elseif cmd == "notice reset" then
         GK.NoticeReset()
-    elseif cmd == "spree" then
-        GK.AnnounceSample()           -- a sample splash and toast (Announce.lua)
+    elseif cmd == "spree" or cmd:match("^spree ") then
+        GK.AnnounceSample(cmd:match("^spree (%S+)"))   -- a sample splash and toast (Announce.lua)
     elseif cmd == "options" or cmd == "settings" then
         GK.OpenOptions()
     elseif cmd == "guild" then

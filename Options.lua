@@ -154,6 +154,12 @@ function GK.SettingsChapters()
             -- the faces go with neither skin ("classic portraits no matter what ... en egen settings
             -- uavhengig av classic/parchment settings", the owner, 2026-11-11)
             Check("oldPortraits", "Old race portraits", "Faces from the old character screen. Off: today's icons."),
+            -- Reaper's splash had two we both liked (the Streak Lab, 2026-11-17). Here, not under Kill sprees:
+            -- that page is full.
+            { kind = "choice", key = "reaperEffect", label = "Reaper's splash",
+              options = { { "scythe", "Scythe" }, { "smoke", "Smoke" } },
+              get = function() return GK.db.reaperEffect or "smoke" end,
+              set = function(value) GK.db.reaperEffect = value end },
           } },
     }
     -- Kill sprees (Announce.lua): third, after Warnings.

@@ -3236,6 +3236,8 @@ end)
 -- ---------------------------------------------------------------------------
 --- Announce.lua over frames that do nothing but remember: A.tex has every texture it was given (a seal and a
 --- ribbon for each announcement, "nil" for no ribbon; not the glow), A.txt every line, A.played every sound.
+-- the effects, in the toc's order: the kit first, then one file a tier (or a kind)
+local EFFECT_FILES = { "Effects.lua", "FxBloodied.lua", "FxMerciless.lua", "FxButcher.lua", "FxReaper.lua", "FxGrudgebound.lua", "FxEnded.lua", "FxToast.lua" }
 local function bootAnnounce()
     local GK, LIB = boot({ me = ME })
     local A = { tex = {}, txt = {}, played = {}, frames = {}, combat = false, instance = false, lockdown = false }
@@ -3258,7 +3260,7 @@ local function bootAnnounce()
         if method == "SetTexture" then
             return function(f, path)
                 if rawget(f, "mask") then return end
-                for _, built in ipairs({ "glow$", "flames$", "shine$", "spark$" }) do
+                for _, built in ipairs({ "glow$", "flames$", "shine$", "spark$", "stamp_paid$", "\\fx_" }) do
                     if tostring(path):find(built) then return end
                 end
                 table.insert(A.tex, tostring(path))
@@ -3286,6 +3288,7 @@ local function bootAnnounce()
     _G.PlaySoundFile = function(path) table.insert(A.played, path:match("([%w_]+)%.mp3$") or path) return true end
     LIB.fire("PLAYER_ENTERING_WORLD")
     assert(loadfile("Notice.lua"))("Grudgekeeper", GK)     -- the toasts ask it where the letter icon is
+    for _, file in ipairs(EFFECT_FILES) do assert(loadfile(file))("Grudgekeeper", GK) end
     assert(loadfile("Announce.lua"))("Grudgekeeper", GK)
     return GK, LIB, A
 end
@@ -3476,7 +3479,7 @@ test("announce: toasts stack up to four, and /grudge spree shows a sample of bot
     eq(A.txt[7], "7 kills in a row")
     local seal7 = shownAt(A, 7)
     eq(seal7, MEDIA .. "spree_butcher")
-    eq(A.txt[8], "Glue Enjoyer: 7 kills in a row")
+    eq(A.txt[8], "7 kills in a row")
     A.combat = true
     local before = #A.played
     GK.AnnounceSample()
@@ -3845,6 +3848,190 @@ test("settings: a sound row for each tier, the end and the tormentor; the voices
     eq(GK.db.nearSound, "kit:RAID_WARNING")
     eq(played[#played], "kit:RAID_WARNING", "you hear what you chose")
     eq(horn[2](), true, "and it shows as chosen")
+end)
+
+-- ---------------------------------------------------------------------------
+-- Spree effects (Effects.lua): which one a splash plays, and the helpers they are drawn with
+-- ---------------------------------------------------------------------------
+test("effects: each tier its own, Butcher's blood bloom, Reaper by its setting", function()
+    local GK = bootAnnounce()
+    eq(GK.SpreeEffect("spree", "bloodied", 3, GK.db), "bloodied_drops")
+    eq(GK.SpreeEffect("spree", "merciless", 5, GK.db), "merciless_cross")
+    eq(GK.SpreeEffect("spree", "butcher", 7, GK.db), "butcher_bloom")
+    eq(GK.db.reaperEffect, "smoke", "the smoke out of the box")
+    eq(GK.SpreeEffect("spree", "reaper", 10, GK.db), "reaper_smoke")
+    GK.db.reaperEffect = "scythe"
+    eq(GK.SpreeEffect("spree", "reaper", 10, GK.db), "reaper_scythe")
+    GK.db.reaperEffect = "something old"
+    eq(GK.SpreeEffect("spree", "reaper", 10, GK.db), "reaper_smoke", "anything else: the smoke")
+end)
+
+test("effects: Grudgebound's crown at 15, the number on every 5 after it, the hundred at 100", function()
+    local GK = bootAnnounce()
+    eq(GK.SpreeEffect("spree", "grudgebound", 15, GK.db), "grudgebound_crown")
+    eq(GK.SpreeEffect("spree", "grudgebound", 20, GK.db), "grudgebound_repeat")
+    eq(GK.SpreeEffect("spree", "grudgebound", 95, GK.db), "grudgebound_repeat")
+    eq(GK.SpreeEffect("spree", "grudgebound", 100, GK.db), "hundred")
+    eq(GK.SpreeEffect("spree", "grudgebound", 105, GK.db), "grudgebound_repeat", "the hundred once")
+end)
+
+test("effects: a spree ended shatters, a tormentor put down is stamped paid, a kill order has none", function()
+    local GK = bootAnnounce()
+    eq(GK.SpreeEffect("ended", nil, 5, GK.db), "ended_shatter")
+    eq(GK.SpreeEffect("tormentor", nil, 4, GK.db), "debt_paid")
+    eq(GK.SpreeEffect("order", nil, nil, GK.db), nil)
+end)
+
+test("effects: a splash with an effect holds from when its seal lands, not from when it shows", function()
+    local GK, LIB, A = bootAnnounce()
+    GK.FX.test_late = { land = 1 }
+    GK.SpreeEffect = function() return "test_late" end
+    LIB.Fire("GK_SPREE", ME, 3, "Bloodied", true, "bloodied")
+    local splash = _G.GrudgekeeperSplash or A.frames[1]
+    eq(splash.hold, 1 + GK.db.announceTime / 2)
+end)
+
+test("effects: every one plays from start to fade without an error, twice in a row", function()
+    local GK, LIB, A = bootAnnounce()
+    local names = {}
+    for name in pairs(GK.FX) do names[#names + 1] = name end
+    table.sort(names)
+    assert(#names >= 9, "every effect is registered: " .. #names)
+    for _, name in ipairs(names) do
+        for _ = 1, 2 do
+            GK.SpreeEffect = function() return name end
+            GK.AnnounceSample("20")
+            local splash = A.frames[1]
+            eq(splash.fx, GK.FX[name], name)
+            for step = 0, 50 do splash.OnUpdate(splash, step == 0 and 0 or 0.1) end
+        end
+    end
+end)
+
+test("effects: cues play once each, in order, as the splash's age passes them, and not with sound off", function()
+    local GK, LIB, A = bootAnnounce()
+    GK.FX.test_cues = { land = 0, voice = 0.5, cues = { { 0, "a" }, { 0.3, "b" }, { 0.3, "c" }, { 1, "d" } } }
+    GK.SpreeEffect = function() return "test_cues" end
+    local function played() return table.concat(A.played, " ") end
+    LIB.Fire("GK_SPREE", ME, 3, "Bloodied", true, "bloodied")
+    local splash = A.frames[1]
+    eq(played(), "", "nothing before the first frame, the voice included")
+    splash.OnUpdate(splash, 0.2)
+    eq(played(), "a")
+    splash.OnUpdate(splash, 0.2)
+    eq(played(), "a b c", "two at the same time, in the order written")
+    splash.OnUpdate(splash, 0.2)
+    eq(played(), "a b c voice_bloodied", "the voice at its own time, not when the splash showed")
+    splash.OnUpdate(splash, 0.2)
+    eq(played(), "a b c voice_bloodied", "not yet d")
+    splash.OnUpdate(splash, 0.5)
+    splash.OnUpdate(splash, 0.5)
+    eq(played(), "a b c voice_bloodied d", "each once")
+    -- the next announcement on the same frame starts them over
+    W.advance(10)
+    LIB.Fire("GK_SPREE", ME, 3, "Bloodied", true, "bloodied")
+    eq(A.frames[1], splash)
+    splash.OnUpdate(splash, 0.2)
+    eq(played(), "a b c voice_bloodied d a", "again from the start")
+    -- sound off: the cues pass by, and are not played late when it comes back on
+    W.advance(10)
+    GK.db.sound = false
+    local before = #A.played
+    LIB.Fire("GK_SPREE", ME, 3, "Bloodied", true, "bloodied")
+    for _ = 1, 8 do splash.OnUpdate(splash, 0.2) end
+    eq(#A.played, before, "sound off mutes the cues and the voice")
+    GK.db.sound = true
+    splash.OnUpdate(splash, 0.2)
+    eq(#A.played, before, "and they are not played late")
+end)
+
+test("effects: a toast's cues play by its age; the count's come only with the count", function()
+    local GK, LIB, A = bootAnnounce()
+    GK.db.spreeMine = "toast"
+    local function toastOf() for _, f in ipairs(A.frames) do if f.age == 0 then return f end end end
+    LIB.Fire("GK_SPREE", ME, 7, "Butcher", true, "butcher")
+    local toast = toastOf()
+    eq(A.played[1], "voice_butcher", "a toast says its line at once")
+    toast.OnUpdate(toast, 0.1)
+    toast.OnUpdate(toast, 0.4)
+    eq(table.concat(A.played, " "), "voice_butcher whoosh_50 stamp")
+    toast.OnUpdate(toast, 1)
+    eq(#A.played, 3, "no count, no more")
+    for _ = 1, 50 do toast.OnUpdate(toast, 0.1) end     -- back to the pool
+    A.played = {}
+    LIB.Fire("GK_SPREE", ME, 20, "Grudgebound", true, "grudgebound")
+    toast = toastOf()
+    eq(toast.cueN, 1, "a pooled toast starts its cues over")
+    toast.OnUpdate(toast, 1)
+    eq(table.concat(A.played, " "), "voice_grudgebound whoosh_50 stamp whoosh_50 clang_60")
+end)
+
+test("effects: every cue and the voice time of every effect is in order and names a file in Media/sfx", function()
+    local GK = bootAnnounce()
+    local function check(name, fx)
+        local last = 0
+        for _, c in ipairs(fx.cues or {}) do
+            assert(c[1] >= last, name .. ": cues are sorted by time")
+            last = c[1]
+            local f = io.open("Media/sfx/" .. c[2] .. ".mp3", "rb")
+            assert(f, name .. ": no Media/sfx/" .. c[2] .. ".mp3")
+            f:close()
+        end
+    end
+    for name, fx in pairs(GK.FX) do check(name, fx) end
+    for name, fx in pairs(GK.TOASTFX) do check(name, fx) end
+end)
+
+test("effects: a toast's own effects play from start to fade without an error, and a pooled toast starts clean", function()
+    local GK, LIB, A = bootAnnounce()
+    GK.db.spreeMine = "toast"
+    GK.db.announceTime = 3                  -- so five seconds take a toast through its fade and back to the pool
+    eq(GK.ToastEffect("spree", true), "spree_burn")
+    eq(GK.ToastEffect("spree", false), nil, "a guildie's spree stays plain")
+    eq(GK.ToastEffect("tormentor", false), "debt_paid")
+    local cases = {
+        { "burn", "spree_burn", function() LIB.Fire("GK_SPREE", ME, 7, "Butcher", true, "butcher") end },
+        { "burn with the count", "spree_burn", function() LIB.Fire("GK_SPREE", ME, 20, "Grudgebound", true, "grudgebound") end },
+        { "paid", "debt_paid", function() LIB.Fire("GK_TORMENTOR", ME, "Gankalot", 6, true) end },
+        { "plain", nil, function() LIB.Fire("GK_SPREE", KARI, 7, "Butcher", false, "butcher") end },
+    }
+    for round = 1, 2 do
+        for _, c in ipairs(cases) do
+            local before = #A.frames
+            c[3]()
+            local toast
+            for _, f in ipairs(A.frames) do
+                if f.age == 0 then toast = f end        -- the one just shown, new or from the pool
+            end
+            assert(toast, c[1] .. ": a toast was shown")
+            eq(toast.fx, c[2] and GK.TOASTFX[c[2]], c[1])
+            for _ = 1, 50 do toast.OnUpdate(toast, 0.1) end
+            assert(#A.frames <= 1 or round == 1 or #A.frames == before, c[1] .. ": the pool is reused")
+        end
+    end
+end)
+
+test("effects: the lab's coordinates - y down from the seal's centre, clockwise radians", function()
+    local GK = bootAnnounce()
+    local P = GK.FxKit
+    local t = setmetatable({}, { __index = function(self, m)
+        return function(f, ...) rawset(f, m, { ... }) end
+    end })
+    local splash = {}
+    P.Set(splash, t, { x = 10, y = 20, w = 100, h = 50, s = 2, r = 0.5, a = 0.4 })
+    eq(t.SetPoint[1], "CENTER")
+    eq(t.SetPoint[4], 10)
+    eq(t.SetPoint[5], -85 - 20, "the seal's centre is 85 below the splash's top; y runs down")
+    eq(t.SetSize[1], 200)
+    eq(t.SetSize[2], 100)
+    eq(t.SetRotation[1], -0.5, "CSS turns clockwise, WoW counter-clockwise")
+    eq(t.SetAlpha[1], 0.4)
+    eq(P.prog(0.5, 0, 1), 0.5)
+    eq(P.prog(-1, 0, 1), 0)
+    eq(P.prog(3, 0, 1), 1)
+    eq(P.E.outC(0.5), 1 - 0.125)
+    local r1, r2 = P.rng(7), P.rng(7)
+    eq(r1(), r2(), "seeded: the same cloud every time")
 end)
 
 say(("\n%d passed, %d failed"):format(passed, failed))
