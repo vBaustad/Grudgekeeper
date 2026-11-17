@@ -14,10 +14,12 @@ leaderboard, and kill orders with a bounty on them.
 - **Track someone** at the top of your Grudges, or **Track** in the right-click menu on an enemy: your own
   list of enemies to keep an eye on, never shared. One of them near warns you and wears an eye over their
   nameplate.
-- Kill sprees: your kills worth points in a row are called out at 3, 5, 7, 10 and 15, yours and your
-  guildies', as a splash in the middle of the screen or a small toast by the letter icon. `/grudge spree`
-  shows a sample of both. The settings say how long they show, and each milestone is a line in the News
-  as well, with a spree an enemy ended and a tormentor put down.
+- Kill sprees: your kills worth points in a row are called out at 3, 5, 7, 10 and 15 and every five after,
+  yours and your guildies', as a splash in the middle of the screen or a small toast by the letter icon -
+  each tier with an effect and sounds of its own. `/grudge spree` shows a sample of both, and `/grudge spree
+  merciless` (or bloodied, butcher, smoke, scythe, grudgebound, 20, 100, ended, tormentor) that one's
+  splash. The settings say how long they show, and each milestone is a line in the News as well, with a
+  spree an enemy ended and a tormentor put down.
 - A kill order fulfilled is told the same way - yours as a splash, with the bounty - and for a day it stands first on the kill orders
   page and on the guild window's tab: who got them, where and when.
 - `/grudge options` opens the settings, in a window of their own. **Arrange on screen** there, or

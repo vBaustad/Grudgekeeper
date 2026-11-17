@@ -341,7 +341,29 @@ end
 -- ---------------------------------------------------------------------------
 -- Deaths
 -- ---------------------------------------------------------------------------
---- Who landed the killing blow, by the game's death recap: name and spell, or nil.
+--- A recap hit's source GUID when the client lets us read it, else nil.
+local function GuidOf(e)
+    local g = type(e) == "table" and e.sourceGUID
+    if type(g) == "string" and not Secret(g) and g ~= "" then return g end
+    return nil
+end
+
+--- The enemy player we saw behind a hit: by its GUID where the recap's can be read - a Player- GUID finds
+--- them when the name would not, and a pet's or a mob's GUID is no player whatever it is called (a pet named
+--- as a player) - else by the name (GK.SeenByName, which answers nil, "several" for a name several share).
+--- From dakristia's vBaustad/Grudgekeeper#4 (2026-11-17). Not seen in the game: that recap hits carry a
+--- readable sourceGUID; without one it is the name, as before.
+local function PlayerOf(name, guid)
+    if guid then
+        if guid:sub(1, 7) ~= "Player-" then return nil end
+        local s = GK.Seen(nil, guid)
+        if s then return s end
+    end
+    if type(name) ~= "string" then return nil end
+    return GK.SeenByName(name)
+end
+
+--- Who landed the killing blow, by the game's death recap: name, spell and GUID, or nil.
 local function FromRecap(id)
     if not (C_DeathRecap and C_DeathRecap.GetRecapEvents) then return nil end
     local ok, events = pcall(C_DeathRecap.GetRecapEvents, id)
@@ -356,7 +378,7 @@ local function FromRecap(id)
     end
     if type(blow) ~= "table" or Secret(blow.sourceName) or type(blow.sourceName) ~= "string" then return nil end
     local spell = blow.spellName
-    return blow.sourceName, (not Secret(spell) and type(spell) == "string") and spell or nil
+    return blow.sourceName, (not Secret(spell) and type(spell) == "string") and spell or nil, GuidOf(blow)
 end
 
 --- Whose a damage meter row's damage is: the unit it names - a player, or a pet's owner, as Blizzard's meter
@@ -400,7 +422,7 @@ end
 local function Hurter(rows)
     local total, record, top, spellOf, best = {}, {}, {}, {}, nil
     for _, r in ipairs(rows or {}) do
-        local s = GK.SeenByName(r[1])
+        local s = PlayerOf(r[1], r[4])
         if s then
             total[s.key] = (total[s.key] or 0) + r[2]
             record[s.key] = s
@@ -423,7 +445,7 @@ local function RecapRows(id)
             -- a hit with no amount the recap gives us still says they hit us
             local amount = (not Secret(e.amount) and tonumber(e.amount)) or 1
             local spell = (not Secret(e.spellName) and type(e.spellName) == "string") and e.spellName or nil
-            if amount > 0 then rows[#rows + 1] = { who, amount, spell } end
+            if amount > 0 then rows[#rows + 1] = { who, amount, spell, GuidOf(e) } end
         end
     end
     return rows
@@ -575,14 +597,14 @@ function GK.ResolveDeath()
         return
     end
     local how = "the death recap"
-    local name, spell = FromRecap(id)
-    if not name and id then name, spell = FromRecap(nil) end
+    local name, spell, guid = FromRecap(id)
+    if not name and id then name, spell, guid = FromRecap(nil) end
     -- the meter's latest fight is this death's only when we died in a fight
     if not name and diedInFight then
         name, how = FromMeter(), "the damage meter"
     end
     local s, why
-    if name then s, why = GK.SeenByName(name) end
+    if name then s, why = PlayerOf(name, guid) end
     -- The blow was a mob's, a guard's or a fall's: the enemy player who did the most of the damage is who
     -- we died to. Not when the blow was a name several enemies share - then it was one of them. Not out of a
     -- fight: lava or a fall with no fight going had no enemy in it.
