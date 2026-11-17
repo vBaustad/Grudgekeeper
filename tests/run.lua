@@ -3945,7 +3945,7 @@ test("effects: a toast's cues play by its age; the count's come only with the co
     eq(A.played[1], "voice_butcher", "a toast says its line at once")
     toast.OnUpdate(toast, 0.1)
     toast.OnUpdate(toast, 0.4)
-    eq(table.concat(A.played, " "), "voice_butcher whoosh_50 thump")
+    eq(table.concat(A.played, " "), "voice_butcher whoosh_50 stamp")
     toast.OnUpdate(toast, 1)
     eq(#A.played, 3, "no count, no more")
     for _ = 1, 50 do toast.OnUpdate(toast, 0.1) end     -- back to the pool
@@ -3954,7 +3954,7 @@ test("effects: a toast's cues play by its age; the count's come only with the co
     toast = toastOf()
     eq(toast.cueN, 1, "a pooled toast starts its cues over")
     toast.OnUpdate(toast, 1)
-    eq(table.concat(A.played, " "), "voice_grudgebound whoosh_50 thump whoosh_50 clang_60")
+    eq(table.concat(A.played, " "), "voice_grudgebound whoosh_50 stamp whoosh_50 clang_60")
 end)
 
 test("effects: every cue and the voice time of every effect is in order and names a file in Media/sfx", function()

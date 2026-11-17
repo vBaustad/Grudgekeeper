@@ -60,8 +60,9 @@ local FALLBACK_FIRE = { size = 2.15, alpha = 0.85, embers = 10 }
 
 -- K5's sounds, as K6 adds to them: a whoosh as it slides in (half level) and a thump at the punch; with the count,
 -- its whoosh (half level) and the iron (at 0.6). The voice is the toast's own, played at once.
-local BURN_CUES = { { 0, "whoosh_50" }, { 0.35, "thump" } }
-local BURN_NUM_CUES = { { 0, "whoosh_50" }, { 0.35, "thump" }, { NUM_AT - 0.1, "whoosh_50" }, { NUM_AT, "clang_60" } }
+-- the seal stamps in with the stamp: the lab's thump carried a high whine through all of it
+local BURN_CUES = { { 0, "whoosh_50" }, { 0.35, "stamp" } }
+local BURN_NUM_CUES = { { 0, "whoosh_50" }, { 0.35, "stamp" }, { NUM_AT - 0.1, "whoosh_50" }, { NUM_AT, "clang_60" } }
 
 GK.TOASTFX.spree_burn = {
     build = function(toast, P)
