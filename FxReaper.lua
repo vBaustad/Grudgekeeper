@@ -15,7 +15,7 @@ end
 -- points forward from it, flipped so its curved edge faces the hands, as the arc the tip draws does. Turning the
 -- pivot counter-clockwise swings it left to right through the seal, tip first. Nothing here is nested, so every
 -- part is placed by turning its point round the pivot by hand.
-local C = 0.24                                   -- the seal lands as the blade crosses it
+local C = 0.24                                   -- when the seal lands, as the blade crosses it
 local H = { x = -30, y = -290 }                  -- the pivot, from the seal's centre
 local LS = 260                                   -- the shaft, pivot to socket
 local K = 260 / 1024                             -- fx_scythe's scale: points below are read off the 1024 px art
@@ -51,10 +51,10 @@ GK.FX.reaper_scythe = {
         fx.edge, fx.smear = {}, {}
         for i = 1, SEGS do
             fx.edge[i] = P.Tex(splash, "fx_arc_seg", "OVERLAY", 2, true)
-            fx.smear[i] = P.Tex(splash, "fx_arc_seg", "OVERLAY", 1, true)
+            fx.smear[i] = P.Tex(splash, "fx_arc_seg", "ARTWORK", 1, true)   -- the lab's smear is under the ribbon
         end
-        -- a cold flash where it hits: the glow, made green
-        fx.flash = P.Tex(splash, "spree_glow", "BACKGROUND", 2, true)
+        -- a cold flash where it hits: the glow, made green, on the seal and under the ribbon
+        fx.flash = P.Tex(splash, "spree_glow", "ARTWORK", 1, true)
         fx.flash:SetDesaturated(true)
         splash.reaperScythe = fx
     end,
@@ -98,7 +98,7 @@ GK.FX.reaper_scythe = {
 -- cloud rises into place. Each one drifts up, sways and turns the whole time; then they lift off one after
 -- another. The seal comes up dark through it before the ribbon lands. Round 2 found the old cloud was eight
 -- copies of one puff on a circle that faded in place.
-local SC = 0.45
+local SC = 0.45                                  -- when the seal lands, out of the smoke
 local PUFFS = 30
 
 GK.FX.reaper_smoke = {
@@ -106,7 +106,7 @@ GK.FX.reaper_smoke = {
     build = function(splash, P)
         local fx = { puffs = {} }
         fx.gloom = Gloom(splash, P)
-        fx.glow = P.Tex(splash, "spree_glow", "BACKGROUND", 0, true)
+        fx.glow = P.Tex(splash, "spree_glow", "ARTWORK", 1, true)     -- the lab's z 1: over the seal, under the ribbon
         fx.glow:SetDesaturated(true)
         local r = P.rng(4)                       -- the same cloud every time
         for i = 1, PUFFS do

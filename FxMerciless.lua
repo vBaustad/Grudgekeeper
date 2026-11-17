@@ -16,7 +16,8 @@ GK.FX.merciless_cross = {
         for i, r in ipairs(CUT_ROT) do
             splash.cuts[i] = { t = P.Tex(splash, "fx_slash", "ARTWORK", -2, true), r = r, t0 = (i - 1) * CUT_GAP }
         end
-        splash.cutFlash = P.Tex(splash, "spree_glow", "OVERLAY", 3, true)
+        -- the flash lies on the seal and under the ribbon, as the lab draws it after the seal
+        splash.cutFlash = P.Tex(splash, "spree_glow", "ARTWORK", 1, true)
         -- made once: the burst is drawn from the splash's age, so it plays again from the start
         splash.cutSparks = P.Burst(splash, 28, { t0 = H, speed = 560, life = 0.5, size = 12, stretch = 3, seed = 4 })
     end,

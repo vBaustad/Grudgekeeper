@@ -12,19 +12,17 @@ local E = nil                     -- the kit's easings, set when built
 local function Build(splash, P)
     E = P.E
     local b = {}
-    -- the ring and the flash are lights, so additive
-    b.ring = P.Tex(splash, "spree_glow", "OVERLAY", 0, true)
-    b.flash = P.Tex(splash, "spree_glow", "OVERLAY", 0, true)
+    -- the ring and the flash are lights, so additive; the ring goes out from under the seal, the flash lies on it
+    b.ring = P.Tex(splash, "spree_glow", "BACKGROUND", 2, true)
+    b.flash = P.Tex(splash, "spree_glow", "ARTWORK", 1, true)
     -- the seal's sparks leave from where it lands, thrown out and pulled down
     b.sparks = P.Burst(splash, 24, { t0 = LAND, speed = 560, life = 0.65, size = 12, stretch = 2.6,
         gravity = 380, drag = 2.2, seed = 7 })
-    -- The drops sit over the seal and under the ribbon. The seal and the ribbon are both ARTWORK 0 and there is
-    -- no sublevel between them, so these are ARTWORK 0 too (made later, so drawn over the seal); a head that
-    -- reaches the ribbon's top edge may show over it.
+    -- The drops sit over the seal (ARTWORK 0) and under the ribbon (ARTWORK 2), so they end behind the name.
     b.drops = {}
     for i, d in ipairs(DROPS) do
-        b.drops[i] = { d = d, trail = P.Tex(splash, "fx_drop_trail", "ARTWORK", 0),
-            head = P.Tex(splash, "fx_drop_head", "ARTWORK", 0) }
+        b.drops[i] = { d = d, trail = P.Tex(splash, "fx_drop_trail", "ARTWORK", 1),
+            head = P.Tex(splash, "fx_drop_head", "ARTWORK", 1) }
     end
     splash.bloodied = b
 end
