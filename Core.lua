@@ -55,6 +55,7 @@ local defaults = {
     spreeGuild = "toast",    -- a guildie's spree milestone
     spreeEnded = "toast",    -- a spree of ours or a guildie's that an enemy ended
     spreeTormentor = "toast", -- one of the guild put an end to a tormentor
+    reaperEffect = "scythe", -- Reaper's splash: "scythe" or "smoke" (Effects.lua)
     orderDone = "toast",     -- a guildie got the target of a kill order
     announceWhenMine = "always",       -- when yours may come: "always", "noCombat", "noCombatInInstance" or "noInstance"
     announceWhenGuild = "noCombat",    -- the same for a guildie's; one held back waits, then comes in order

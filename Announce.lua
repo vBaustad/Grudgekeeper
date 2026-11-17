@@ -145,23 +145,39 @@ local function BuildSplash()
     splash.line = splash:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
     Outline(splash.line)
     splash.line:SetPoint("TOP", splash, "TOP", 0, -SEAL - SEAL / 2 + 4)
-    splash.age = 0
+    splash.age, splash.land = 0, 0
     -- The punch (the seal scales in), the glow's pulse, the flames, embers and shine, and the fade, by hand:
     -- one frame's OnUpdate.
+    -- With an effect (Effects.lua) all of it starts when the effect's seal lands (k from 0), and the effect
+    -- draws over it, and may move the seal, after.
     splash:SetScript("OnUpdate", function(self, dt)
         local age = self.age + dt
         self.age = age
+        local k = age - self.land
+        local on = k >= 0
+        self.seal:SetShown(on)
+        self.ribbon:SetShown(on and self.hasRibbon)
+        self.line:SetShown(on)
+        self.glow:SetShown(on)
+        if self.fx then
+            self.seal:ClearAllPoints()
+            self.seal:SetPoint("CENTER", self, "TOP", 0, -SEAL / 2)
+            self.seal:SetRotation(0)
+            self.seal:SetVertexColor(1, 1, 1)
+            self.seal:SetAlpha(1)
+        end
         local s = 1
-        if age < SPLASH_POP then s = 1.6 - 0.6 * (age / SPLASH_POP) end
+        if on and k < SPLASH_POP then s = 1.6 - 0.6 * (k / SPLASH_POP) end
         self.seal:SetSize(SEAL * s, SEAL * s)
         self.glow:SetAlpha(0.45 + 0.2 * math.sin(age * 6))
         local fire = self.fire
-        if fire then
+        self.flames:SetShown(fire ~= nil and on)
+        if fire and on then
             local i = math.floor(age * FLAME_FPS) % FLAME_FRAMES
             local col, row = i % FLAME_COLS, math.floor(i / FLAME_COLS)
             self.flames:SetTexCoord(col / FLAME_COLS, (col + 1) / FLAME_COLS, row / FLAME_ROWS, (row + 1) / FLAME_ROWS)
-            self.flames:SetAlpha(fire.alpha * math.min(1, age / SPLASH_POP))
-            local catching = math.min(1, age / 0.3)
+            self.flames:SetAlpha(fire.alpha * math.min(1, k / SPLASH_POP))
+            local catching = math.min(1, k / 0.3)
             for n = 1, fire.embers do
                 local e, m = self.embers[n], self.motes[n]
                 local t = (age - m.born) % m.life
@@ -170,13 +186,14 @@ local function BuildSplash()
                 e:SetAlpha((1 - f) * math.min(1, f * 5) * catching)
             end
         end
-        local p = (age - SHINE_START) / SHINE_TIME
-        if self.ribbon:IsShown() and p >= 0 and p <= 1 then
+        local p = (k - SHINE_START) / SHINE_TIME
+        if on and self.hasRibbon and p >= 0 and p <= 1 then
             self.shine:SetPoint("CENTER", self.ribbon, "LEFT", -SHINE_WIDTH + p * (2 * SEAL + 2 * SHINE_WIDTH), 0)
             self.shine:Show()
         else
             self.shine:Hide()
         end
+        if self.fx and self.fx.update then self.fx.update(self, age, GK.FxKit) end
         -- held: shown to be moved (Move.lua), so it stays until the mover closes
         if self.held then return end
         local hold = self.hold or SplashHold()
@@ -214,10 +231,23 @@ local function Kindle(key)
     end
 end
 
+--- The splash's effect for an item (Effects.lua), built the first time it plays; nil for none.
+local function EffectFor(item)
+    local fx = item.effect and GK.FX and GK.FX[item.effect]
+    if not fx then return nil end
+    splash.fxBuilt = splash.fxBuilt or {}
+    if fx.build and not splash.fxBuilt[item.effect] then
+        fx.build(splash, GK.FxKit)
+        splash.fxBuilt[item.effect] = true
+    end
+    return fx
+end
+
 local function ShowSplash(item)
     if not splash then BuildSplash() end
     splash.seal:SetTexture(item.seal)
     splash.ribbon:SetTexture(item.ribbon)
+    splash.hasRibbon = item.ribbon ~= nil
     splash.ribbon:SetShown(item.ribbon ~= nil)
     if item.ribbon then
         splash.shineMask:SetTexture(item.ribbon, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
@@ -225,7 +255,12 @@ local function ShowSplash(item)
     splash.shine:Hide()
     Kindle(item.fire)
     splash.line:SetText(item.line)
-    splash.age, splash.hold = 0, SplashHold()
+    if GK.FxKit then GK.FxKit.HideAll(splash) end
+    local fx = EffectFor(item)
+    splash.fx, splash.land = fx, fx and fx.land or 0
+    if fx and fx.start then fx.start(splash, item, GK.FxKit) end
+    -- the hold counts from when the seal lands, so a long arrival never eats it
+    splash.age, splash.hold = 0, splash.land + SplashHold()
     splash:SetAlpha(1)
     splash:Show()
     splashBusyUntil = GetTime() + splash.hold + 1
@@ -416,7 +451,8 @@ LIB.Listen("GK_SPREE", function(who, spree, tierName, mine, key)
     local line = ("%d kills in a row"):format(spree)
     if not mine then line = Name(who) .. ": " .. line end
     Add(mine and "spreeMine" or "spreeGuild", mine, { seal = MEDIA .. "spree_" .. key,
-        ribbon = MEDIA .. "spree_" .. key .. "_name", line = line, sound = key, fire = key })
+        ribbon = MEDIA .. "spree_" .. key .. "_name", line = line, sound = key, fire = key,
+        effect = GK.SpreeEffect and GK.SpreeEffect("spree", key, spree, GK.db), spree = spree })
 end)
 
 LIB.Listen("GK_SPREE_ENDED", function(who, spree, killerName, mine)
@@ -426,12 +462,14 @@ LIB.Listen("GK_SPREE_ENDED", function(who, spree, killerName, mine)
     else
         line = ("%s's %d-kill spree ended (%s)"):format(Name(who), spree, Hide(killerName))
     end
-    Add("spreeEnded", mine, { seal = MEDIA .. "seal_broken", line = line, sound = "ended" })
+    Add("spreeEnded", mine, { seal = MEDIA .. "seal_broken", line = line, sound = "ended",
+        effect = GK.SpreeEffect and GK.SpreeEffect("ended", nil, spree, GK.db), spree = spree })
 end)
 
 LIB.Listen("GK_TORMENTOR", function(who, enemyName, count, mine)
     local line = ("%s put an end to %s, who had killed %d of us"):format(mine and "You" or Name(who), Hide(enemyName), count)
-    Add("spreeTormentor", mine, { seal = MEDIA .. "seal_black", line = line, sound = "tormentor" })
+    Add("spreeTormentor", mine, { seal = MEDIA .. "seal_black", line = line, sound = "tormentor",
+        effect = GK.SpreeEffect and GK.SpreeEffect("tormentor", nil, count, GK.db) })
 end)
 
 -- A guildie got the target of a kill order (Guild.lua, the F we heard): told as it happens, to everyone -

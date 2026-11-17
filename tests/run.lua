@@ -3227,6 +3227,8 @@ end)
 -- ---------------------------------------------------------------------------
 --- Announce.lua over frames that do nothing but remember: A.tex has every texture it was given (a seal and a
 --- ribbon for each announcement, "nil" for no ribbon; not the glow), A.txt every line, A.played every sound.
+-- the effects, in the toc's order: the kit first, then one file a tier (or a kind)
+local EFFECT_FILES = { "Effects.lua" }
 local function bootAnnounce()
     local GK, LIB = boot({ me = ME })
     local A = { tex = {}, txt = {}, played = {}, frames = {}, combat = false, instance = false, lockdown = false }
@@ -3249,7 +3251,7 @@ local function bootAnnounce()
         if method == "SetTexture" then
             return function(f, path)
                 if rawget(f, "mask") then return end
-                for _, built in ipairs({ "glow$", "flames$", "shine$", "spark$" }) do
+                for _, built in ipairs({ "glow$", "flames$", "shine$", "spark$", "\\fx_" }) do
                     if tostring(path):find(built) then return end
                 end
                 table.insert(A.tex, tostring(path))
@@ -3277,6 +3279,7 @@ local function bootAnnounce()
     _G.PlaySoundFile = function(path) table.insert(A.played, path:match("([%w_]+)%.mp3$") or path) return true end
     LIB.fire("PLAYER_ENTERING_WORLD")
     assert(loadfile("Notice.lua"))("Grudgekeeper", GK)     -- the toasts ask it where the letter icon is
+    for _, file in ipairs(EFFECT_FILES) do assert(loadfile(file))("Grudgekeeper", GK) end
     assert(loadfile("Announce.lua"))("Grudgekeeper", GK)
     return GK, LIB, A
 end
@@ -3836,6 +3839,70 @@ test("settings: a sound row for each tier, the end and the tormentor; the voices
     eq(GK.db.nearSound, "kit:RAID_WARNING")
     eq(played[#played], "kit:RAID_WARNING", "you hear what you chose")
     eq(horn[2](), true, "and it shows as chosen")
+end)
+
+-- ---------------------------------------------------------------------------
+-- Spree effects (Effects.lua): which one a splash plays, and the helpers they are drawn with
+-- ---------------------------------------------------------------------------
+test("effects: each tier its own, Butcher as before, Reaper by its setting", function()
+    local GK = bootAnnounce()
+    eq(GK.SpreeEffect("spree", "bloodied", 3, GK.db), "bloodied_drops")
+    eq(GK.SpreeEffect("spree", "merciless", 5, GK.db), "merciless_cross")
+    eq(GK.SpreeEffect("spree", "butcher", 7, GK.db), nil, "Butcher keeps 1.8.0's punch")
+    eq(GK.db.reaperEffect, "scythe", "the scythe out of the box")
+    eq(GK.SpreeEffect("spree", "reaper", 10, GK.db), "reaper_scythe")
+    GK.db.reaperEffect = "smoke"
+    eq(GK.SpreeEffect("spree", "reaper", 10, GK.db), "reaper_smoke")
+    GK.db.reaperEffect = "something old"
+    eq(GK.SpreeEffect("spree", "reaper", 10, GK.db), "reaper_scythe", "anything else: the scythe")
+end)
+
+test("effects: Grudgebound's crown at 15, the number on every 5 after it, the hundred at 100", function()
+    local GK = bootAnnounce()
+    eq(GK.SpreeEffect("spree", "grudgebound", 15, GK.db), "grudgebound_crown")
+    eq(GK.SpreeEffect("spree", "grudgebound", 20, GK.db), "grudgebound_repeat")
+    eq(GK.SpreeEffect("spree", "grudgebound", 95, GK.db), "grudgebound_repeat")
+    eq(GK.SpreeEffect("spree", "grudgebound", 100, GK.db), "hundred")
+    eq(GK.SpreeEffect("spree", "grudgebound", 105, GK.db), "grudgebound_repeat", "the hundred once")
+end)
+
+test("effects: a spree ended shatters, a tormentor put down is stamped paid, a kill order has none", function()
+    local GK = bootAnnounce()
+    eq(GK.SpreeEffect("ended", nil, 5, GK.db), "ended_shatter")
+    eq(GK.SpreeEffect("tormentor", nil, 4, GK.db), "debt_paid")
+    eq(GK.SpreeEffect("order", nil, nil, GK.db), nil)
+end)
+
+test("effects: a splash with an effect holds from when its seal lands, not from when it shows", function()
+    local GK, LIB, A = bootAnnounce()
+    GK.FX.test_late = { land = 1 }
+    GK.SpreeEffect = function() return "test_late" end
+    LIB.Fire("GK_SPREE", ME, 3, "Bloodied", true, "bloodied")
+    local splash = _G.GrudgekeeperSplash or A.frames[1]
+    eq(splash.hold, 1 + GK.db.announceTime / 2)
+end)
+
+test("effects: the lab's coordinates - y down from the seal's centre, clockwise radians", function()
+    local GK = bootAnnounce()
+    local P = GK.FxKit
+    local t = setmetatable({}, { __index = function(self, m)
+        return function(f, ...) rawset(f, m, { ... }) end
+    end })
+    local splash = {}
+    P.Set(splash, t, { x = 10, y = 20, w = 100, h = 50, s = 2, r = 0.5, a = 0.4 })
+    eq(t.SetPoint[1], "CENTER")
+    eq(t.SetPoint[4], 10)
+    eq(t.SetPoint[5], -85 - 20, "the seal's centre is 85 below the splash's top; y runs down")
+    eq(t.SetSize[1], 200)
+    eq(t.SetSize[2], 100)
+    eq(t.SetRotation[1], -0.5, "CSS turns clockwise, WoW counter-clockwise")
+    eq(t.SetAlpha[1], 0.4)
+    eq(P.prog(0.5, 0, 1), 0.5)
+    eq(P.prog(-1, 0, 1), 0)
+    eq(P.prog(3, 0, 1), 1)
+    eq(P.E.outC(0.5), 1 - 0.125)
+    local r1, r2 = P.rng(7), P.rng(7)
+    eq(r1(), r2(), "seeded: the same cloud every time")
 end)
 
 say(("\n%d passed, %d failed"):format(passed, failed))
