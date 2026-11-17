@@ -255,6 +255,7 @@ local function ShowSplash(item)
     splash.shine:Hide()
     Kindle(item.fire)
     splash.line:SetText(item.line)
+    splash.line:SetTextColor(1, 1, 1, 1)   -- an effect may grey or fade it
     if GK.FxKit then GK.FxKit.HideAll(splash) end
     local fx = EffectFor(item)
     splash.fx, splash.land = fx, fx and fx.land or 0
