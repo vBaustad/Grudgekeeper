@@ -699,16 +699,19 @@ end
 local win                          -- the letter window, made on first use
 -- Where its parts stand. w, h: its width and least height; maxH its most - it grows to its words. face: the
 -- portrait's side; faceX, faceY its top left. The title stands beside the face, the words under both from
--- textX. right: the margin on the right. headY: the title's top. title, name: their type's size. signY,
+-- textX. right: the margin on the right. headY: an order's title's top. title, name: their type's size on an
+-- order (titleLong for a long one); note, noteLong: a note's title, which has nothing under it. signY,
 -- ruleY, footY: the signature's line, the faint rule, and Read all and Close, up from the foot; sealRoom:
 -- what the writing keeps clear over the signature. edge: Read all, Close and the signature this far in from
 -- the sides. pileY: the pile's row, up from the foot, over Read all and Close. pile: dots in it at most.
 -- blood: x, y and size of a death's. 380 wide, the foot was one row - Read all, the pile, its count and Close
 -- all on it - and they ran into each other: "de er litt små fordi du ser ting overlapper nederst" (the
--- owner, 2026-11-18). Wider, and the pile a row of its own.
+-- owner, 2026-11-18). Wider, and the pile a row of its own. The titles were 18, small beside the portrait
+-- with room under them: "gjør header på kortene (spesielt de som ikke har sub headers osv større?) ser dumt
+-- ut når det er stort mellomrom og liten skrift" (the owner, the same day).
 local LAYOUT = { w = 440, h = 300, maxH = 540, face = 60, faceX = 30, faceY = 34, textX = 30, right = 30, headY = 32,
-    title = 18, name = 16, signY = 100, sealRoom = 30, ruleY = 90, footY = 28, pileY = 62, edge = 28, pile = 9,
-    blood = { 120, -40, 160 } }
+    title = 22, titleLong = 18, note = 28, noteLong = 22, name = 16, signY = 100, sealRoom = 30, ruleY = 90,
+    footY = 28, pileY = 62, edge = 28, pile = 9, blood = { 120, -40, 160 } }
 local BUTTON_GAP = 12              -- between the words and the letter's buttons
 
 --- The letters closed - by X, Close or Escape: the read ones go. A moment later, so a letter's own button
@@ -1482,7 +1485,10 @@ local function BuildLetter()
     -- right under them.
     f.title = f:CreateFontString(nil, "ARTWORK")
     Ink(f.title, BLOOD, TITLE_FONT, L.title)
-    f.title:SetPoint("TOPLEFT", headX, -L.headY)
+    f.title:SetPoint("TOPLEFT", headX, -L.headY)          -- where: FillLetter, by the kind of letter
+    f.title:SetWidth(headW)
+    f.title:SetJustifyH("LEFT")
+    f.title:SetMaxLines(2)                                 -- a long title takes two lines before it runs on
     f.name = f:CreateFontString(nil, "ARTWORK")
     Ink(f.name, INK, TITLE_FONT, L.name)
     f.name:SetPoint("TOPLEFT", f.title, "BOTTOMLEFT", 0, -4)
@@ -1589,8 +1595,18 @@ local function FillLetter(L)
     local lay = f.layout
     local d = GK.LetterContent(L)
     local order = not d.note
-    -- "ORDER COMPLETE" fills the line at the size "KILL ORDER" wants
-    Ink(f.title, BLOOD, TITLE_FONT, #d.title > 11 and lay.title - 4 or lay.title)
+    -- The title. An order's at the head's top, whom it is about and the bounty under it ("ORDER COMPLETE"
+    -- fills the line at the size "KILL ORDER" wants). A note's has nothing under it: large, and in the middle
+    -- of the portrait beside it, where it hung small at the top with the room under it empty.
+    local headX = lay.faceX + lay.face + 12
+    f.title:ClearAllPoints()
+    if order then
+        Ink(f.title, BLOOD, TITLE_FONT, #d.title > 11 and lay.titleLong or lay.title)
+        f.title:SetPoint("TOPLEFT", f, "TOPLEFT", headX, -lay.headY)
+    else
+        Ink(f.title, BLOOD, TITLE_FONT, #d.title > 16 and lay.noteLong or lay.note)
+        f.title:SetPoint("LEFT", f, "TOPLEFT", headX, -(lay.faceY + lay.face / 2))
+    end
     f.title:SetText(d.title)
 
     -- the head: whom an order is about, and its bounty; on a note, the Grudgekeeper with their class on his
