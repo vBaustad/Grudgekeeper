@@ -5,8 +5,17 @@
 -- always, or not in a fight, not in a fight in an instance, not in an instance. One that may not come yet
 -- is held, and plays in order when the setting allows (the fight ends, the area changes), one splash
 -- after another. Plain frames only: nothing here is secure, protected or a CVar, so it all works in combat.
--- What is told comes from Kills.lua and Guild.lua as GK_SPREE, GK_SPREE_ENDED, GK_TORMENTOR and
--- GK_ORDER_DONE.
+-- What is told comes from Kills.lua and Guild.lua as GK_SPREE, GK_SPREE_ENDED, GK_TORMENTOR,
+-- GK_ORDER_DONE and GK_RANKUP (a new title, 2026-11-18).
+--
+-- Where a new effect plugs in, by its name alone (FirstFx, below): a file that makes GK.FX[name] (the
+-- splash) or GK.TOASTFX[name] (a toast) is played for it, with no other line changed. Made ready for
+-- dakristia's effects ("vi skal bygge og gjøre klart for daniels animasjonsbidrag", the owner, 2026-11-18):
+--   rank_<title>   a new title, by GK.TitleKey: rank_oathsworn ... rank_dread_reaper; else "rank" for all
+--   order_fulfilled a kill order fulfilled, yours (a splash) or a guildie's
+--   tormentor      a tormentor put down, in place of the debt stamped paid (debt_paid) it plays today
+-- The item an effect's start gets says what happened: line, mine, and for a rank up title, titleKey and
+-- points; for an order target, hunter and pot (copper).
 local ADDON, GK = ...
 local LIB = LibStub("LibForever-1.0")
 
@@ -39,6 +48,7 @@ local DEFAULT_SOUNDS = {
     ended = "kit:UI_RAID_BOSS_DEFEATED",
     tormentor = "kit:UI_GARRISON_TOAST_INVASION_ALERT",
     order = "kit:IG_PVP_UPDATE",                 -- a guildie's kill order fulfilled: no row to pick another on
+    rank = "kit:UI_PVP_HONOR_PRESTIGE_RANK_UP",  -- a new title: the game's own rank-up, no row either
 }
 GK.SPREE_DEFAULT_SOUNDS = DEFAULT_SOUNDS     -- for the settings page, which shows these until one is picked
 
@@ -513,6 +523,38 @@ local function Add(setting, mine, item)
     Tell(item)
 end
 
+--- The first of these effects some file has made, in set (GK.FX or GK.TOASTFX); nil for none: the hooks at
+--- the top of this file.
+local function FirstFx(set, ...)
+    for i = 1, select("#", ...) do
+        local name = select(i, ...)
+        if name and set and set[name] then return name end
+    end
+    return nil
+end
+
+-- The seal a new title wears until it has art of its own: the gold one the leaderboard's first has.
+local RANK_SEAL = MEDIA .. "rank_1"
+
+--- A new title, told: yours "You are now Avenger - 450 points", a guildie's "Kari is now Avenger".
+local function RankItem(who, title, points, mine)
+    local key = GK.TitleKey(title)
+    local line = mine and ("You are now %s - %d points"):format(title, points or 0)
+        or ("%s is now %s"):format(Name(who), title)
+    return { seal = RANK_SEAL, line = line, sound = "rank", title = title, titleKey = key, points = points,
+        effect = FirstFx(GK.FX, "rank_" .. key, "rank"), toastEffect = FirstFx(GK.TOASTFX, "rank_" .. key, "rank") }
+end
+
+-- A new title (Kills.lua: yours; Guild.lua: a guildie's, from the score their kill sent). Told as a spree
+-- is, by My sprees and Guildies' sprees: the settings page has no room for a row of its own (Options.lua),
+-- and it is the same kind of news - what the fighting made of you. The letter for yours still comes, and
+-- says where you stand. "vi skulle gjerne sett animasjoner/effekter for de forskjellige rankups" (the owner,
+-- 2026-11-18): each title's own effect comes from dakristia's kit, by its name (the top of this file).
+LIB.Listen("GK_RANKUP", function(who, title, points, mine)
+    if type(title) ~= "string" then return end
+    Add(mine and "spreeMine" or "spreeGuild", mine, RankItem(who, title, points, mine))
+end)
+
 LIB.Listen("GK_SPREE", function(who, spree, tierName, mine, key)
     if not key then return end
     local line = ("%d kills in a row"):format(spree)
@@ -537,8 +579,8 @@ end)
 LIB.Listen("GK_TORMENTOR", function(who, enemyName, count, mine)
     local line = ("%s put an end to %s, who had killed %d of us"):format(mine and "You" or Name(who), Hide(enemyName), count)
     Add("spreeTormentor", mine, { seal = MEDIA .. "seal_black", line = line, sound = "tormentor",
-        effect = GK.SpreeEffect and GK.SpreeEffect("tormentor", nil, count, GK.db),
-        toastEffect = GK.ToastEffect and GK.ToastEffect("tormentor", mine) })
+        effect = FirstFx(GK.FX, "tormentor") or (GK.SpreeEffect and GK.SpreeEffect("tormentor", nil, count, GK.db)),
+        toastEffect = FirstFx(GK.TOASTFX, "tormentor") or (GK.ToastEffect and GK.ToastEffect("tormentor", mine)) })
 end)
 
 -- A guildie got the target of a kill order (Guild.lua, the F we heard): told as it happens, to everyone -
@@ -559,7 +601,8 @@ LIB.Listen("GK_ORDER_DONE", function(who, helpers, targetKey, pot, mine)
     local style = Style("orderDone")
     if not style then return end
     Tell({ style = mine and "splash" or style, mine = mine and true or false, seal = MEDIA .. "seal_red",
-        line = line, sound = "order" })
+        line = line, sound = "order", target = Name(targetKey), hunter = Name(who), pot = tonumber(pot) or 0,
+        effect = FirstFx(GK.FX, "order_fulfilled"), toastEffect = FirstFx(GK.TOASTFX, "order_fulfilled") })
 end)
 
 -- what /grudge spree <what> shows: a tier, a number of kills, Reaper's two, a spree ended or a tormentor
@@ -568,17 +611,31 @@ local SAMPLE_KILLS = { bloodied = 3, merciless = 5, butcher = 7, reaper = 10, sc
 --- /grudge spree: a sample splash and a sample toast, whatever the settings and the when-rules say.
 --- what: a tier's key, "scythe" or "smoke" (Reaper's two), a spree's kills ("20", "100"), "ended" or
 --- "tormentor"; none: Butcher, as before. A tier's toast is as your own spree's, with its effect; a spree
---- ended has only the splash.
+--- ended has only the splash. "fulfilled": a kill order fulfilled, yours as a splash and a guildie's toast.
 function GK.AnnounceSample(what)
     what = what and what:lower() or "butcher"
+    if what == "fulfilled" then
+        local item = { seal = MEDIA .. "seal_red", sound = "order", target = "Glue Enjoyer", pot = 50000,
+            effect = FirstFx(GK.FX, "order_fulfilled"), toastEffect = FirstFx(GK.TOASTFX, "order_fulfilled") }
+        local mine, theirs = {}, {}
+        for k, v in pairs(item) do mine[k], theirs[k] = v, v end
+        mine.style, mine.mine, mine.hunter = "splash", true, "you"
+        mine.line = "Kill order fulfilled: Glue Enjoyer, by you - " .. GK.MoneyText(50000)
+        theirs.style, theirs.mine, theirs.hunter, theirs.silent = "toast", false, "Kari", true
+        theirs.line = "Kill order fulfilled: Glue Enjoyer, by Kari - " .. GK.MoneyText(50000)
+        Show(mine)
+        Show(theirs)
+        return
+    end
     if what == "ended" or what == "tormentor" then
         local tormentor = what == "tormentor"
         local seal = MEDIA .. (tormentor and "seal_black" or "seal_broken")
         local line = tormentor and "You put an end to Glue Enjoyer, who had killed 4 of us" or "Your 12-kill spree ended (Glue Enjoyer)"
         Show({ style = "splash", seal = seal, sound = what, line = line,
-            effect = GK.SpreeEffect(what, nil, 12, GK.db), spree = 12 })
+            effect = (tormentor and FirstFx(GK.FX, "tormentor")) or GK.SpreeEffect(what, nil, 12, GK.db), spree = 12 })
         if tormentor then
-            Show({ style = "toast", seal = seal, line = line, silent = true, toastEffect = GK.ToastEffect("tormentor", true) })
+            Show({ style = "toast", seal = seal, line = line, silent = true,
+                toastEffect = FirstFx(GK.TOASTFX, "tormentor") or GK.ToastEffect("tormentor", true) })
         end
         return
     end
@@ -592,6 +649,23 @@ function GK.AnnounceSample(what)
     Show({ style = "toast", seal = MEDIA .. "spree_" .. key, ribbon = MEDIA .. "spree_" .. key .. "_name",
         line = ("%d kills in a row"):format(kills), silent = true, fire = key, spree = kills,
         toastEffect = GK.ToastEffect("spree", true) })
+end
+
+--- /grudge rank: a new title's sample, yours as a splash and Kari's as a toast, whatever the settings say.
+--- what: a title, by name ("nemesis", "dread reaper"); none or one there is not: Oathsworn. Returns the title.
+function GK.RankSample(what)
+    local want = what and GK.TitleKey(what)
+    local title, points = "Oathsworn", 300
+    for _, row in ipairs(GK.TITLES) do
+        if row[1] > 0 and GK.TitleKey(row[2]) == want then title, points = row[2], row[1] end
+    end
+    local mine = RankItem(LIB.Me(), title, points, true)
+    mine.style, mine.mine = "splash", true
+    Show(mine)
+    local theirs = RankItem("Kari", title, points, false)
+    theirs.style, theirs.mine, theirs.silent = "toast", false, true
+    Show(theirs)
+    return title
 end
 
 -- ---------------------------------------------------------------------------

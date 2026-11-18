@@ -303,18 +303,8 @@ function GK.GuildCard(guild)
     return d
 end
 
---- The kill orders page's row for the watched guild, or none.
-function GK.WatchedGuildItems()
-    local name, by = GK.WatchedGuild()
-    if not name then return {} end
-    return { { key = "g:" .. name, name = "<" .. name .. ">", face = {},
-        sub = "on watch - put there by " .. (by and Who(by) or "an officer"), right = "",
-        own = (by ~= nil and by == LIB.Me()) or nil,
-        select = { kind = "card", make = function() return GK.GuildCard(name) end } } }
-end
-
--- The friendly lists have pages of their own, at the right. Marked has none since 2026-11-07: it is a
--- section of the kill orders page (Window.lua), as kill orders and Most wanted say the rest of it.
+-- The friendly lists have pages of their own, at the right. Marked has none: it is Most wanted's second
+-- view (Window.lua, since 2026-11-18; a section of the kill orders page from 2026-11-07).
 for _, list in ipairs({ "watch", "kudos" }) do
     GK.AddLedgerPage({
         name = PAGE_WORD[list], list = list, sortable = true, side = "right", add = { text = ADD[list], kind = list },
@@ -336,6 +326,8 @@ end
 --- Open the ledger at the page of a list: "watch" or "kudos"; Marked, and anything else, is on the kill
 --- orders page, the first.
 function GK.OpenNotes(list)
+    -- Marked is Most wanted's second view (Window.lua)
+    if list == "kos" and GK.OpenLedgerView then return GK.OpenLedgerView("Most wanted", "marked") end
     for i, def in ipairs(GK.LedgerPages) do
         if def.list == list then return GK.OpenWindow(i) end
     end

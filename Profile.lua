@@ -333,7 +333,7 @@ function GK.PosterCard(t, inLedger)
         elseif inLedger then
             d.buttons[1] = { "Withdraw", function() GK.Withdraw(o) end }
         else
-            d.buttons[1] = { "Hitlist", function() GK.OpenWindow(1) end }
+            d.buttons[1] = { "Kill orders", function() GK.OpenWindow(1) end }   -- named as the tab it opens
         end
     else
         d.buttons[1] = { "Post a kill order", function()

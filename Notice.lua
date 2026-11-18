@@ -58,7 +58,7 @@ local function Tooltip(self)
         GameTooltip:Show()
         return
     end
-    local unread = GK.Unread()
+    local unread = GK.Waiting() > 0 and GK.Unread() or 0
     if unread > 0 then
         GameTooltip:AddLine(("%d unread letter%s"):format(unread, unread == 1 and "" or "s"), 1, 1, 1)
         local shown = 0
@@ -73,7 +73,7 @@ local function Tooltip(self)
     if GetTime() < warnUntil and btn.warnText then
         GameTooltip:AddLine(btn.warnText, 1, 0.3, 0.25)
     end
-    GameTooltip:AddLine("Click: read  -  Shift-click: read all  -  Right-click: hitlist  -  Drag: move", 0.7, 0.7, 0.7)
+    GameTooltip:AddLine("Click: read  -  Shift-click: read all  -  Right-click: kill orders  -  Drag: move", 0.7, 0.7, 0.7)
     GameTooltip:Show()
 end
 
@@ -243,9 +243,12 @@ function GK.NoticeUpdate(landed, silent, fading)
         btn:Hide()
         return
     end
-    local unread, first = GK.Unread()
+    -- shown while a letter waits by it (GK.Waiting: not faded); its count is every unread letter, faded from it
+    -- or not, as the ledger's Letters button and the letter window's pile count them
+    local waiting, first = GK.Waiting()
+    local unread = GK.Unread()
     local warning = GetTime() < warnUntil
-    if unread == 0 and not warning and not placing then
+    if waiting == 0 and not warning and not placing then
         btn.breathe:Stop()
         if fading and btn:IsShown() then
             if not btn.vanish:IsPlaying() then btn.vanish:Play() end
@@ -267,8 +270,8 @@ function GK.NoticeUpdate(landed, silent, fading)
         end
     end
     btn.icon:SetTexture(icon)
-    btn.dot:SetShown(unread > 0)
-    btn.count:SetText(unread > 0 and unread or "")
+    btn.dot:SetShown(waiting > 0)
+    btn.count:SetText(waiting > 0 and unread or "")
     if warning then btn.glow:SetVertexColor(1, 0.15, 0.1) else btn.glow:SetVertexColor(1, 0.8, 0.35) end
     local wasShown = btn:IsShown()
     btn:Show()
@@ -293,7 +296,7 @@ function GK.NoticeUpdate(landed, silent, fading)
         if not btn.breathe:IsPlaying() then btn.breathe:Play() end
     else
         btn.breathe:Stop()
-        btn.glow:SetAlpha(unread > 0 and RESTING_GLOW or 0)
+        btn.glow:SetAlpha(waiting > 0 and RESTING_GLOW or 0)
     end
 end
 

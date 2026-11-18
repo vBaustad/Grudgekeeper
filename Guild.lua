@@ -1283,6 +1283,28 @@ local function ApplyAssists(r, a, wa)
     r.a, r.wa = Int(a, 0, 1e6), Int(wa, 0, 1e6)
 end
 
+-- When a guildie last told us a kill or an assist of theirs (K, A), in memory only, for a rank up told as it
+-- happens: their B after it is the score that kill made. A B with no kill just before it - a login, a
+-- reload, a score we missed while away - is no rank up to tell: it may have been days ago.
+local scored = {}
+local RANKUP_WINDOW = 15          -- seconds from their K or A to the B it sends
+local MAX_SCORED = 200            -- one per guildie who scored since login, at most
+
+--- Their B made a new title: told as theirs (GK_RANKUP, Announce.lua). before: their total before this B,
+--- nil for a row we had none of.
+local function RankedUp(sender, before, r)
+    if not (before and r and r.p and r.p > before) then return end
+    local at = scored[sender]
+    if not at or GetTime() - at > RANKUP_WINDOW then return end
+    scored[sender] = nil                          -- told once, whatever B comes after
+    local title = GK.Title(r.p)
+    if title ~= GK.Title(before) then LIB.Fire("GK_RANKUP", sender, title, r.p, false) end
+end
+
+local function Scored(sender)
+    if scored[sender] or Count(scored) < MAX_SCORED then scored[sender] = GetTime() end
+end
+
 --- A guildie's own B. With parts, they join the parts we have of their row and the row is the sum; a row we
 --- had without parts gives way to them, and is never added ("One character, more than one PC"). Without
 --- parts - an older client - the row is what it says, as before parts.
@@ -1290,6 +1312,7 @@ local function OnBoard(sender, f)
     heard["b:" .. sender] = GetTime()
     local was = GK.Store().board[sender]
     local had = was and was.parts
+    local before = was and was.p
     local r = ApplyBoard(sender, f, 0)
     ApplyAssists(r, f[20], f[21])
     if not r then return end
@@ -1297,12 +1320,13 @@ local function OnBoard(sender, f)
     local parts = ReadParts(f[22])
     if not parts then
         r.parts = nil
-        return
+        return RankedUp(sender, before, r)
     end
     local set = had or {}
     for id, x in pairs(parts) do MergePart(set, id, x) end
     r.parts = set
     Total(r)
+    RankedUp(sender, before, r)
 end
 
 --- A guildie's row, passed on by another while they are away (R). Only a row we have none of: never over
@@ -1340,6 +1364,7 @@ local lastSpree = {}
 local function OnKill(sender, f)
     local name = GK.PlayerKey(GK.Clean(f[3], 64))
     if not name then return end
+    Scored(sender)                                -- their B after this may be a new title (RankedUp)
     local c, r, l = GK.ValidClass(f[4]), GK.Clean(f[5], 20), GK.ValidLevel(f[6])
     local zone = GK.Clean(f[7], 40)
     AddFeed({ t = time(), who = sender, kind = "K", n = name, c = c, l = l,
@@ -1368,6 +1393,7 @@ end
 local function OnAssist(sender, f)
     local name = GK.PlayerKey(GK.Clean(f[3], 64))
     if not name then return end
+    Scored(sender)
     AddFeed({ t = time(), who = sender, kind = "H", n = name, c = GK.ValidClass(f[4]), l = GK.ValidLevel(f[6]),
         z = GK.Clean(f[7], 40), p = Int(f[8], 0, 100) })
 end

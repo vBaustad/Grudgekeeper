@@ -189,10 +189,14 @@ function GK.AssistPoints(mine, theirs, killedToday, revenge, avenged)
     return p
 end
 
--- Titles by all-time points: our own words, so nobody takes them for the game's honour ranks.
+-- Titles by all-time points: our own words, so nobody takes them for the game's honour ranks. Past
+-- Executioner each step is about 1.4 times the last: four titles between it and Grudgebearer, and the last
+-- two further off, "for å ha enda mer å strekke seg til" (the owner, 2026-11-18, two weeks after launch,
+-- when the best in the guild had 205). Nobody held Grudgebearer or Dread Reaper then, so nobody lost one.
 GK.TITLES = {
     { 0, "Unblooded" }, { 10, "Cutthroat" }, { 25, "Bloodhound" }, { 50, "Headhunter" },
-    { 100, "Slayer" }, { 200, "Executioner" }, { 400, "Grudgebearer" }, { 800, "Dread Reaper" },
+    { 100, "Slayer" }, { 200, "Executioner" }, { 300, "Oathsworn" }, { 450, "Avenger" },
+    { 650, "Reckoner" }, { 900, "Nemesis" }, { 1300, "Grudgebearer" }, { 2000, "Dread Reaper" },
 }
 
 function GK.Title(points)
@@ -201,6 +205,11 @@ function GK.Title(points)
         if (points or 0) >= row[1] then title = row[2] end
     end
     return title
+end
+
+--- A title as a key for code and files: "Dread Reaper" is "dread_reaper" (a rank up's effect, Announce.lua).
+function GK.TitleKey(title)
+    return (tostring(title or ""):lower():gsub("[^%a]+", "_"))
 end
 
 --- The week we're in, named by the time of the next weekly reset to the hour, so every client in
@@ -924,7 +933,8 @@ local function Help()
     print("  /grudge letters  - read your letters")
     print("  /grudge test  - five sample letters, to see what they look like")
     print("  /grudge arrange  - put the letter icon, the spree splash and its toasts where you want them")
-    print("  /grudge spree  - show a sample spree splash and toast")
+    print("  /grudge spree  - show a sample spree splash and toast (or: spree fulfilled, spree tormentor)")
+    print("  /grudge rank  - show a sample new-title splash and toast (or: rank nemesis)")
     print("  /grudge options  - open the settings")
     print("  /grudge guild  - officers: put an enemy guild on watch by its name")
 end
@@ -952,6 +962,8 @@ SlashCmdList.GRUDGEKEEPER = function(msg)
         GK.NoticeReset()
     elseif cmd == "spree" or cmd:match("^spree ") then
         GK.AnnounceSample(cmd:match("^spree (%S+)"))   -- a sample splash and toast (Announce.lua)
+    elseif cmd == "rank" or cmd:match("^rank ") then
+        GK.RankSample(cmd:match("^rank (.+)$"))         -- a new title's splash and toast (Announce.lua)
     elseif cmd == "options" or cmd == "settings" then
         GK.OpenOptions()
     elseif cmd == "guild" then
@@ -1005,6 +1017,10 @@ end
 --   wash: the chosen, hovered and own rows' tint. stripe, rule: every other row, the ruled lines.
 -- ---------------------------------------------------------------------------
 GK.TITLE_FONT, GK.TEXT_FONT = "Fonts\\MORPHEUS.ttf", "Fonts\\FRIZQT__.TTF"
+-- Every button with words on it (GK.MakeButton): the game's newer three-piece red button (ThreeSliceButton-
+-- Template.xml, atlas 128-RedButton), which Forever draws in its own bronze (128-redbutton-*-c60) and its
+-- friends window wears (SocialUIActionButtonTemplate) - in classic. On parchment the old red is drawn over it.
+GK.BUTTON = "SharedButtonTemplate"
 GK.LOOKS = {
     -- faded: 0.35/0.25/0.15 read too light on the toned parchment in a list (2026-11-06)
     parchment = { ink = { 0.2, 0.12, 0.05 }, faded = { 0.29, 0.2, 0.11 }, blood = { 0.47, 0.06, 0.04 },
@@ -1174,6 +1190,82 @@ function GK.SetLook(name)
     for tex, spec in pairs(painted) do GK.Paint(tex, spec[1], spec[2]) end
     for _, fn in ipairs(onLook) do fn() end
 end
+
+-- A button with words on it, in the skin's own: in classic the game's bronze one (GK.BUTTON), as the friends
+-- window has; on parchment the old red of UIPanelButtonTemplate, its own three pieces of the old files over
+-- the bronze one's, which wait unseen. The ink boxes on the letter were "basically bare border ... flatt og
+-- dårlig" (the owner, 2026-11-18); the bronze "funker dårlig på parchment men bra på classic stilen", and
+-- of the six styles tried on parchment: "best å bare bruke knapp nummer 1" - the old red. A switch of skin
+-- redraws every one, no reload.
+local OLD_RED = "Interface\\Buttons\\UI-Panel-Button-"
+local OLD_U = { { 0, 0.09375 }, { 0.09375, 0.53125 }, { 0.53125, 0.625 } }   -- its left, middle and right (its XML)
+local OLD_V = 0.6875
+local made = setmetatable({}, { __mode = "k" })
+
+--- The old red's state: up, down while pressed, or disabled - as UIPanelButton_OnMouseDown and the rest set it.
+local function OldRedState(b)
+    local state = not b:IsEnabled() and "Disabled" or (b.down and "Down" or "Up")
+    for _, t in ipairs(b.oldRed) do t:SetTexture(OLD_RED .. state) end
+end
+
+local function ButtonLook(b)
+    local old = not GK.Classic()
+    b.parchment = old
+    for _, t in ipairs(b.oldRed) do t:SetShown(old) end
+    for _, k in ipairs({ "Left", "Center", "Right" }) do
+        if type(b[k]) == "table" then b[k]:SetAlpha(old and 0 or 1) end
+    end
+    if old then
+        b:SetHighlightTexture(OLD_RED .. "Highlight", "ADD")
+        local hl = b:GetHighlightTexture()
+        if hl then hl:SetTexCoord(0, 0.625, 0, OLD_V) end
+    else
+        b:SetHighlightAtlas("128-RedButton-Highlight")
+    end
+    OldRedState(b)
+end
+
+function GK.MakeButton(parent, width, height)
+    local b = CreateFrame("Button", nil, parent, GK.BUTTON)
+    b:SetSize(width or 96, height or 22)
+    b.oldRed = {}
+    for i, u in ipairs(OLD_U) do
+        local t = b:CreateTexture(nil, "BACKGROUND", nil, 1)
+        t:SetTexCoord(u[1], u[2], 0, OLD_V)
+        b.oldRed[i] = t
+    end
+    local l, m, r = b.oldRed[1], b.oldRed[2], b.oldRed[3]
+    l:SetWidth(12)
+    l:SetPoint("TOPLEFT")
+    l:SetPoint("BOTTOMLEFT")
+    r:SetWidth(12)
+    r:SetPoint("TOPRIGHT")
+    r:SetPoint("BOTTOMRIGHT")
+    m:SetPoint("TOPLEFT", l, "TOPRIGHT")
+    m:SetPoint("BOTTOMRIGHT", r, "BOTTOMLEFT")
+    -- hooks, so the template's own scripts still draw the bronze one's pressed and disabled look
+    b:HookScript("OnMouseDown", function(self)
+        self.down = self:IsEnabled()
+        OldRedState(self)
+    end)
+    b:HookScript("OnMouseUp", function(self)
+        self.down = false
+        OldRedState(self)
+    end)
+    b:HookScript("OnShow", function(self)
+        self.down = false                       -- hidden before the mouse came up
+        OldRedState(self)
+    end)
+    b:HookScript("OnEnable", OldRedState)
+    b:HookScript("OnDisable", OldRedState)
+    made[b] = true
+    ButtonLook(b)
+    return b
+end
+
+GK.OnLook(function()
+    for b in pairs(made) do ButtonLook(b) end
+end)
 
 -- ---------------------------------------------------------------------------
 -- Startup

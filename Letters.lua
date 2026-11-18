@@ -1,16 +1,17 @@
 -- Grudgekeeper - letters: news that waits until you open it.
 -- Nothing pops up. A letter goes into your pile, the notice scroll (Notice.lua) shows that something
--- came, and clicking it opens the letter. Two sizes:
---   the SCROLL, unrolled between two rolls, for the orders themselves:
+-- came, and clicking it opens the letter. Every letter opens in ONE window, the iron-framed letter, with
+-- the pile at its foot (2026-11-18). Two kinds of page in it:
+--   an ORDER's, with the face of whom it is about and the bounty under it:
 --     order     KILL ORDER       a guildie put a price on someone       red seal
---     complete  ORDER COMPLETE   an order was fulfilled                 red seal, FULFILLED stamp
---   the NOTE, a small landscape letter with a portrait, written by "the Grudgekeeper":
+--     complete  ORDER COMPLETE   an order was fulfilled                 broken seal, FULFILLED stamp
+--   a NOTE, written by "the Grudgekeeper", with his own portrait:
 --     kill      A new title      a kill earned you one: where you stand  red seal
 --     slain     Slain            someone killed you                     black seal, blood
 --     paid      Bounty paid      the poster paid you                    red seal
 --     expired   Order expired    your order ran out                     black seal
--- The paper, rolls, seals and blood are drawn by art/make_grudgekeeper_art.py (or imported from
--- generated art by art/import_grudgekeeper.py); the stamps by art/make_grudgekeeper_stamps.py.
+-- The paper, seals and blood are drawn by art/make_grudgekeeper_art.py (or imported from generated art by
+-- art/import_grudgekeeper.py); the stamps by art/make_grudgekeeper_stamps.py.
 local ADDON, GK = ...
 local LIB = LibStub("LibForever-1.0")
 
@@ -20,13 +21,13 @@ local TITLE_FONT = "Fonts\\MORPHEUS.ttf"
 local TEXT_FONT = "Fonts\\FRIZQT__.TTF"
 local CLASS_ICONS = "Interface\\TargetingFrame\\UI-Classes-Circles"
 local PORTRAIT_MASK = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
-local STAMP_ALPHA = 0.55                 -- a letter's stamp, under its writing (BuildScroll)
+local STAMP_ALPHA = 0.55                 -- a letter's stamp, under its writing (BuildLetter)
 local INK = { 0.22, 0.13, 0.05 }
 local FADED = { 0.35, 0.25, 0.15 }
 local BLOOD = { 0.47, 0.06, 0.04 }
-local W, BODY_H, ROLL_H = 300, 340, 32         -- the scroll
-local NW, NH = 540, 360                         -- the note: the frame's own 3:2, so it isn't stretched
-local UNROLL, ROLLUP = 0.45, 0.2
+-- The letter: the frame's own 3:2, so it isn't stretched. 540 x 360 held a note; a kill order's face, name,
+-- words and buttons need the room of the sketch the owner chose (art/mockups/letters, 2026-11-18).
+local NW, NH = 624, 416
 local NOTE = { kill = true, slain = true, paid = true, expired = true, news = true }
 
 -- The badge the notice scroll wears for the newest unread letter: the sealed scroll, or the bloodied
@@ -81,13 +82,18 @@ end
 -- burde kanskje ikke bare bli liggende?" (the owner, 2026-11-07). While the letters are open, the ones
 -- read stay, so the arrows can go back.
 local reading = false            -- the letters are open: what was read stays until they close
+local index                      -- which letter in the pile is open (the letter window, below)
 
 local function Prune()
     local list = GK.char.letters
     for i = #list, 1, -1 do
         if list[i].read and not reading then table.remove(list, i) end
     end
-    while #list > MAX_LETTERS do table.remove(list, 1) end
+    -- the oldest go past MAX_LETTERS, and the open letter keeps its place in what is left
+    while #list > MAX_LETTERS do
+        table.remove(list, 1)
+        if index then index = math.max(1, index - 1) end
+    end
 end
 
 -- A letter about your own kill waits before the notice shows it: it goes into the pile at once, but
@@ -203,11 +209,27 @@ local function Add(kind, data, silent, hold)
     return data
 end
 
---- Unread letters: how many, and the first one's place in the pile. A held letter isn't news yet, nor one
---- that faded (FadeDue), and with letters off none is: the notice shows only a warning then.
+--- Unread letters: how many, and the first one's place in the pile. A held letter isn't news yet, and with
+--- letters off none is. One that faded from the icon (FadeDue) is still unread: the letter window, the
+--- ledger's Letters button and the arrows count it - "notification og slikt blir bare borte" (the owner,
+--- 2026-11-18). GK.Waiting is the icon's count.
 function GK.Unread()
     local n, first = 0, nil
     if GK.db.anyLetters == false then return 0, nil end
+    for i, l in ipairs(GK.char.letters) do
+        if not l.read and not holding[l] then
+            n = n + 1
+            first = first or i
+        end
+    end
+    return n, first
+end
+
+--- What the letter icon waits with: the unread letters that have not faded from it. With letters off, none:
+--- the notice shows only a warning then.
+function GK.Waiting()
+    local n, first = 0, nil
+    if GK.db.anyLetters == false then return 0, nil end         -- letters off: the icon waits with none
     for i, l in ipairs(GK.char.letters) do
         if not l.read and not l.faded and not holding[l] then
             n = n + 1
@@ -287,7 +309,7 @@ function GK.SampleLetters()
         z = "Hillsbrad Foothills", title = "Bloodhound", rank = 4, of = 12, total = 31 }))
     Add("slain", S({ times = 24, z = "Hillsbrad Foothills", spell = "Ambush" }))
     Add("news", { sample = true })                 -- about no one: no enemy's class on it
-    print(GK.TAG .. ": five sample letters are in your pile - click the scroll to read them.")
+    print(GK.TAG .. ": five sample letters are in your pile - click the letter icon to read them.")
 end
 
 -- What's new: one small letter after an update with something worth a word. Once per account, to the
@@ -404,6 +426,10 @@ local TITLE_REMARKS = {
     Headhunter = "The others have started to notice you.",
     Slayer = "I hear the enemy whispers your name now.",
     Executioner = "Not many in this guild have come this far.",
+    Oathsworn = "You've sworn yourself to the grudge now. There's no taking it back.",
+    Avenger = "Our dead rest easier with you out there.",
+    Reckoner = "You settle the accounts faster than I can write them.",
+    Nemesis = "Somewhere out there, someone checks the map for you before they log in.",
     Grudgebearer = "I'm running out of pages for you, you know.",
     ["Dread Reaper"] = "There's no higher name in my book. Wear it well.",
 }
@@ -431,28 +457,26 @@ local function ScrollContent(L)
             body[#body + 1] = seen
         end
         body[#body + 1] = " "
-        -- the pot as it stands now, if we still have the order; as posted otherwise
+        -- the pot as it stands now, if we still have the order; as posted otherwise. The gold stands under the
+        -- face (bounty; "No bounty" there when there is none); the body says who put it in.
         local pot, backers = L.reward or 0, 0
         if o then pot, backers = GK.Pot(o) end
-        if pot > 0 then
-            body[#body + 1] = "Reward: " .. GK.Coins(pot)
-            if backers > 0 and o then
-                -- who chipped in, the biggest share first: the poster's own reward leads
-                local shares = {}
-                if (o.reward or 0) > 0 then shares[1] = { who = o.by, copper = o.reward } end
-                for who, copper in pairs(o.pot) do shares[#shares + 1] = { who = who, copper = copper } end
-                table.sort(shares, function(a, b) return a.copper > b.copper end)
-                local names = {}
-                for i = 1, math.min(3, #shares) do
-                    names[i] = ("%s %s"):format(show(shares[i].who), GK.MoneyText(shares[i].copper))
-                end
-                local more = #shares - #names
-                backed = table.concat(names, ", ") .. (more > 0 and (" and %d more"):format(more) or "")
-                body[#body + 1] = backed
+        if pot > 0 and backers > 0 and o then
+            -- who chipped in, the biggest share first: the poster's own reward leads
+            local shares = {}
+            if (o.reward or 0) > 0 then shares[1] = { who = o.by, copper = o.reward } end
+            for who, copper in pairs(o.pot) do shares[#shares + 1] = { who = who, copper = copper } end
+            table.sort(shares, function(a, b) return a.copper > b.copper end)
+            local names = {}
+            for i = 1, math.min(3, #shares) do
+                names[i] = ("%s %s"):format(show(shares[i].who), GK.MoneyText(shares[i].copper))
             end
-        else
-            body[#body + 1] = "No bounty - for the guild's honour."
+            local more = #shares - #names
+            backed = "In the pot: " .. table.concat(names, ", ") .. (more > 0 and (" and %d more"):format(more) or "")
+            body[#body + 1] = backed
         end
+        -- how many put gold in: the poster's reward and each backer
+        local bounty = { copper = pot, from = o and (backers + ((o.reward or 0) > 0 and 1 or 0)) or nil }
         if o and o.state ~= "o" then body[#body + 1] = "(This order is closed.)" end
         -- Nothing to take or accept: the order is the whole message - "hey, we put out an order, kill this
         -- one" (the owner, 2026-11-07). Any guildie's kill fulfils it.
@@ -471,7 +495,7 @@ local function ScrollContent(L)
         for _, t in ipairs({ sight or false, " ", backed or false, seen or false, killed or false }) do
             if t then give[#give + 1] = t end
         end
-        return "KILL ORDER", show(L.n), info, body, foot, "seal_red", nil, buttons, give
+        return "KILL ORDER", show(L.n), info, body, foot, "seal_red", nil, buttons, give, bounty
     end
     -- complete
     local doneBy = L.doneBy and show(L.doneBy) or "Someone"
@@ -553,7 +577,7 @@ local function ScrollContent(L)
     end
     -- the order's seal, broken: it has been opened and carried out
     return "ORDER COMPLETE", show(L.n) .. " is dead", info, body, "Posted by " .. show(L.by), "seal_broken",
-        "stamp_fulfilled", buttons
+        "stamp_fulfilled", buttons, nil, { copper = pot }
 end
 
 --- The note: title, paragraphs, seal, blood, the action button { text, fn } or nil
@@ -597,17 +621,18 @@ local function NoteContent(L)
                 or ("That's the %s time they've got you. I've written it down."):format(Ordinal(L.times))
         end
         if L.autoOrder then
-            -- posted in your name by this very death: say so - its Hitlist button is the way to it, the
+            -- posted in your name by this very death: say so - its Kill orders button is the way to it, the
             -- sentence that said so read as a manual ("den setningen liker jeg ikke", the owner, 2026-11-10)
             -- Short, and no closing line after it: this is the longest of the small letters, and at eight
             -- lines its last one met the seal and signature (the preview of 2026-11-04).
+            -- The button is named as the ledger's tab it opens; it was "Hitlist", the tab's name long ago.
             p[#p + 1] = "I've told the guild. There's a kill order out on them now, in your name."
             closing = nil
-            action = { "Hitlist", function() GK.OpenWindow(1) end }
+            action = { "Kill orders", function() GK.OpenWindow(1) end }
         elseif GK.OrderOn(L.n, L.guid) then
             p[#p + 1] = "There's a price on their head already. Someone will collect."
             closing = nil                                -- three lines of his: no room for a fourth
-            action = { "Hitlist", function() GK.OpenWindow(1) end }
+            action = { "Kill orders", function() GK.OpenWindow(1) end }
         else
             action = { "Put a price on them", PostOn }
         end
@@ -615,7 +640,7 @@ local function NoteContent(L)
     elseif L.kind == "paid" then
         p[#p + 1] = ("%s paid up: %s for the head of %s. It's waiting in your mail."):format(
             show(L.by), GK.MoneyText(L.reward), show(L.n))
-        action = { "Hitlist", function() GK.OpenWindow(1) end }
+        action = { "Kill orders", function() GK.OpenWindow(1) end }
         return "Bounty paid", p, closing, "seal_red", false, action
     end
     -- expired
@@ -625,17 +650,19 @@ local function NoteContent(L)
     return "Order expired", p, closing, "seal_black", false, action
 end
 
---- What a letter says, apart from how it is drawn (FillScroll and FillNote draw from it):
---- { note (a small letter, else the scroll), title, name, info, lines, foot, seal, stamp, blood, buttons =
---- { { text, fn } }, c, rf, sx, key, sample, give }. name, info, foot, stamp and give are the scroll's only:
---- give lists lines of the body in the order they give way when the sheet has no room for all (FitBody).
+--- What a letter says, apart from how it is drawn (FillLetter draws from it):
+--- { note (the Grudgekeeper's, else an order's page), title, name, info, lines, foot, seal, stamp, blood,
+--- buttons = { { text, fn } }, bounty = { copper, from }, c, rf, sx, key, sample, give }. name, info, foot,
+--- stamp and bounty are an order's only. give lists lines of the body in the order they give way when the
+--- page has no room for all (FitBody). buttons are only what the letter asks of you: the way to the order in
+--- the ledger is the window's own (FillLetter).
 function GK.LetterContent(L)
     local d = { c = L.c, rf = L.rf, sx = L.sx, key = L.n, sample = L.sample }
     if not NOTE[L.kind] then
-        local title, name, info, body, foot, seal, stamp, buttons, give = ScrollContent(L)
+        local title, name, info, body, foot, seal, stamp, buttons, give, bounty = ScrollContent(L)
         d.title, d.name, d.info, d.lines, d.foot, d.seal, d.stamp, d.buttons = title, name, info, body, foot, seal,
             stamp, buttons
-        d.give = give
+        d.give, d.bounty = give, bounty
         return d
     end
     local title, paragraphs, closing, seal, blood, action = NoteContent(L)
@@ -646,22 +673,60 @@ function GK.LetterContent(L)
     if closing and #paragraphs <= 4 then
         lines[#lines + 1] = ""
         lines[#lines + 1] = closing[(L.id or 1) % #closing + 1]
+        d.give = { lines[#lines] }                  -- his last word gives way first on a page with no room
     end
     d.note, d.title, d.lines, d.seal, d.blood, d.buttons = true, title, lines, seal, blood, { action }
     return d
 end
 
 -- ---------------------------------------------------------------------------
--- Shared bits of both views
+-- The letter: one window for every letter
 -- ---------------------------------------------------------------------------
-local scroll, note  -- the two views, made on first use
-local index         -- which letter in the pile is showing
+-- Kill orders were a scroll and the rest a note, each its own window, and only the note had arrows: from a
+-- note the arrow could open a kill order's scroll, which had none, and the rest of the pile was out of
+-- reach ("når det er flere letters på en gang og det er kill orders og notification letters om hverandre
+-- så funker det dårlig", the owner, 2026-11-18). Now one window in the note's iron frame holds them all,
+-- in one place, with the pile at its foot, and its buttons are ink on the paper under what the letter says:
+-- the scroll's red buttons were "ikke bra nok design ... spesielt med knappene" (the same day). Chosen from
+-- a sketch over the owner's own screenshot (art/mockups/letters: A, with ink buttons). B, the scroll for
+-- every letter, waits there.
+local win                          -- the letter window up now, made on first use: one per look (wins)
+local wins = {}
+-- The letter's looks, while the owner compares them in game (the test panel, 2026-11-18): A, today's - the
+-- note's iron frame, the face in a column of its own; F, the same frame made small, the face in the head
+-- and the words across under it; P, a loose burnt sheet with no frame, as tall as its words. Sketched over
+-- the owner's screenshot first (art/mockups/letters, round 2) after "letter vinduet er også blitt ganske
+-- stort. føles unødvendig stort"; F and P were the two asked for. GK.db.letterStyle picks; A until then.
+--   w, h: its size (P: h its least, maxH its most). frame: the note's iron frame, else the loose sheet.
+--   face: the portrait's side; faceX, faceY its top left. column: the face with the bounty under it in a
+--   column of its own and the writing beside it at textX; else the title beside the face and the words
+--   under both from textX. right: the margin on the right. headY: the title's top. title, name: their
+--   type's size. signY, ruleY, footY: the signature's line, the faint rule, and Read all and Close, up from
+--   the foot; sealRoom: what the writing keeps clear over the signature. edge: Read all, Close and the
+--   signature this far in from the sides. pile: seals at the foot at most. blood: x, y, size of a death's.
+local LAYOUTS = {
+    A = { w = NW, h = NH, frame = true, face = 112, faceX = 46, faceY = 70, column = true, textX = 196, right = 44,
+          headY = 68, title = 26, name = 20, signY = 104, sealRoom = 38, ruleY = 92, footY = 54, edge = 46,
+          pile = 9, blood = { 150, -40, 190 }, key = "note" },
+    F = { w = 480, h = 320, frame = true, face = 60, faceX = 38, faceY = 48, textX = 38, right = 38, headY = 46,
+          title = 18, name = 16, signY = 80, sealRoom = 30, ruleY = 70, footY = 40, edge = 36, pile = 7,
+          blood = { 115, -30, 146 }, key = "noteF" },
+    P = { w = 380, h = 280, maxH = 520, face = 60, faceX = 30, faceY = 34, textX = 30, right = 30, headY = 32,
+          title = 18, name = 16, signY = 76, sealRoom = 30, ruleY = 66, footY = 30, edge = 28, pile = 7,
+          blood = { 100, -40, 150 }, key = "noteP" },
+}
+local BUTTON_GAP = 12              -- between the words and the letter's buttons
 
---- The letters closed - by X, Close, Escape or the scroll rolling up: the read ones go. A moment later,
---- as going from a scroll to a note hides one view before it shows the other.
+local function LetterStyle()
+    local s = GK.db and GK.db.letterStyle
+    return LAYOUTS[s] and s or "A"
+end
+
+--- The letters closed - by X, Close or Escape: the read ones go. A moment later, so a letter's own button
+--- that opens something else (the order in the ledger) has run first.
 local function Closed()
     C_Timer.After(0, function()
-        if (note and note:IsShown()) or (scroll and scroll:IsShown()) then return end
+        if win and win:IsShown() then return end
         reading, index = false, nil
         Prune()
         GK.NoticeUpdate(false)
@@ -676,239 +741,150 @@ local function Ink(fs, colour, font, size)
     fs:SetShadowOffset(0, 0)
 end
 
---- "2 of 5" with arrows either side, under `parent`'s bottom edge at x.
-local function Pager(f, parent, x, y)
-    f.page = parent:CreateFontString(nil, "ARTWORK")
-    Ink(f.page, INK, TEXT_FONT, 11)
-    f.page:SetPoint("BOTTOM", parent, "BOTTOM", x, y)
-    local function Arrow(dir, dx)
-        local b = CreateFrame("Button", nil, parent)
+--- A button on the letter: the skin's own (GK.MakeButton, Core.lua). It was ink on the paper, a word in a
+--- thin ruled box, until "når de er basically bare border så ser det så flatt og dårlig ut" (the owner,
+--- 2026-11-18). b:Set(text) sizes it to its word; b.w is its width.
+local LETTER_BUTTON_H = 24
+local function LetterButton(parent)
+    local b = GK.MakeButton(parent, 90, LETTER_BUTTON_H)
+    function b:Set(text)
+        self:SetText(text)
+        self.w = math.max(90, math.ceil(self:GetTextWidth() or 60) + 40)
+        self:SetWidth(self.w)
+    end
+    return b
+end
+
+--- Can it be pressed: a sample letter's buttons do nothing (GK.SampleLetters), and look it.
+local function Pressable(b, on)
+    b:SetEnabled(on)
+    b:SetAlpha(on and 1 or 0.45)
+end
+
+-- Each kind's seal, for the pile at the foot: as the letter's own seal, without building the letter.
+local SEALS = { order = "seal_red", complete = "seal_broken", kill = "seal_red", slain = "seal_black",
+    paid = "seal_red", expired = "seal_black" }
+local function SealOf(L)
+    if L.kind == "news" then return (NEWS_WORDS[L.news] or NEWS_WORDS[LATEST])[3] end
+    return SEALS[L.kind] or "seal_red"
+end
+
+--- The pile at the letter's foot: a seal for each letter, the open one larger in a bronze ring and the read
+--- ones grey, an arrow either side, and under them where you are and how many more wait. A seal clicked
+--- opens its letter; a long pile shows the nine around the open one.
+local function BuildPile(f)
+    local p = CreateFrame("Frame", nil, f)
+    p:SetSize(200, 24)
+    p:SetPoint("BOTTOM", f, "BOTTOM", 0, f.layout.footY + 12)
+    p.seals = {}
+    p.shown = f.layout.pile
+    for i = 1, p.shown do
+        local s = CreateFrame("Button", nil, p)
+        s.tex = s:CreateTexture(nil, "ARTWORK")
+        s.tex:SetAllPoints()
+        s.ring = s:CreateTexture(nil, "OVERLAY")
+        s.ring:SetTexture(MEDIA .. "portrait_ring")
+        s.ring:SetSize(28, 28)
+        s.ring:SetPoint("CENTER")
+        s:SetScript("OnClick", function(self) GK.ShowLetter(self.at) end)
+        s:SetScript("OnEnter", function(self)
+            local L = GK.char.letters[self.at]
+            if not L then return end
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:AddLine(GK.LetterLine and GK.LetterLine(L) or "", 1, 1, 1)
+            GameTooltip:Show()
+        end)
+        s:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        p.seals[i] = s
+    end
+    -- the spellbook's page arrows, as the ledger turns its lists (Window.lua)
+    local function Arrow(kind, dir)
+        local b = CreateFrame("Button", nil, p)
         b:SetSize(22, 22)
-        b:SetPoint("CENTER", f.page, "CENTER", dx, 0)
-        local kind = dir < 0 and "Prev" or "Next"
         b:SetNormalTexture("Interface\\Buttons\\UI-SpellbookIcon-" .. kind .. "Page-Up")
         b:SetPushedTexture("Interface\\Buttons\\UI-SpellbookIcon-" .. kind .. "Page-Down")
         b:SetDisabledTexture("Interface\\Buttons\\UI-SpellbookIcon-" .. kind .. "Page-Disabled")
         b:SetScript("OnClick", function() GK.ShowLetter(index + dir) end)
         return b
     end
-    f.prev = Arrow(-1, -40)
-    f.next = Arrow(1, 40)
+    p.prev = Arrow("Prev", -1)
+    p.prev:SetPoint("RIGHT", p, "LEFT", -6, 0)
+    p.next = Arrow("Next", 1)
+    p.next:SetPoint("LEFT", p, "RIGHT", 6, 0)
+    p.text = f:CreateFontString(nil, "ARTWORK")
+    Ink(p.text, FADED, TEXT_FONT, 11)
+    p.text:SetPoint("TOP", p, "BOTTOM", 0, -2)
+    return p
 end
 
-local function UpdatePager(f)
-    local n = #GK.char.letters
-    f.page:SetText(("%d of %d"):format(index, n))
-    f.prev:SetEnabled(index > 1)
-    f.next:SetEnabled(index < n)
-end
-
-local function SetButton(b, spec, L, refill)
-    b:SetShown(spec ~= nil)
-    if not spec then return end
-    b:SetText(spec[1])
-    b:SetEnabled(not L.sample)
-    b:SetScript("OnClick", function()
-        spec[2]()
-        refill(L)
-    end)
-end
-
--- ---------------------------------------------------------------------------
--- The scroll
--- ---------------------------------------------------------------------------
-local BAR_H = 30                 -- the bar of buttons under the scroll's bottom roll
-
-local function BuildScroll()
-    local f = CreateFrame("Frame", "GrudgekeeperLetter", UIParent)
-    f:SetSize(W + 16, BODY_H + ROLL_H + BAR_H)          -- the bar too, so it is kept on the screen
-    f:SetClampedToScreen(true)
-    f:SetPoint("CENTER", 0, 60)
-    f:EnableMouse(true)
-
-    -- The sheet grows down from under the top roll as it unrolls. The paper and the writing sit on a
-    -- child at full size, so the growing sheet reveals them (clipped) instead of squeezing them.
-    local sheet = CreateFrame("Frame", nil, f)
-    sheet:SetPoint("TOP", 0, -ROLL_H / 2)
-    sheet:SetSize(W, BODY_H)
-    sheet:SetClipsChildren(true)
-    local c = CreateFrame("Frame", nil, sheet)
-    c:SetPoint("TOP")
-    c:SetSize(W, BODY_H)
-    local paper = c:CreateTexture(nil, "BACKGROUND")
-    paper:SetAllPoints()
-    paper:SetTexture(MEDIA .. "sheet")
-
-    f.title = c:CreateFontString(nil, "ARTWORK")
-    Ink(f.title, BLOOD, TITLE_FONT, 26)
-    f.title:SetPoint("TOP", 0, -34)
-    f.name = c:CreateFontString(nil, "ARTWORK")
-    Ink(f.name, INK, TITLE_FONT, 19)
-    f.name:SetPoint("TOP", f.title, "BOTTOM", 0, -12)
-    f.name:SetWidth(W - 50)
-    f.info = c:CreateFontString(nil, "ARTWORK")
-    Ink(f.info, INK, TEXT_FONT, 12)
-    f.info:SetPoint("TOP", f.name, "BOTTOM", 0, -4)
-    f.body = c:CreateFontString(nil, "ARTWORK")
-    Ink(f.body, INK, TEXT_FONT, 13)
-    f.body:SetPoint("TOP", f.info, "BOTTOM", 0, -16)
-    f.body:SetWidth(W - 64)
-    f.body:SetSpacing(3)
-    f.foot = c:CreateFontString(nil, "ARTWORK")
-    Ink(f.foot, INK, TEXT_FONT, 11)
-    f.foot:SetPoint("BOTTOMLEFT", 32, 92)
-
-    f.seal = c:CreateTexture(nil, "OVERLAY")
-    f.seal:SetSize(66, 66)
-    f.seal:SetPoint("BOTTOMRIGHT", -24, 22)
-    -- The stamp UNDER the writing and half faded, as ink stamped on paper: over it, at full strength, it
-    -- made the letter "vanskelig å lese" (the owner, 2026-11-06).
-    f.stamp = c:CreateTexture(nil, "BORDER", nil, 2)
-    f.stamp:SetSize(210, 105)
-    f.stamp:SetPoint("CENTER", 0, -30)
-    f.stamp:SetAlpha(STAMP_ALPHA)
-
-    -- Up to two buttons, bottom left; the seal has the bottom right.
-    f.buttons = {}
-    for i = 1, 2 do
-        local b = CreateFrame("Button", nil, c, "UIPanelButtonTemplate")
-        b:SetSize(176, 22)
-        b:SetPoint("BOTTOMLEFT", 30, 56 - (i - 1) * 26)
-        f.buttons[i] = b
-    end
-
-    -- The rolls sit above the sheet; the bottom one hangs from the sheet's edge, so it travels down as
-    -- the sheet unrolls.
-    local rolls = CreateFrame("Frame", nil, f)
-    rolls:SetAllPoints()
-    rolls:SetFrameLevel(sheet:GetFrameLevel() + 6)
-    local top = GK.MakeRoll(rolls, ROLL_H)
-    top:SetWidth(W + 16)
-    top:SetPoint("TOP")
-    local bottom = GK.MakeRoll(rolls, ROLL_H, true)
-    bottom:SetWidth(W + 16)
-    bottom:SetPoint("TOP", sheet, "BOTTOM", 0, ROLL_H / 2)
-    -- The bar under the bottom roll, travelling down with it: to the order in the ledger, or away. The iron
-    -- X on the top roll's end was hard to hit, and "1 of 3" with its arrows turned one order into a pile:
-    -- "X oppe i høyre funker ikke så bra ... en page kun for en order. åpner du kill order så lukkes det
-    -- lille vinduet" (the owner, 2026-11-07). The next letter waits for the next click on the notice.
-    -- Close rolls the scroll up, as Escape does; both are our own Hide, so they work in combat too.
-    f.open = CreateFrame("Button", nil, rolls, "UIPanelButtonTemplate")
-    f.open:SetSize(150, 22)
-    f.open:SetPoint("TOPRIGHT", bottom, "BOTTOM", -3, -4)
-    f.open:SetText("Open kill orders")
-    f.close = CreateFrame("Button", nil, rolls, "UIPanelButtonTemplate")
-    f.close:SetSize(110, 22)
-    f.close:SetPoint("TOPLEFT", bottom, "BOTTOM", 3, -4)
-    f.close:SetText("Close")
-    f.close:SetScript("OnClick", function() GK.CloseLetters() end)
-
-    -- The stamp comes down hard: big and faint to its size, then the sheet jolts.
-    local slam = f.stamp:CreateAnimationGroup()
-    local grow = slam:CreateAnimation("Scale")
-    grow:SetScaleFrom(2.4, 2.4)
-    grow:SetScaleTo(1, 1)
-    grow:SetDuration(0.16)
-    grow:SetSmoothing("IN")
-    local fade = slam:CreateAnimation("Alpha")
-    fade:SetFromAlpha(0)
-    fade:SetToAlpha(STAMP_ALPHA)
-    fade:SetDuration(0.08)
-    local jolt = f:CreateAnimationGroup()
-    for i, dx in ipairs({ 5, -9, 4 }) do
-        local t = jolt:CreateAnimation("Translation")
-        t:SetOffset(dx, 0)
-        t:SetDuration(0.04)
-        t:SetOrder(i)
-    end
-    slam:SetScript("OnFinished", function()
-        jolt:Play()
-        GK.Sound("IG_QUEST_LIST_COMPLETE")
-    end)
-    f.slam = slam
-
-    f.sheet = sheet
-    f:Hide()
-    if LIB.RegisterWindow then LIB.RegisterWindow(f, GK.db, "letter") end
-    -- RegisterWindow owns OnShow/OnHide; ours only ever hooks.
-    f:HookScript("OnHide", function(self) self:SetScript("OnUpdate", nil) end)
-    f:HookScript("OnHide", Closed)
-    scroll = f
-end
-
--- Unroll (dir 1) or roll up (dir -1, then hide). Runs only while it moves.
-local function Roll(dir, done)
-    local f = scroll
-    local t0, span = GetTime(), dir > 0 and UNROLL or ROLLUP
-    f:SetScript("OnUpdate", function(self)
-        if not self:IsShown() then self:SetScript("OnUpdate", nil) return end
-        local p = math.min(1, (GetTime() - t0) / span)
-        local e = dir > 0 and (1 - (1 - p) ^ 3) or (1 - p) ^ 2
-        f.sheet:SetHeight(math.max(1, BODY_H * e))
-        if p >= 1 then
-            self:SetScript("OnUpdate", nil)
-            if done then done() end
+--- The pile drawn for the letter open now. Returns how many other letters are unread.
+local function UpdatePile(p)
+    local list = GK.char.letters
+    local n = #list
+    local first = 1
+    local shown = p.shown
+    if n > shown then first = math.max(1, math.min(index - math.floor(shown / 2), n - shown + 1)) end
+    local x = 0
+    for i, s in ipairs(p.seals) do
+        local at = first + i - 1
+        local L = list[at]
+        s:SetShown(L ~= nil)
+        if L then
+            local open, read = at == index, L.read and at ~= index
+            local size = open and 20 or 15
+            s.at = at
+            s:SetSize(size, size)
+            s:ClearAllPoints()
+            s:SetPoint("LEFT", p, "LEFT", x, 0)
+            s.tex:SetTexture(MEDIA .. SealOf(L))
+            s.tex:SetDesaturated(read)
+            s.tex:SetAlpha(read and 0.45 or 1)
+            s.ring:SetShown(open)
+            x = x + size + 5
         end
-    end)
+    end
+    p:SetWidth(math.max(1, x - 5))
+    Pressable(p.prev, index > 1)
+    Pressable(p.next, index < n)
+    local more = 0
+    for i, L in ipairs(list) do
+        if i ~= index and not L.read and not holding[L] then more = more + 1 end
+    end
+    p.text:SetText(more > 0 and ("%d of %d, %d more unread"):format(index, n, more) or ("%d of %d"):format(index, n))
+    return more
 end
 
---- The body, as much of it as the sheet has room for between the info and the foot's line: a long note,
---- three backers and where they were last seen ran it on under the button, the seal and the bottom roll
---- (the store pictures, 2026-11-10). What gives way goes first - give, then a blank line - and what still
---- runs on is cut at the last line that fits.
+--- The body, as much of it as the room between the head and the buttons holds: a long note, three backers
+--- and where they were last seen ran a kill order on under its buttons and its seal (the store pictures,
+--- 2026-11-10). What gives way goes first - give, then a blank line - and what still runs on is cut at the
+--- last line that fits.
 local LINE_H = 16                 -- a line of the body: 13 high, and 3 between lines
-local function FitBody(f, lines, give)
-    local room = BODY_H - (34 + f.title:GetStringHeight() + 12 + f.name:GetStringHeight() + 4
-        + f.info:GetStringHeight() + 16) - (92 + f.foot:GetStringHeight() + 6)
+local function FitBody(fs, lines, give, room)
     local kept = {}
     for i, t in ipairs(lines) do kept[i] = t end
-    if f.body.SetMaxLines then f.body:SetMaxLines(0) end
-    f.body:SetText(table.concat(kept, "\n"))
+    if fs.SetMaxLines then fs:SetMaxLines(0) end
+    fs:SetText(table.concat(kept, "\n"))
     local order = {}
     for _, t in ipairs(give or {}) do order[#order + 1] = t end
     order[#order + 1] = " "
+    order[#order + 1] = ""
     for _, t in ipairs(order) do
-        if (f.body:GetStringHeight() or 0) <= room then break end
+        if (fs:GetStringHeight() or 0) <= room then break end
         for i = #kept, 1, -1 do
             if kept[i] == t then
                 table.remove(kept, i)
                 break
             end
         end
-        f.body:SetText(table.concat(kept, "\n"))
+        fs:SetText(table.concat(kept, "\n"))
     end
-    if (f.body:GetStringHeight() or 0) > room and f.body.SetMaxLines then
-        f.body:SetMaxLines(math.max(1, math.floor((room + 3) / LINE_H)))
+    if (fs:GetStringHeight() or 0) > room and fs.SetMaxLines then
+        fs:SetMaxLines(math.max(1, math.floor((room + 3) / LINE_H)))
     end
-end
-
-local function FillScroll(L)
-    local f = scroll
-    local d = GK.LetterContent(L)
-    local title, name, info, body, foot, seal, stamp, buttons = d.title, d.name, d.info, d.lines, d.foot, d.seal,
-        d.stamp, d.buttons
-    -- "ORDER COMPLETE" fills the sheet at the size "KILL ORDER" wants
-    Ink(f.title, BLOOD, TITLE_FONT, #title > 11 and 22 or 26)
-    f.title:SetText(title)
-    f.name:SetText(name)
-    f.info:SetText(info)
-    f.foot:SetText(foot or "")
-    FitBody(f, body, d.give)
-    f.seal:SetTexture(MEDIA .. seal)
-    f.stamp:Hide()
-    f.stampName = stamp
-    if stamp then f.stamp:SetTexture(MEDIA .. stamp) end
-    for i, b in ipairs(f.buttons) do SetButton(b, buttons[i], L, FillScroll) end
-    -- the ledger's kill orders, on this order, and the scroll gone at once: two windows on one order is one
-    -- too many
-    f.open:SetScript("OnClick", function()
-        f:Hide()
-        GK.OpenOrder(L.o)
-    end)
 end
 
 -- ---------------------------------------------------------------------------
--- The note
+-- Close buttons, portraits and the sheets: shared with the ledger, the post sheet and the notes
 -- ---------------------------------------------------------------------------
 --- Grudgekeeper's own close button: the iron X (Media/close), a red glow behind it under the mouse,
 --- a shade darker pressed. Every close path is our own Hide, so it works in combat too. size: the
@@ -924,7 +900,7 @@ function GK.MakeGameCloseButton(parent, onClick)
     local b = CreateFrame("Button", nil, parent, "UIPanelCloseButton")
     b:SetScript("OnClick", onClick)
     b:SetFrameLevel(parent:GetFrameLevel() + 12)
-    b:SetPoint("CENTER", parent, "TOPRIGHT", -NW * 0.043, -NH * 0.069)
+    b:SetPoint("CENTER", parent, "TOPRIGHT", -parent:GetWidth() * 0.043, -parent:GetHeight() * 0.069)
     return b
 end
 
@@ -1323,8 +1299,7 @@ end
 -- ---------------------------------------------------------------------------
 --- A window in the game's frame, w x h, titled; dragged as every sheet is, closed by its X (which hides
 --- it directly: the template's HideUIPanel does nothing in combat) and by Escape before the window under it.
---- wide: a window of two pages (the settings), on the wide sheet the open ledger lies on.
-function GK.MakeFrameSheet(name, w, h, title, wide)
+function GK.MakeFrameSheet(name, w, h, title)
     local f = SheetFrame(name, w, h, "SettingsFrameTemplate")
     -- the template's flat grey backdrop gives way to the skin's background, as on the ledger: the plain
     -- parchment (sheet_single, the page with no torn edge) in its tone, or in classic the frame's own panel
@@ -1337,7 +1312,7 @@ function GK.MakeFrameSheet(name, w, h, title, wide)
             bg:SetDesaturation(0)
             bg:SetVertexColor(1, 1, 1)
         else
-            bg:SetTexture(MEDIA .. (wide and "sheet_wide" or "sheet_single"))
+            bg:SetTexture(MEDIA .. "sheet_single")
             bg:SetTexCoord(0, 1, 0, 1)
             if GK.Tone then GK.Tone(bg) end
         end
@@ -1407,8 +1382,7 @@ end
 --- The game's own button, its words in the game's small type in every state (setting only the current
 --- one loses them when the button is disabled, Guildhall found).
 function GK.FrameButton(parent, text, width, onClick)
-    local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-    b:SetSize(width or 96, 22)
+    local b = GK.MakeButton(parent, width or 96, 22)
     b:SetNormalFontObject("GameFontNormal")
     b:SetHighlightFontObject("GameFontHighlight")
     b:SetDisabledFontObject("GameFontDisable")
@@ -1433,56 +1407,20 @@ function GK.PlaceSheet(f)
     end
 end
 
---- The note's paper, frame, plaque and portrait, for the letters and the profiles (Profile.lua) alike:
---- f.paper, f.blood, f.portrait (the Grudgekeeper, cut round), f.badge and f.badgeRing (a class
---- circle on his shoulder), f.disc. Hidden and not yet registered as a window: the caller adds its
---- own writing first.
-function GK.MakeNoteFrame(name)
-    local f = CreateFrame("Frame", name, UIParent)
-    f:SetSize(NW, NH)
-    f:SetClampedToScreen(true)
-    f:SetPoint("CENTER", 0, 120)
-    f:EnableMouse(true)
-    -- Paper under the iron-and-leather frame; the frame's bands cover the paper's edges. The frame's
-    -- top band is about 12% of its height and its sides about 5% of its width (measured from
-    -- letter_frame.tga), which is what the insets below keep clear of.
-    local paper = f:CreateTexture(nil, "BACKGROUND")
-    paper:SetPoint("TOPLEFT", 14, -14)
-    paper:SetPoint("BOTTOMRIGHT", -14, 14)
-    paper:SetTexture(MEDIA .. "letter_paper")
-    f.paper = paper
-    f.blood = f:CreateTexture(nil, "BORDER")
-    f.blood:SetTexture(MEDIA .. "blood")
-    f.blood:SetSize(190, 190)
-    f.blood:SetPoint("CENTER", 150, -40)
-    f.blood:SetRotation(-0.5)
-    f.blood:SetAlpha(0.5)
-    local frame = CreateFrame("Frame", nil, f)
-    frame:SetAllPoints()
-    frame:SetFrameLevel(f:GetFrameLevel() + 8)
-    local border = frame:CreateTexture(nil, "ARTWORK")
-    border:SetAllPoints()
-    border:SetTexture(MEDIA .. "letter_frame")
-    -- Who it's from, on the plaque in the middle of the top band.
-    local plaque = frame:CreateFontString(nil, "OVERLAY")
-    GK.SetFont(plaque, TITLE_FONT, 14)
-    plaque:SetTextColor(1, 0.82, 0.4)
-    plaque:SetShadowOffset(1, -1)
-    plaque:SetPoint("TOP", 0, -17)
-    plaque:SetText("The Grudgekeeper")
-
-    -- The portrait: the Grudgekeeper himself, cut round, with the class of whoever the letter is about
-    -- as a small badge on his shoulder.
+--- The Grudgekeeper himself, cut round, with the class of whoever the letter is about as a small badge on his
+--- shoulder: f.disc, f.portrait, f.badge, f.badgeRing. size: the disc's side; x, y: its top left.
+local function KeeperPortrait(f, size, x, y)
+    local k = size / 112                             -- drawn for 112 (the note's), the rest in proportion
     local disc = f:CreateTexture(nil, "ARTWORK")
-    disc:SetSize(104, 104)
-    disc:SetPoint("TOPLEFT", 44, -66)
+    disc:SetSize(size, size)
+    disc:SetPoint("TOPLEFT", x, -y)
     disc:SetColorTexture(0.12, 0.06, 0.03, 0.95)
     local discMask = f:CreateMaskTexture()
     discMask:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
     discMask:SetAllPoints(disc)
     disc:AddMaskTexture(discMask)
     local portrait = f:CreateTexture(nil, "ARTWORK", nil, 1)
-    portrait:SetSize(98, 98)
+    portrait:SetSize(size - 6 * k, size - 6 * k)
     portrait:SetPoint("CENTER", disc, "CENTER")
     portrait:SetTexture(MEDIA .. "portrait")
     local portraitMask = f:CreateMaskTexture()
@@ -1490,10 +1428,10 @@ function GK.MakeNoteFrame(name)
     portraitMask:SetAllPoints(portrait)
     portrait:AddMaskTexture(portraitMask)
     f.badge = f:CreateTexture(nil, "ARTWORK", nil, 3)
-    f.badge:SetSize(32, 32)
-    f.badge:SetPoint("CENTER", disc, "BOTTOMRIGHT", -12, 12)
+    f.badge:SetSize(32 * k, 32 * k)
+    f.badge:SetPoint("CENTER", disc, "BOTTOMRIGHT", -12 * k, 12 * k)
     local badgeRing = f:CreateTexture(nil, "ARTWORK", nil, 2)
-    badgeRing:SetSize(36, 36)
+    badgeRing:SetSize(36 * k, 36 * k)
     badgeRing:SetPoint("CENTER", f.badge, "CENTER")
     badgeRing:SetColorTexture(0.12, 0.06, 0.03, 0.95)
     local ringMask = f:CreateMaskTexture()
@@ -1502,89 +1440,365 @@ function GK.MakeNoteFrame(name)
     badgeRing:AddMaskTexture(ringMask)
     f.badgeRing = badgeRing
     f.disc, f.portrait = disc, portrait
+end
+
+--- A death's blood on the paper, under the writing.
+local function Blood(f, spot)
+    f.blood = f:CreateTexture(nil, "BORDER")
+    f.blood:SetTexture(MEDIA .. "blood")
+    f.blood:SetSize(spot[3], spot[3])
+    f.blood:SetPoint("CENTER", spot[1], spot[2])
+    f.blood:SetRotation(-0.5)
+    f.blood:SetAlpha(0.5)
+end
+
+--- The note's paper, frame, plaque and portrait, at a look's size (LAYOUTS; A's if none): f.paper, f.blood,
+--- and the portrait's parts (KeeperPortrait). Hidden and not yet registered as a window: the caller adds
+--- its own writing first.
+function GK.MakeNoteFrame(name, L)
+    L = L or LAYOUTS.A
+    local k = L.w / NW                              -- the frame is one picture: all of it in proportion
+    local f = CreateFrame("Frame", name, UIParent)
+    f:SetSize(L.w, L.h)
+    f:SetClampedToScreen(true)
+    f:SetPoint("CENTER", 0, 120)
+    f:EnableMouse(true)
+    -- Paper under the iron-and-leather frame; the frame's bands cover the paper's edges. The frame's
+    -- top band is about 12% of its height and its sides about 5% of its width (measured from
+    -- letter_frame.tga), which is what the insets below keep clear of.
+    local paper = f:CreateTexture(nil, "BACKGROUND")
+    paper:SetPoint("TOPLEFT", 14 * k, -14 * k)
+    paper:SetPoint("BOTTOMRIGHT", -14 * k, 14 * k)
+    paper:SetTexture(MEDIA .. "letter_paper")
+    f.paper = paper
+    Blood(f, L.blood)
+    local frame = CreateFrame("Frame", nil, f)
+    frame:SetAllPoints()
+    frame:SetFrameLevel(f:GetFrameLevel() + 8)
+    local border = frame:CreateTexture(nil, "ARTWORK")
+    border:SetAllPoints()
+    border:SetTexture(MEDIA .. "letter_frame")
+    -- Who it's from, on the plaque in the middle of the top band.
+    local plaque = frame:CreateFontString(nil, "OVERLAY")
+    GK.SetFont(plaque, TITLE_FONT, math.floor(14 * k + 0.5))
+    plaque:SetTextColor(1, 0.82, 0.4)
+    plaque:SetShadowOffset(1, -1)
+    plaque:SetPoint("TOP", 0, -17 * k)
+    plaque:SetText("The Grudgekeeper")
+    KeeperPortrait(f, L.face, L.faceX, L.faceY)
     f:Hide()
     return f
 end
 
-local function BuildNote()
-    local f = GK.MakeNoteFrame("GrudgekeeperNote")
+--- P's loose sheet: the burnt parchment, torn at top and bottom (Media/letter_sheet, cut from the post sheet's
+--- by art/make_grudgekeeper_letter_sheet.py), in three pieces so it grows to its words without stretching
+--- its torn edges; the ledger's iron cross in its corner. As MakeNoteFrame: hidden, not yet registered.
+local SHEET_EDGE = 64 / 512                          -- each torn edge, of the texture's height
+local function LetterSheet(name, L)
+    local f = CreateFrame("Frame", name, UIParent)
+    f:SetSize(L.w, L.h)
+    f:SetClampedToScreen(true)
+    f:SetPoint("CENTER", 0, 120)
+    f:EnableMouse(true)
+    local edge = L.w * SHEET_EDGE                    -- on screen, as wide as the sheet is in the texture
+    local top, mid, bottom = f:CreateTexture(nil, "BACKGROUND"), f:CreateTexture(nil, "BACKGROUND"),
+        f:CreateTexture(nil, "BACKGROUND")
+    for _, t in ipairs({ top, mid, bottom }) do t:SetTexture(MEDIA .. "letter_sheet") end
+    top:SetTexCoord(0, 1, 0, SHEET_EDGE)
+    top:SetPoint("TOPLEFT")
+    top:SetPoint("TOPRIGHT")
+    top:SetHeight(edge)
+    bottom:SetTexCoord(0, 1, 1 - SHEET_EDGE, 1)
+    bottom:SetPoint("BOTTOMLEFT")
+    bottom:SetPoint("BOTTOMRIGHT")
+    bottom:SetHeight(edge)
+    mid:SetTexCoord(0, 1, SHEET_EDGE, 1 - SHEET_EDGE)
+    mid:SetPoint("TOPLEFT", top, "BOTTOMLEFT")
+    mid:SetPoint("BOTTOMRIGHT", bottom, "TOPRIGHT")
+    f.paper = mid
+    Blood(f, L.blood)
+    KeeperPortrait(f, L.face, L.faceX, L.faceY)
+    f:Hide()
+    return f
+end
+
+local function BuildLetter(style)
+    local L = LAYOUTS[style]
+    local name = style == "A" and "GrudgekeeperLetter" or ("GrudgekeeperLetter" .. style)
+    local f = L.frame and GK.MakeNoteFrame(name, L) or LetterSheet(name, L)
+    f.style, f.layout = style, L
+    -- where the writing starts, and how wide it runs: beside the face's column, or beside the face in the head
+    local headX = L.column and L.textX or (L.faceX + L.face + 12)
+    local headW = L.w - headX - L.right - (L.frame and 0 or 20)          -- the loose sheet's cross in the corner
+    local textW = L.w - L.textX - L.right
+    f.textW = textW
+    -- An order's page: the face of whom it is about in the bronze ring, where his own portrait is on a note,
+    -- and the bounty under it - the gold large, what it is under that; in the head a line under who they are.
+    f.face = GK.MakePortrait(f, L.face)
+    f.face.tex:SetPoint("CENTER", f.disc, "CENTER")
+    f.gold = f:CreateFontString(nil, "ARTWORK")
+    Ink(f.gold, INK, TITLE_FONT, 24)
+    f.gold:SetPoint("TOP", f.disc, "BOTTOM", 0, -12)
+    f.goldCap = f:CreateFontString(nil, "ARTWORK")
+    Ink(f.goldCap, FADED, TEXT_FONT, 10)
+    f.goldSub = f:CreateFontString(nil, "ARTWORK")
+    Ink(f.goldSub, FADED, TEXT_FONT, 11)
+    f.goldSub:SetPoint("TOP", f.goldCap, "BOTTOM", 0, -2)
+
+    -- The writing, beside the face: the title, whom it is about, the words, and the letter's own buttons
+    -- right under them.
     f.title = f:CreateFontString(nil, "ARTWORK")
-    Ink(f.title, BLOOD, TITLE_FONT, 22)
-    f.title:SetPoint("TOPLEFT", 172, -66)
+    Ink(f.title, BLOOD, TITLE_FONT, L.title)
+    f.title:SetPoint("TOPLEFT", headX, -L.headY)
+    f.name = f:CreateFontString(nil, "ARTWORK")
+    Ink(f.name, INK, TITLE_FONT, L.name)
+    f.name:SetPoint("TOPLEFT", f.title, "BOTTOMLEFT", 0, L.column and -8 or -4)
+    f.name:SetWidth(headW)
+    f.name:SetJustifyH("LEFT")
+    f.name:SetWordWrap(false)
+    f.info = f:CreateFontString(nil, "ARTWORK")
+    Ink(f.info, FADED, TEXT_FONT, L.column and 12 or 11)
+    f.info:SetPoint("TOPLEFT", f.name, "BOTTOMLEFT", 0, -3)
     f.body = f:CreateFontString(nil, "ARTWORK")
     Ink(f.body, INK, TEXT_FONT, 13)
-    f.body:SetPoint("TOPLEFT", f.title, "BOTTOMLEFT", 0, -10)
-    f.body:SetWidth(NW - 172 - 48)
+    f.body:SetWidth(textW)
     f.body:SetJustifyH("LEFT")
     f.body:SetSpacing(3)
+    f.buttons = {}
+    for i = 1, 3 do f.buttons[i] = LetterButton(f) end
 
-    -- The signature by the right edge, the seal pressed beside it.
-    local sign = f:CreateFontString(nil, "ARTWORK")
-    Ink(sign, INK, TITLE_FONT, 16)
-    sign:SetPoint("BOTTOMRIGHT", -50, 96)
-    sign:SetText("- the Grudgekeeper")
+    -- The signature by the right edge, the seal pressed beside it: his name on a note, the poster on an order.
+    f.sign = f:CreateFontString(nil, "ARTWORK")
+    Ink(f.sign, INK, TITLE_FONT, 16)
+    f.sign:SetPoint("BOTTOMRIGHT", -L.edge, L.signY)
     f.seal = f:CreateTexture(nil, "OVERLAY")
-    f.seal:SetSize(48, 48)
-    f.seal:SetPoint("RIGHT", sign, "LEFT", -6, 2)
+    f.seal:SetSize(44, 44)
+    f.seal:SetPoint("RIGHT", f.sign, "LEFT", -6, 2)
 
-    -- Buttons on the paper just above the frame's bottom band; the pager to their right.
-    f.action = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    f.action:SetSize(160, 22)
-    f.action:SetPoint("BOTTOMLEFT", 46, 50)
-    -- Close, beside the letter's own button. It was Later, which kept the letter unread, so the notice
-    -- came straight back with it: "trykke later gir meg bare notification igjen? burde være lukk
-    -- isteden?" (the owner, 2026-11-08). These letters are news the ledger keeps anyway; read is done.
-    local close = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    close:SetSize(90, 22)
-    close:SetPoint("LEFT", f.action, "RIGHT", 6, 0)
-    close:SetText("Close")
+    -- The FULFILLED stamp UNDER the writing and half faded, as ink stamped on paper: over it, at full strength,
+    -- it made the letter "vanskelig å lese" (the owner, 2026-11-06). It comes down hard: big and faint to its
+    -- size, then the letter jolts.
+    f.stamp = f:CreateTexture(nil, "BORDER", nil, 2)
+    f.stamp:SetSize(210 * L.w / NW, 105 * L.w / NW)    -- where: FillLetter, under the words
+    f.stamp:SetAlpha(STAMP_ALPHA)
+    f.stamp:Hide()
+    local slam = f.stamp:CreateAnimationGroup()
+    local grow = slam:CreateAnimation("Scale")
+    grow:SetScaleFrom(2.4, 2.4)
+    grow:SetScaleTo(1, 1)
+    grow:SetDuration(0.16)
+    grow:SetSmoothing("IN")
+    local fade = slam:CreateAnimation("Alpha")
+    fade:SetFromAlpha(0)
+    fade:SetToAlpha(STAMP_ALPHA)
+    fade:SetDuration(0.08)
+    local jolt = f:CreateAnimationGroup()
+    for i, dx in ipairs({ 5, -9, 4 }) do
+        local t = jolt:CreateAnimation("Translation")
+        t:SetOffset(dx, 0)
+        t:SetDuration(0.04)
+        t:SetOrder(i)
+    end
+    slam:SetScript("OnFinished", function()
+        jolt:Play()
+        GK.Sound("IG_QUEST_LIST_COMPLETE")
+    end)
+    f.slam = slam
+
+    -- The foot: a faint rule, Read all on the left, the pile in the middle, Close on the right. Close stays as
+    -- well as the X: "X oppe i høyre funker ikke så bra" (the owner, 2026-11-07), and it was Later once, which
+    -- kept the letter unread and brought the notice straight back ("burde være lukk isteden?", 2026-11-08).
+    f.rule = f:CreateTexture(nil, "ARTWORK")
+    f.rule:SetHeight(1)
+    f.rule:SetPoint("BOTTOMLEFT", L.edge - 6, L.ruleY)
+    f.rule:SetPoint("BOTTOMRIGHT", -(L.edge - 6), L.ruleY)
+    f.rule:SetColorTexture(FADED[1], FADED[2], FADED[3], 0.45)
+    f.readAll = LetterButton(f)
+    f.readAll:Set("Read all")
+    f.readAll:SetPoint("BOTTOMLEFT", L.edge, L.footY)
+    -- every letter read at once, and so gone (GK.ReadAllLetters): it was a right-click on the ledger's
+    -- Letters button alone, which nobody finds
+    f.readAll:SetScript("OnClick", function() GK.ReadAllLetters() end)
+    local close = LetterButton(f)
+    close:Set("Close")
+    close:SetPoint("BOTTOMRIGHT", -L.edge, L.footY)
     close:SetScript("OnClick", function() GK.CloseLetters() end)
     f.closeButton = close
-    Pager(f, f, 180, 54)
-    -- And the game's own X in the corner: our iron cross sat on top of the frame's iron corner and
-    -- didn't go with it (2026-11-06).
-    GK.MakeGameCloseButton(f, function() GK.CloseLetters() end)
+    f.pile = BuildPile(f)
+    -- And the game's own X in the corner: our iron cross sat on top of the frame's iron corner and didn't go
+    -- with it (2026-11-06). The loose sheet has no iron: there the cross is ours, as on the post sheet.
+    if L.frame then
+        f.x = GK.MakeGameCloseButton(f, function() GK.CloseLetters() end)
+    else
+        f.x = GK.MakeCloseButton(f, 20, function() GK.CloseLetters() end, 14)
+        f.x:SetPoint("TOPRIGHT", -14, -14)
+        f.x:SetFrameLevel(f:GetFrameLevel() + 12)
+    end
 
-    -- Arrives with a small drop and a fade, nothing more.
+    -- Arrives with a small drop and a fade, nothing more; turning to the next letter only turns the page.
     local arrive = f:CreateAnimationGroup()
     local drop = arrive:CreateAnimation("Translation")
     drop:SetOffset(0, -8)
     drop:SetDuration(0.18)
     drop:SetSmoothing("OUT")
-    local fade = arrive:CreateAnimation("Alpha")
-    fade:SetFromAlpha(0)
-    fade:SetToAlpha(1)
-    fade:SetDuration(0.18)
+    local fadeIn = arrive:CreateAnimation("Alpha")
+    fadeIn:SetFromAlpha(0)
+    fadeIn:SetToAlpha(1)
+    fadeIn:SetDuration(0.18)
     f.arrive = arrive
 
     f:Hide()
-    if LIB.RegisterWindow then LIB.RegisterWindow(f, GK.db, "note") end
+    -- where the note stood, if it was moved: most letters were notes (each look its own place)
+    if LIB.RegisterWindow then LIB.RegisterWindow(f, GK.db, L.key) end
+    -- RegisterWindow owns OnShow/OnHide; ours only ever hooks.
     f:HookScript("OnHide", Closed)
-    note = f
+    win = f
+    wins[style] = f
 end
 
-local function FillNote(L)
-    local f = note
+--- One letter on the window: an order's page or a note, its buttons, its seal, the pile.
+local function FillLetter(L)
+    local f = win
+    local lay = f.layout
     local d = GK.LetterContent(L)
+    local order = not d.note
+    -- "ORDER COMPLETE" fills the line at the size "KILL ORDER" wants
+    Ink(f.title, BLOOD, TITLE_FONT, #d.title > 11 and lay.title - 4 or lay.title)
     f.title:SetText(d.title)
-    f.body:SetText(table.concat(d.lines, "\n"))
-    f.seal:SetTexture(MEDIA .. d.seal)
-    f.blood:SetShown(d.blood)
-    local coords = L.c and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[L.c]
-    f.badge:SetShown(coords ~= nil)
-    f.badgeRing:SetShown(coords ~= nil)
+
+    -- the head: whom an order is about, and its bounty; on a note, the Grudgekeeper with their class on his
+    -- shoulder
+    f.name:SetShown(order)
+    f.info:SetShown(order)
+    f.disc:SetShown(not order)
+    f.portrait:SetShown(not order)
+    local coords = not order and L.c and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[L.c]
+    f.badge:SetShown(coords and true or false)
+    f.badgeRing:SetShown(coords and true or false)
     if coords then
         f.badge:SetTexture(CLASS_ICONS)
         f.badge:SetTexCoord(unpack(coords))
     end
-    SetButton(f.action, d.buttons[1], L, FillNote)
-    UpdatePager(f)
+    local b = order and d.bounty or nil
+    local gold = b and (b.copper or 0) > 0
+    f.gold:SetShown(lay.column and gold and true or false)
+    f.goldCap:SetShown(b ~= nil)
+    f.goldSub:SetShown(lay.column and b ~= nil)
+    f.goldCap:ClearAllPoints()
+    if order then
+        f.face:SetShown(true)                       -- its ring as well: Set shows the face alone
+        f.face:Set({ key = L.n, c = L.c, rf = L.rf, sx = L.sx })
+        f.name:SetText(d.name or "")
+        f.info:SetText(d.info or "")
+    else
+        f.face:SetShown(false)
+    end
+    if b and not lay.column then
+        -- in the head: one line under who they are, the gold first
+        Ink(f.goldCap, gold and INK or BLOOD, TEXT_FONT, 11)
+        f.goldCap:SetPoint("TOPLEFT", f.info, "BOTTOMLEFT", 0, -3)
+        f.goldCap:SetText(gold and (GK.Coins(b.copper) .. " bounty" .. ((b.from or 0) > 1
+            and (" - from %d guildies"):format(b.from) or "")) or "No bounty - for the guild's honour")
+    elseif gold then
+        f.gold:SetText(GK.Coins(b.copper))
+        Ink(f.goldCap, FADED, TEXT_FONT, 10)
+        f.goldCap:SetText("BOUNTY")
+        f.goldCap:SetPoint("TOP", f.disc, "BOTTOM", 0, -42)
+        f.goldSub:SetText((b.from or 0) > 1 and ("from %d guildies"):format(b.from) or "")
+    elseif b then
+        -- an order with no gold: said where the gold would be, in the order's own words
+        Ink(f.goldCap, BLOOD, TITLE_FONT, 13)
+        f.goldCap:SetText("NO BOUNTY")
+        f.goldCap:SetPoint("TOP", f.disc, "BOTTOM", 0, -14)
+        f.goldSub:SetText("for the guild's honour")
+    end
+
+    -- the words, under the head, as many as the room above the buttons and the seal holds
+    local top = lay.headY + (f.title:GetStringHeight() or lay.title)
+    if lay.column and order then
+        top = top + 8 + (f.name:GetStringHeight() or 20) + 3 + (f.info:GetStringHeight() or 12) + 10
+    elseif lay.column then
+        top = top + 12
+    else
+        -- the head beside the face, the words under whichever ends lower
+        if order then
+            top = top + 4 + (f.name:GetStringHeight() or lay.name) + 3 + (f.info:GetStringHeight() or 11)
+                + (b and 3 + (f.goldCap:GetStringHeight() or 11) or 0)
+        end
+        top = math.max(top, lay.faceY + lay.face) + 10
+    end
+    f.body:ClearAllPoints()
+    f.body:SetPoint("TOPLEFT", f, "TOPLEFT", lay.textX, -top)
+    -- what the letter asks of you, and on an order the way to it in the ledger, which closes the letter: two
+    -- windows on one order is one too many
+    local specs = {}
+    for _, spec in ipairs(d.buttons or {}) do specs[#specs + 1] = spec end
+    if order and L.o then
+        specs[#specs + 1] = { "Open in the ledger", function() GK.OpenOrder(L.o) end, away = true }
+    end
+    -- the room down to the seal over the signature: the loose sheet's most, which it grows to as it needs
+    local buttonsH = #specs > 0 and (LETTER_BUTTON_H + BUTTON_GAP) or 0
+    local room = (lay.maxH or lay.h) - lay.signY - lay.sealRoom - 6 - buttonsH - top
+    FitBody(f.body, d.lines, d.give, room)
+    if lay.maxH then
+        local h = top + (f.body:GetStringHeight() or 0) + buttonsH + 6 + lay.sealRoom + lay.signY
+        f:SetHeight(math.max(lay.h, math.min(lay.maxH, math.ceil(h))))
+    end
+    -- a stamp under the words: in the writing's column, or across the letter under the head
+    f.stamp:ClearAllPoints()
+    if lay.column then
+        f.stamp:SetPoint("CENTER", f, "TOPLEFT", lay.textX + f.textW / 2, -170)
+    else
+        f.stamp:SetPoint("CENTER", f, "TOPLEFT", lay.w / 2, -(top + 40))
+    end
+    local x = 0
+    for i, btn in ipairs(f.buttons) do
+        local spec = specs[i]
+        btn:SetShown(spec ~= nil)
+        if spec then
+            btn:Set(spec[1])
+            btn:ClearAllPoints()
+            btn:SetPoint("TOPLEFT", f.body, "BOTTOMLEFT", x, -BUTTON_GAP)
+            x = x + btn.w + 8
+            Pressable(btn, not L.sample)
+            btn:SetScript("OnClick", function()
+                if spec.away then
+                    f:Hide()
+                    spec[2]()
+                    return
+                end
+                spec[2]()
+                if f:IsShown() and GK.char.letters[index] == L then FillLetter(L) end
+            end)
+        end
+    end
+
+    -- the signature and the seal; blood on a death; the stamp waits for the letter to be shown (GK.ShowLetter)
+    local k = lay.sealRoom / 38                       -- the seal in proportion to the room kept for it
+    if order then
+        Ink(f.sign, FADED, TEXT_FONT, lay.column and 12 or 11)
+        f.sign:SetText(d.foot or "")
+        f.seal:SetSize(38 * k, 38 * k)
+    else
+        Ink(f.sign, INK, TITLE_FONT, lay.column and 16 or 14)
+        f.sign:SetText("- the Grudgekeeper")
+        f.seal:SetSize(44 * k, 44 * k)
+    end
+    f.seal:SetTexture(MEDIA .. d.seal)
+    f.blood:SetShown(d.blood == true)
+    f.stamp:Hide()
+    f.stampName = d.stamp
+    if d.stamp then f.stamp:SetTexture(MEDIA .. d.stamp) end
+
+    -- the pile; Read all only while another letter waits unread
+    local more = UpdatePile(f.pile)
+    f.readAll:SetShown(more > 0)
 end
 
 -- ---------------------------------------------------------------------------
 -- Opening and closing
 -- ---------------------------------------------------------------------------
---- Show letter i of the pile, in whichever view it belongs. Reading it marks it read.
+--- Show letter i of the pile in the letter window. Reading it marks it read.
 function GK.ShowLetter(i)
     local list = GK.char.letters
     if #list == 0 then
@@ -1597,24 +1811,17 @@ function GK.ShowLetter(i)
     reading = true
     holding[L] = nil                                -- read before its minute was up: nothing left to land
     GK.Sound("IG_ABILITY_PAGE_TURN")
-    if NOTE[L.kind] then
-        if scroll then scroll:Hide() end
-        if not note then BuildNote() end
-        FillNote(L)
-        note:Show()
-        note.arrive:Play()
-    else
-        if note then note:Hide() end
-        if not scroll then BuildScroll() end
-        FillScroll(L)
-        scroll:Show()
-        scroll.sheet:SetHeight(1)
-        Roll(1, function()
-            if scroll.stampName then
-                scroll.stamp:Show()
-                scroll.slam:Play()
-            end
-        end)
+    -- the window of the look in use (GK.SetLetterStyle); another look's goes
+    local style = LetterStyle()
+    if win and win ~= wins[style] and win:IsShown() then win:Hide() end
+    if wins[style] then win = wins[style] else BuildLetter(style) end
+    local was = win:IsShown()
+    FillLetter(L)
+    win:Show()
+    if not was then win.arrive:Play() end
+    if win.stampName then
+        win.stamp:Show()
+        win.slam:Play()
     end
     GK.NoticeUpdate(false)
     GK.Changed()
@@ -1651,8 +1858,14 @@ function GK.OpenLetters()
 end
 
 function GK.CloseLetters()
-    if note and note:IsShown() then note:Hide() end
-    if scroll and scroll:IsShown() then Roll(-1, function() scroll:Hide() end) end
+    if win and win:IsShown() then win:Hide() end
+end
+
+--- The look letters open in (LAYOUTS: "A" today's, "F" the small frame, "P" the loose sheet), for the test
+--- panel while the owner compares them; what is open turns to it at once.
+function GK.SetLetterStyle(style)
+    GK.db.letterStyle = (LAYOUTS[style] and style ~= "A") and style or nil
+    if win and win:IsShown() and index then GK.ShowLetter(index) end
 end
 
 --- fresh: the account's saved table was missing at login - a first install, with nothing new to anyone.
@@ -1683,11 +1896,9 @@ function GK.StartLetters(fresh)
     end
     LIB.On("PLAYER_ENTERING_WORLD", PlaceChanged)
     LIB.On("ZONE_CHANGED_NEW_AREA", PlaceChanged)
-    -- An open letter follows changes to its order (taken, paid, closed).
+    -- An open letter follows changes to its order (taken, paid, closed), and its pile a letter landing.
     LIB.Listen("GRUDGEKEEPER_CHANGED", function()
         local L = index and GK.char.letters[index]
-        if not L then return end
-        if scroll and scroll:IsShown() and not scroll:GetScript("OnUpdate") and not NOTE[L.kind] then FillScroll(L) end
-        if note and note:IsShown() and NOTE[L.kind] then FillNote(L) end
+        if L and win and win:IsShown() then FillLetter(L) end
     end)
 end

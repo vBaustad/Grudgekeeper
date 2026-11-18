@@ -22,6 +22,7 @@ function U.load(M, GK)
     end
     GK.Ago = function() return "3 days ago" end
     GK.OpenWindow = function(page) M.opened = page end
+    GK.OpenLedgerView = function(name, view) M.opened = name .. ":" .. view end
     GK.OpenOptions = function() M.optionsOpened = true end
     GK.ShowPoster = function(t) M.poster = t end
     GK.ShowCard = function(make, key) M.card, M.cardKey = make, key end

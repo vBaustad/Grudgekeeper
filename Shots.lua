@@ -14,7 +14,7 @@ local LIB = LibStub("LibForever-1.0")
 
 local ME, GUILD, RIVALS = "Aldric Thorne", "The Iron Oath", "Crimson Fang"
 local MAX_SHOTS = 60      -- the list kept in GrudgekeeperDB.shots, the oldest dropped first
-local GAP = 1.5           -- seconds from clearing the screen to the next view: the scroll rolls up in 0.2
+local GAP = 1.5           -- seconds from clearing the screen to the next view: a letter shuts at once
 local SETTLE = 1.2        -- and from a view opening to its picture: art loaded, animations done
 local H, DAY = 3600, 24 * 3600
 
@@ -394,7 +394,7 @@ local SHOTS = {
     end, 1.8 },
     { "title-letter", "Title letter", function()
         GK.ShowLetter(cast.titleLetter)
-        return { _G.GrudgekeeperNote }
+        return { _G.GrudgekeeperLetter }               -- one window for every letter (Letters.lua)
     end },
     -- the poster as the right-click menu opens it: the ledger on them (GK.ShowInLedger)
     { "poster", "Wanted poster", function()

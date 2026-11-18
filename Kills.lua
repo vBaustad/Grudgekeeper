@@ -139,6 +139,9 @@ function GK.RecordKill(v)
         GK.SpreeNews("M", LIB.Me(), v, zone, tormented)
     end
     GK.SendBoard()
+    -- A new title, told on screen as a spree is (GK_RANKUP, Announce.lua): the letter below waits for the
+    -- fight to end, and says where you stand
+    if GK.Title(c.points) ~= titleBefore then LIB.Fire("GK_RANKUP", LIB.Me(), GK.Title(c.points), c.points, true) end
     if (#orders > 0 and GK.db.shotFulfil) or GK.db.shotEveryKill then GK.Shot(0.3) end
     -- A letter only for the kill that earns a new title. One for every kill was one after every fight ("den
     -- kan bli litt spam"), and a narrower rule - above your level, revenge, a streak - still sent too many:
@@ -177,6 +180,7 @@ function GK.RecordAssist(v)
         rv = revenge or nil, av = avenged })
     GK.SendAssist(v, zone, points)
     GK.SendBoard()
+    if GK.Title(c.points) ~= titleBefore then LIB.Fire("GK_RANKUP", LIB.Me(), GK.Title(c.points), c.points, true) end
     -- the points of an assist can cross a title as well as a kill's
     if GK.db.myLetters then
         local title = GK.Title(c.points)

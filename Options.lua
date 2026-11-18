@@ -1,8 +1,10 @@
--- Grudgekeeper - its settings: the ledger's own paper, in a window of our own. Down the left a menu of
--- the chapters by name; beside it the chapter chosen, written in ink and signed. A wax seal is a
--- setting that is on, a dashed ring one that is off. "burde vi ikke bare lage et eget settings
--- panel ... gjøre det sjukt pent" (the owner, 2026-11-12, after the mover met the game's own settings,
--- which lie over the screen and which no addon may close); built to the mockup approved the same day.
+-- Grudgekeeper - its settings: a page of the ledger, two pages wide (Window.lua), with the ledger's tabs
+-- under it to go back by. Down the left a menu of the chapters by name; beside it the chapter chosen,
+-- written in ink and signed. A wax seal is a setting that is on, a dashed ring one that is off. "burde vi
+-- ikke bare lage et eget settings panel ... gjøre det sjukt pent" (the owner, 2026-11-12, after the mover
+-- met the game's own settings, which lie over the screen and which no addon may close); built to the
+-- mockup approved the same day, as a window of its own that took the ledger's place - and its tabs, until
+-- 2026-11-18 ("la tabs være der så man kan trykke på de for å komme tilbake isteden").
 -- Ours opens in a fight, closes itself while things are moved on screen, and needs no scrolling: a
 -- chapter is a page. The game's Options -> AddOns -> Grudgekeeper keeps one button, which opens this.
 -- Grudgekeeper is not one of the YippYapp addons (the user, 2026-11-03): no YippYapp page or footer.
@@ -87,7 +89,7 @@ function GK.SettingsChapters()
                 function() if GK.NoticeUpdate then GK.NoticeUpdate(false) end end),     -- the icon at once
             Check("letters", "Kill orders", "A new order lands as a letter.", true),
             Check("myLetters", "My own kills and deaths", "A new title, or a death that posted an order.", true),
-            Check("keepLetters", "Wait until read", "Off: an unread letter fades after two minutes.", true,
+            Check("keepLetters", "Wait until read", "Off: an unread letter leaves the icon after two minutes.", true,
                 function(on) if not on and GK.FadeLetters then GK.FadeLetters() end end),   -- what waited fades
           } },
         { name = "Warnings",
@@ -466,12 +468,6 @@ local function Select(i)
     RefreshPage()
 end
 
---- Back to the ledger, which these pages took the place of.
-local function BackToLedger()
-    win:Hide()
-    GK.OpenWindow()
-end
-
 --- Arrange on screen (Move.lua): these pages close, and open again at Done. The button was "Move things
 --- on screen"; "Edit mode" was the owner's first word for it, and is the game's own for its HUD ("kall
 --- knappen 'edit mode' eller noe annet (ikke forvirr med vanlig edit mode)", 2026-11-13) - so the word
@@ -482,7 +478,7 @@ local function MoveThings()
         return
     end
     reopen = true
-    win:Hide()
+    GK.CloseWindow()                                 -- the ledger these pages are a page of
     GK.OpenMoverAfterSettings()                      -- at once, or when the game's own settings close under us
 end
 
@@ -495,7 +491,7 @@ end
 
 local function Build()
     chapters = GK.SettingsChapters()
-    win = GK.MakeFrameSheet("GrudgekeeperSettings", W, H, "Grudgekeeper", true)
+    win = GK.LedgerSettingsPage()            -- the ledger's frame, X and tabs round these pages
 
     -- The menu down the left: the chapters by name and nothing else, as a settings window has them. The
     -- first build gave each a seal and a line of its own, half the window wide, and it read as a list of
@@ -548,16 +544,11 @@ local function Build()
     divide:SetSize(1, H - TOP - 66)
     divide:SetPoint("TOPLEFT", SIDE_X + SIDE_W + 20, -TOP)
 
-    -- The foot of the menu, two of the game's buttons: back to the ledger these pages took the place of
-    -- ("men det er ikke noe 'back'?", the owner, 2026-11-13), and Arrange on screen over it.
-    local back = CreateFrame("Button", nil, win, "UIPanelButtonTemplate")
-    back:SetSize(SIDE_W, 22)
-    back:SetPoint("BOTTOMLEFT", SIDE_X, 26)
-    back:SetText("Back to the ledger")
-    back:SetScript("OnClick", BackToLedger)
-    local move = CreateFrame("Button", nil, win, "UIPanelButtonTemplate")
-    move:SetSize(SIDE_W, 22)
-    move:SetPoint("BOTTOMLEFT", back, "TOPLEFT", 0, 6)
+    -- The foot of the menu, one of the game's buttons: Arrange on screen. Back to the ledger stood under it
+    -- ("men det er ikke noe 'back'?", the owner, 2026-11-13) until the ledger's tabs stayed under these
+    -- pages: any of them is the way back, and the Settings button pressed in on the title bar.
+    local move = GK.MakeButton(win, SIDE_W, 22)
+    move:SetPoint("BOTTOMLEFT", SIDE_X, 26)
     move:SetText("Arrange on screen")
     move:SetScript("OnClick", MoveThings)
     move:SetScript("OnEnter", function(self)
@@ -567,7 +558,7 @@ local function Build()
         GameTooltip:Show()
     end)
     move:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    win.back, win.move = back, move
+    win.move = move
 
     -- the chapter chosen, right of the line: its name, what it is about, its settings, and his name under them
     pageTitle = win:CreateFontString(nil, "ARTWORK")
@@ -598,20 +589,15 @@ local function Build()
 end
 
 --- Open the settings, in a fight too: plain frames, nothing of the game's own. chapter: its name, to turn
---- to it. over: a window whose place they take (the ledger, which its Settings button then hides).
-function GK.OpenOptions(chapter, over)
+--- to it. The ledger opens on them, or turns to them where it is open.
+function GK.OpenOptions(chapter)
     if not win then Build() end
     local turnTo = current
     for i, ch in ipairs(chapters) do
         if ch.name == chapter then turnTo = i end
     end
-    if over and over.GetLeft and over:GetLeft() and over:GetTop() then
-        win:ClearAllPoints()
-        win:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", over:GetLeft(), over:GetTop())
-    end
     Select(turnTo)
-    win:Show()
-    win:Raise()
+    GK.ShowLedgerSettings()
     return true
 end
 
@@ -638,7 +624,7 @@ function GK.RegisterOptions()
         note:SetPoint("TOPLEFT", name, "BOTTOMLEFT", 0, -8)
         note:SetWidth(520)
         note:SetJustifyH("LEFT")
-        note:SetText("Grudgekeeper keeps its settings in pages of its own. The ledger's Settings button, a "
+        note:SetText("Grudgekeeper keeps its settings in its own ledger. The Settings button on the ledger, a "
             .. "right-click on the minimap button and /grudge options open them too.")
         local open = CreateFrame("Button", nil, self, "UIPanelButtonTemplate")
         open:SetSize(220, 24)

@@ -879,14 +879,14 @@ test("letter content: a slain letter has blood, a black seal and no buttons when
     eq(d.title, "Slain")
     eq(d.seal, "seal_black")
     eq(d.blood, true)
-    eq(d.buttons[1][1], "Hitlist")
+    eq(d.buttons[1][1], "Kill orders")          -- named as the ledger tab it opens
     local e = GK.LetterContent({ id = 1, kind = "expired", n = GANK })
     eq(e.buttons[1][1], "Post it again")
     eq(e.blood, false)
 end)
 
--- The scroll's own buttons are only what it asks of you; Open kill orders and Close are the bar under it
--- (Letters.lua, BuildScroll; "X oppe i høyre funker ikke så bra", the owner, 2026-11-07).
+-- An order's own buttons are only what it asks of you; the way to it in the ledger, Read all and Close are
+-- the letter window's (Letters.lua, FillLetter, 2026-11-18).
 test("letter content: an order is a scroll with a name and a foot, and no buttons of its own to read it", function()
     local GK = bootSheets({ me = ME })
     local d = GK.LetterContent({ id = 1, kind = "order", n = GANK, c = "MAGE", l = 60, by = KARI, reward = 20000,
@@ -1359,7 +1359,7 @@ test("GK.OpenNotes opens the page of the list", function()
     local GK = bootUI()
     local W2 = require("wow_mock")
     GK.OpenNotes("kos")
-    eq(W2.opened, 1, "Marked is on the kill orders page")
+    eq(W2.opened, "Most wanted:marked", "Marked: Most wanted's second view")
     GK.OpenNotes("watch")
     eq(W2.opened, 7)
     GK.OpenNotes("kudos")
@@ -1686,7 +1686,7 @@ test("/grudge: our subcommands act, everything else is Core's, and the help grow
     eq(GK.MyMark(NICE), nil)
     W.units.target = nil
     slash("notes")
-    eq(W2.opened, 1, "the kill orders page, where Marked is")
+    eq(W2.opened, "Most wanted:marked", "Most wanted's Marked view")
     slash("watch")
     eq(W2.opened, 7)
     slash("kudos")

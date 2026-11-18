@@ -55,6 +55,7 @@ local NAME_X, NAME_X_RANKED = 44, 74
 -- row's 4 in from it, and a little more.
 local TIP_GAP = 28
 local LIST_TOP = 96                                  -- the first row, down from the page's top
+local TAB_INK_Y, TAB_INK_GAP = 40, 16                -- the ink tabs under the title: how far down, and apart
 -- The rows of the kill orders page, which has nothing between its title and its list and so room for a
 -- row more than the others (ListFrame, which a test holds this to).
 local ORDER_ROWS = ROWS + 1
@@ -73,16 +74,11 @@ local BOARD_K, BOARD_D, BOARD_A = 210, 240, 270
 -- Heading buttons a page has: the leaderboard's six (#, Name, K, D, A, Points). Five there were, and the A
 -- column pushed Points off the end - its heading went missing (2026-11-12).
 local HEADS = 6
-local SUGGEST = 5            -- with no open order, who killed us most: this many, on the orders page
--- How far a list runs: its first LIST_MAX rows, about three pages, and under the open kill orders the
--- CLOSED_MAX closed last. A list ran to every row the store holds - 200 on Most wanted, 500 on the
+-- How far a list runs: its first LIST_MAX rows, about three pages. A list ran to every row the store holds - 200 on Most wanted, 500 on the
 -- leaderboard: "vi kan ikke ha evig pages heller. på most wanted og alt mulig" (the owner, 2026-11-10).
 -- Only the pages stop: the store keeps what it kept, and posters, tooltips and warnings know everyone.
-local LIST_MAX, CLOSED_MAX = 25, 10
+local LIST_MAX = 25
 GK.LIST_MAX = LIST_MAX       -- for the pages other files add (NotesUI.lua)
--- The orders somebody got in the last day that stand over the open ones (GK.FulfilledLately): the latest
--- three. Each is a row the first page has not got for an open order.
-local LATELY_MAX = 3
 local TAB_GAP, GROUP_GAP = 3, 16                     -- between two tabs; and before the friendly pages, or Friends
 -- How far up the tabs go, behind the frame's bottom edge. The game's own windows put them 2 up and over
 -- the edge, which here read as buttons set under the book: "føler ikke tabsene henger helt ordentlig på?"
@@ -134,11 +130,23 @@ local SWAP_ICON = { Friends = ICONS .. "INV_Misc_GroupNeedMore", Enemies = MEDIA
 --- how many orders are open and your points and place, its headings sorted a list that is in order, and
 --- with Only mine they were "dead space med ting som ikke trengs og bare tar opp plass" (the owner,
 --- 2026-11-14).
-local function ListFrame(def)
+--- A page's column headings, and its own action: a list or a table, or a function for the view it shows
+--- (Most wanted's two views have each their own).
+local function Headings(def)
+    if type(def.headings) == "function" then return def.headings() end
+    return def.headings or {}
+end
+local function Action(def)
+    if type(def.add) == "function" then return def.add() end
+    return def.add
+end
+
+--- line: something stands on the line under the title this time - words, tabs or links.
+local function ListFrame(def, line)
     local top = LIST_TOP
-    if #def.headings == 0 then
+    if #Headings(def) == 0 then
         top = top - 30
-        if not def.sub and not def.links then top = top - 16 end
+        if not line then top = top - 16 end
     end
     local tenth = top + (ROWS + 1) * ROW_H <= LIST_TOP + ROWS * ROW_H
     return top, tenth and ROWS + 1 or ROWS
@@ -180,6 +188,12 @@ local selected = {}          -- [tab] = the key of the row whose detail is shown
 -- shown on the right over whatever page is up, with no row marked, until a row or a tab is chosen.
 local pinned
 local turned = false         -- folded: the page shows the detail, not the list
+-- The settings (Options.lua) are a page of the ledger since 2026-11-18, two pages wide over the list and the
+-- card, with the tabs left under the frame to go back by. A window of their own took the ledger's place,
+-- and its tabs with it: "går vi inn i settings så er det litt awkward at alt blir borte av tabs ... la
+-- tabs være der så man kan trykke på de for å komme tilbake isteden" (the owner).
+local settingsOn = false
+local SetSettings            -- made with the tabs, below
 
 --- The book's art toned down: the generated parchment was "veldig bright" in the game. A part
 --- desaturation and a darker vertex colour, the same on the book, the sheets and the leather tabs, so
@@ -199,7 +213,8 @@ local function TextWidth(fs)
     return w or fs:GetStringWidth() or 0
 end
 
-local function Folded() return GK.db and GK.db.ledgerFolded == true end
+-- folded, but never under the settings: they need both pages
+local function Folded() return GK.db and GK.db.ledgerFolded == true and not settingsOn end
 
 -- ---------------------------------------------------------------------------
 -- What each page lists. An item: { key, name, short, shortest, painted, class, sub, rank, seal, face = { key, rf, sx, c }, c1, c2, wide,
@@ -225,37 +240,18 @@ local function Short(l, c, r)
     return s ~= "" and s or nil
 end
 
--- The closed orders fold away under their heading, a click from showing: the page is for the open ones
--- ("history med kill orders som er lukket kan kanskje bare være en knapp eller noe? litt færre ting å gå
--- igjennom", the owner, 2026-11-10). Folded again at every login: a look back, not a setting.
-local showClosed = false
--- The open orders with no gold on them, folded under theirs: nil until its heading is clicked, and the
--- page's own rule decides (OrderItems); then as clicked, until the page is chosen again (SelectTab).
-local showFree
+-- The views of the two pages that have two (the owner's pick from the mockup, 2026-11-18): Most wanted's
+-- "Killed us most" and "Marked", the News's "All" and "Kill orders". As chosen, until the next login.
+local wantedView, newsView = "killed", "all"
 
---- The orders the page lists. open: the open ones, the biggest bounty first, LIST_MAX of them and any of
---- yours past those - an order you posted or put gold in never drops off. closed, latest first: those that
---- still ask something of you - a bounty you owe on it, or yours to tell the guild, its card's buttons
---- (DetailCard) - and, unfolded, the CLOSED_MAX latest of the rest. more: how many of those unfolding shows.
---- lately: the orders with a row of their own over the open ones (OrderItems), not listed here again.
-local function ListedOrders(me, lately)
-    local open, closed, nOpen, others, owing, above = {}, {}, 0, 0, {}, {}
-    for _, e in ipairs(GK.Owed()) do owing[e.o] = true end
-    for _, o in ipairs(lately or {}) do above[o] = true end
-    for _, o in ipairs(GK.AllOrders()) do
-        if o.state == "o" then
-            nOpen = nOpen + 1
-            if nOpen <= LIST_MAX or (me and (o.by == me or (o.pot and o.pot[me]))) then open[#open + 1] = o end
-        elseif not above[o] then                                     -- those have their row at the top
-            if owing[o] or GK.CanTellOrder(o) then
-                closed[#closed + 1] = o                              -- never folded away: it wants you
-            else
-                others = others + 1
-                if showClosed and others <= CLOSED_MAX then closed[#closed + 1] = o end
-            end
-        end
+--- The open orders the page lists: the biggest bounty first (GK.OpenOrders), LIST_MAX of them and any of
+--- yours past those - an order you posted or put gold in never drops off.
+local function ListedOrders(me)
+    local open = {}
+    for n, o in ipairs(GK.OpenOrders()) do
+        if n <= LIST_MAX or (me and (o.by == me or (o.pot and o.pot[me]))) then open[#open + 1] = o end
     end
-    return open, closed, math.min(others, CLOSED_MAX)
+    return open
 end
 
 --- One order's row on the page, open or closed.
@@ -265,9 +261,6 @@ local function OrderRow(o, me)
         select = PosterSpec(o.n, o, o),
         desc = Short(o.l, o.c, o.r), ts = o.t }
     if o.state == "o" then
-        -- gold, or nothing: an order with none on it stands under No bounty, or on a page of nothing else
-        -- (OrderItems). It said "honour" here, and Most wanted "order" for the same thing: "liker ingen av
-        -- de egt?" (the owner, 2026-11-14)
         it.right = pot > 0 and GK.Coins(pot) or ""
         -- your own order by you, as its card says: "by Critical Mango" over a card's "Posted by You"
         local byMe = o.by == me
@@ -288,133 +281,59 @@ local function OrderRow(o, me)
     return it
 end
 
---- The row of an order somebody got in the last day, over the open ones: who got them, where and when,
---- and the bounty it carried. Not faded as a closed order's row is - this is the news - but past: never
---- the row the page chooses by itself, which stays the first open order (Chosen). No time where we only
---- came to hear of it afterwards (o.late): that time is ours, not the kill's.
-local function LatelyRow(o, me)
-    local it = OrderRow(o, me)
-    local pot = GK.Pot(o)
-    it.faded, it.rightColour, it.past = nil, nil, true
-    it.right, it.ts = pot > 0 and GK.Coins(pot) or "", o.doneAt
-    local bits = { "by " .. GK.GotBy(o) }
-    if o.doneZone and o.doneZone ~= "" then bits[#bits + 1] = o.doneZone end
-    if not o.late then bits[#bits + 1] = GK.Ago(o.doneAt) end
-    it.sub = table.concat(bits, " - ")
-    return it
+--- How long ago, as short as a column takes it: "now", "12m ago", "5h ago", "4d ago".
+local function AgoShort(t)
+    local s = math.max(0, time() - (t or time()))
+    if s < 60 then return "now" end
+    if s < 3600 then return ("%dm ago"):format(math.floor(s / 60)) end
+    if s < 86400 then return ("%dh ago"):format(math.floor(s / 3600)) end
+    return ("%dd ago"):format(math.floor(s / 86400))
 end
 
+--- The kill orders page: the open orders, one list with no headings, as in the owner's mockup (2026-11-18).
+--- Those with gold first, the biggest first; a faint line; then those with none, the newest first, with how
+--- long ago they were posted where the gold would stand - "enklere å se". It had up to seven headings -
+--- Fulfilled lately, Open orders, No bounty folded, Killed us most, Closed orders folded, Marked, Watched
+--- guild - and a heading could stand at the foot of one turn of the page with its rows on the next ("de
+--- sidene der funker ikke så bra, for det blir rotete"). What a guildie got lately is the News's "Kill
+--- orders" view now, Marked is Most wanted's second view, the watched guild a line under the title, and a
+--- closed order is in the News and on its own card ("closed ones, no need").
 local function OrderItems()
     local items, me = {}, LIB.Me()
-    local lately = GK.FulfilledLately(LATELY_MAX)
-    local open, closed, more = ListedOrders(me, lately)
-    -- What the guild got in the last day stands first, under a heading of its own, and the open orders
-    -- get theirs under it. Fulfilled, an order went from the open ones to the closed ones folded at the
-    -- end of them - pages on - and with its hunter not telling guild chat, nobody who was not there saw
-    -- it at all ("kill orders lista med flere sider der blir det liksom litt borte", the owner, 2026-11-14).
-    -- With none in the last day the page is as it was, the open orders under no heading.
-    if #lately > 0 then
-        items[#items + 1] = { header = true, name = "Fulfilled lately" }
-        for _, o in ipairs(lately) do items[#items + 1] = LatelyRow(o, me) end
-        if #open > 0 then items[#items + 1] = { header = true, name = "Open orders" } end
-    end
-    -- The open orders with gold on them first, and the ones with none under a heading of their own that
-    -- folds them away, as the closed ones are. The owner's page was 33 rows over four turns of it, and 18 of
-    -- its 25 open orders carried no gold: two turns were rows that said "honour" and nothing else ("kill
-    -- order tabben føles også litt voldsom nå? mye sider", 2026-11-14). Folded unless they fit on the
-    -- first turn of the page with what stands over them; a click on the heading has the last word until
-    -- the page is chosen again (SelectTab). The ones you posted are there folded or not, as a closed order
-    -- that still wants you is: the page has no Only mine to find them by (GK.LedgerPages). Where no open
-    -- order has gold there is nothing to tell them from: no heading, no fold.
     local gold, free = {}, {}
-    for _, o in ipairs(open) do
+    for _, o in ipairs(ListedOrders(me)) do
         local list = (GK.Pot(o)) > 0 and gold or free
         list[#list + 1] = o
     end
-    if #gold == 0 then gold, free = free, gold end
     for _, o in ipairs(gold) do items[#items + 1] = OrderRow(o, me) end
-    if #free > 0 then
-        local shown, others = showFree, 0
-        if shown == nil then shown = #items + 1 + #free <= ORDER_ROWS end
-        for _, o in ipairs(free) do
-            if o.by ~= me then others = others + 1 end
-        end
-        local head = { header = true, name = "No bounty" }
-        if others > 0 then                         -- nothing to fold where every one of them is yours
-            head.order = shown and "hide" or ("show " .. others)
-            head.clickTip = shown and "Click: fold the orders with no gold on them away"
-                or "Click: show the orders with no gold on them"
-            head.click = function() showFree = not shown end
-        end
-        items[#items + 1] = head
-        for _, o in ipairs(free) do
-            if shown or o.by == me then items[#items + 1] = OrderRow(o, me) end
-        end
+    -- the newest first (GK.OpenOrders already has them so, among equal pots of none)
+    for i, o in ipairs(free) do
+        local it = OrderRow(o, me)
+        it.right, it.rightColour = AgoShort(o.t), FADED
+        it.rule = i == 1 and #gold > 0 or nil
+        items[#items + 1] = it
     end
-    -- No open order: the first page of the ledger was a blank one (the owner, 2026-11-06). Who has killed
-    -- the guild most stands in - the ones you would put a price on - each a click from their poster and
-    -- its Post a kill order.
-    if #open == 0 then
-        local wanted = GK.MostWanted()
-        if #wanted > 0 then
-            items[#items + 1] = { header = true, name = "Killed us most - no order yet" }
-            for i = 1, math.min(#wanted, SUGGEST) do
-                local e = wanted[i]
-                items[#items + 1] = { key = "w:" .. e.key, name = GK.Show(e.key), desc = Short(e.w.l, e.w.c, e.w.r),
-                    class = e.w.c, face = { key = e.key, c = e.w.c }, wide = "killed us " .. e.total,
-                    select = PosterSpec(e.key, e.w),
-                    ts = e.w.last }
-            end
-        end
-    end
-    -- The closed orders under a heading of their own, folded: its word at the right shows them. What
-    -- still wants you is there folded or not.
-    if #closed > 0 or more > 0 then
-        local head = { header = true, name = "Closed orders" }
-        if more > 0 then
-            head.order = showClosed and "hide" or ("show " .. more)
-            head.clickTip = showClosed and "Click: fold the closed orders away" or "Click: show the latest closed orders"
-            head.click = function() showClosed = not showClosed end
-        end
-        items[#items + 1] = head
-        for _, o in ipairs(closed) do items[#items + 1] = OrderRow(o, me) end
-    end
-    -- Marked: enemies the guild marked to kill on sight, with no bounty and no end date (Guild Grudge's
-    -- list). It had a tab of its own, one too many: kill orders and Most wanted say the rest ("most wanted
-    -- og kill orders holder kanskje?", the owner, 2026-11-07). The word at its heading's right marks
-    -- someone, as the tab's action did. The votes stay on the note's card: in this column they would
-    -- read as a bounty.
-    local marked = GK.NotesItems and GK.NotesItems("kos") or {}
-    if #marked > 0 then
-        items[#items + 1] = { header = true, name = "Marked", order = "mark someone",
-            clickTip = "Mark an enemy to kill on sight, with no bounty", click = function() GK.OpenPicker("kos") end }
-        for i = 1, math.min(#marked, LIST_MAX) do               -- the latest marked: the list's own order
-            local it = marked[i]
-            it.right = ""
-            items[#items + 1] = it
-        end
-    end
-    -- The watched guild: an enemy guild the guild knows, anyone of theirs near warns you (Notes.lua). An
-    -- officer puts it on watch from the right-click menu on one of its players, or types its name in from
-    -- the word at this heading's right, with none of theirs in sight ("la GM skrive inn et guildnavn", the
-    -- owner, 2026-11-08); one at a time. The heading stays for an officer while none is watched, but not
-    -- on a page with nothing else: there it would hide what the page says about posting, which says this
-    -- too.
-    local guilds = GK.WatchedGuildItems and GK.WatchedGuildItems() or {}
     local officer = GK.CanWatchGuild and GK.CanWatchGuild()
-    if #guilds > 0 or (officer and #items > 0) then
-        local head = { header = true, name = "Watched guild" }
-        if officer then
-            head.order = #guilds > 0 and "watch another" or "watch a guild"
-            head.clickTip = "Type the name of an enemy guild: anyone of theirs near warns everyone"
-            head.click = function() GK.OpenPicker("guild") end
-        end
-        items[#items + 1] = head
-        for _, it in ipairs(guilds) do items[#items + 1] = it end
-    end
-    return items, "No kill orders. Post one with Post a kill order, at the top of this page - or right-click "
+    return items, "No open kill orders. Post one with Post a kill order, at the top of this page - or right-click "
         .. "an enemy player and pick it there." .. (officer and " Put an enemy guild on watch with /grudge guild."
         or "")
+end
+
+--- The line under the kill orders page's title: the guild on watch, a click from its card, and for an officer
+--- the way to put another on watch (Notes.lua) - a section of the page, with a heading and a row, before.
+--- { { text, click, plain } }, empty when there is nothing to say.
+local function WatchLinks()
+    local out = {}
+    local name = GK.WatchedGuild and GK.WatchedGuild()
+    if name then
+        out[#out + 1] = { text = ("Watching <%s>"):format(name), plain = true,
+            click = function() GK.ShowInLedger({ kind = "card", make = function() return GK.GuildCard(name) end }) end }
+    end
+    if GK.CanWatchGuild and GK.CanWatchGuild() then
+        out[#out + 1] = { text = name and "watch another" or "watch a guild",
+            click = function() GK.OpenPicker("guild") end }
+    end
+    return out
 end
 
 local function BoardItems()
@@ -666,6 +585,8 @@ local SAID = { K = "%s killed %s", H = "%s helped kill %s", D = "%s fell to %s",
 -- The news that is more than who killed whom, written in the page's other colour: an order fulfilled, a
 -- spree's milestone, a spree an enemy ended, a tormentor put down.
 local ACCENT = { F = true, S = true, E = true, M = true }
+-- The news of kill orders, for the News's "Kill orders" view: posted (C, AU by a death), backed (T), got (F).
+local ORDER_NEWS = { F = true, C = true, AU = true, T = true }
 
 -- A kill and the assists on it are one line: the killing blow first, then who helped. Each had a line of
 -- its own, so one enemy killed by three of us was three lines, and two such kills filled the first turn of
@@ -847,7 +768,7 @@ local function NewsItems(limit)
             if e.z then bits[#bits + 1] = e.z end
             bits[#bits + 1] = GK.Ago(e.t)
             local own = (g and g.own) or (e.who and LIB.IsMyStoredName(e.who)) or nil
-            items[#items + 1] = { key = "n:" .. i, name = line, short = short, shortest = shortest, painted = painted,
+            items[#items + 1] = { key = "n:" .. i, kind = kind, name = line, short = short, shortest = shortest, painted = painted,
                 face = face or { key = e.n, c = e.c },
                 right = right, sub = table.concat(bits, " - "), select = sel or PosterSpec(e.n, e),
                 ts = e.t, own = own, ink = accent, rightColour = accent }
@@ -906,13 +827,10 @@ GK.LedgerPages = {
     -- title and has a row more (ListFrame). In its own order: what was got lately, the gold, the rest.
     { name = "Kill orders", items = OrderItems, icon = MEDIA .. "mark", headings = {},
       add = { text = "Post a kill order", kind = "order" },
-      -- with nothing on the page at all, your own record rather than a blank page; otherwise the first
-      -- open order, or the first of who killed us most (a closed order alone is not chosen by itself)
+      subLinks = WatchLinks,                     -- the watched guild, under the title (WatchLinks)
+      -- with no open order, your own record rather than a blank page; otherwise the first open order
       default = function(items)
-          for _, it in ipairs(items) do
-              if not it.header then return nil end           -- a row, if only a closed order: none chosen
-          end
-          -- nothing but headings - the closed orders folded under theirs - is a page with nothing on it
+          if #items > 0 then return nil end
           return { key = "me", select = { kind = "record", key = LIB.Me() } }
       end },
     { name = "Leaderboard", items = BoardItems, icon = MEDIA .. "rank_1",
@@ -923,13 +841,30 @@ GK.LedgerPages = {
                    { text = "All time", on = not weekly, click = function() weekly = false end } }
       end,
       linksTail = ResetText },                    -- the first row chosen by itself: the week's leader, as any page's top
-    { name = "Most wanted", items = WantedItems, sortable = true, max = LIST_MAX,
+    -- The guild's enemies, two ways: who killed us most, and whom the guild marked to kill on sight (Guild
+    -- Grudge's list, a section of the kill orders page until 2026-11-18). Each view its own headings and action.
+    { name = "Most wanted", sortable = true, max = LIST_MAX,
       icon = ICONS .. "Ability_Hunter_SniperShot",          -- the hunter's mark: marked to be hunted
-      headings = { { "Name", 48, nil, "name", "name, A to Z" },
-          { "Killed us", COL1, "CENTER", "killed", "how often they killed us" },
-          { "Kill order", COL_RIGHT, "RIGHT", "bounty", "kill order, the most gold first" } },
-      add = { text = "Post a kill order", kind = "order" },
-      sub = function() return "Who has killed the guild most" end },
+      items = function()
+          if wantedView == "marked" then return GK.NotesItems and GK.NotesItems("kos") or {}, "" end
+          return WantedItems()
+      end,
+      headings = function()
+          if wantedView == "marked" then
+              return { { "Name", 48, nil, "name", "name, A to Z" }, { "Votes", COL_RIGHT, "RIGHT", "votes", "votes" } }
+          end
+          return { { "Name", 48, nil, "name", "name, A to Z" },
+              { "Killed us", COL1, "CENTER", "killed", "how often they killed us" },
+              { "Kill order", COL_RIGHT, "RIGHT", "bounty", "kill order, the most gold first" } }
+      end,
+      add = function()
+          if wantedView == "marked" then return { text = "Mark someone", kind = "kos" } end
+          return { text = "Post a kill order", kind = "order" }
+      end,
+      links = function()
+          return { { text = "Killed us most", on = wantedView ~= "marked", click = function() wantedView = "killed" end },
+                   { text = "Marked", on = wantedView == "marked", click = function() wantedView = "marked" end } }
+      end },
     -- no heading row: each grudge says its own score, and the order is a word on the section's line
     { name = "Grudges", items = GrudgeItems, headings = {}, icon = ICONS .. "Ability_DualWield",
       add = { text = "Track someone", kind = "track" },
@@ -941,9 +876,24 @@ GK.LedgerPages = {
           end
           return { key = "me", select = { kind = "record", key = LIB.Me() } }
       end },
-    { name = "News", items = NewsItems, sortable = true, max = LIST_MAX, icon = ICONS .. "INV_Scroll_03",
+    -- Everything, or the kill orders alone: posted, backed, got. "Fulfilled lately" stood over the open orders
+    -- for a day; it is this view now ("fulfilled lately.. skal det være en tab i news isteden", the owner,
+    -- 2026-11-18).
+    { name = "News", sortable = true, max = LIST_MAX, icon = ICONS .. "INV_Scroll_03",
+      items = function()
+          local items, empty = NewsItems()
+          if newsView ~= "orders" then return items, empty end
+          local kept = {}
+          for _, it in ipairs(items) do
+              if ORDER_NEWS[it.kind] then kept[#kept + 1] = it end
+          end
+          return kept, "No kill orders in the news yet: one posted, backed or got shows up here."
+      end,
       headings = { { "What happened", 48 } },
-      sub = function() return "What the guild has been up to" end },
+      links = function()
+          return { { text = "All", on = newsView ~= "orders", click = function() newsView = "all" end },
+                   { text = "Kill orders", on = newsView == "orders", click = function() newsView = "orders" end } }
+      end },
     -- your own page, the last of the enemy's side: your card on the right, opened by itself (your row is
     -- the first). Past the first two, so nothing opened by number moves (GK.AddLedgerPage).
     { name = "You", items = YouItems, headings = {}, icon = ICONS .. "Ability_Warrior_BattleShout",
@@ -970,7 +920,7 @@ end
 function GK.SortKey(page)
     local key = page and page.sortable and GK.db.sortBy and GK.db.sortBy[page.name]
     if key == nil then return nil end
-    for _, h in ipairs(page.headings or {}) do
+    for _, h in ipairs(Headings(page)) do
         if h[4] == key then return key end
     end
     return nil
@@ -1142,6 +1092,11 @@ local function BuildRow(parent, i)
     row.rule:SetHeight(1)
     row.rule:SetPoint("BOTTOMLEFT", 4, 0)
     row.rule:SetPoint("BOTTOMRIGHT", -4, 0)
+    row.over = row:CreateTexture(nil, "BORDER")            -- over a row that starts a group of its own (it.rule)
+    Paint(row.over, "rule", 0.6)
+    row.over:SetHeight(1)
+    row.over:SetPoint("TOPLEFT", NAME_X, 0)
+    row.over:SetPoint("TOPRIGHT", -8, 0)
     row.mark = row:CreateTexture(nil, "ARTWORK")           -- the chosen row's red bar, at its start
     Paint(row.mark, "blood", 0.9)
     row.mark:SetPoint("TOPLEFT")
@@ -1300,6 +1255,7 @@ local function FillRow(row, it, chosen)
         row.mark:Hide()
         row.open:Hide()
         row.rule:Show()
+        row.over:Hide()
         row.c1:SetText("") row.c2:SetText("") row.c3:SetText("") row.wide:SetText("") row.right:SetText("")
         row.c1under:SetText("")
         row.score:SetText("") row.lead:SetText("")
@@ -1309,6 +1265,7 @@ local function FillRow(row, it, chosen)
         return
     end
     row.rule:Hide()
+    row.over:SetShown(it.rule == true)
     row.order:SetText("")
     -- the score: the leader's number in their colour, the other faded, and who leads under it
     local sc = it.score
@@ -1411,26 +1368,30 @@ local function BuildList(page)
     page.sub:SetPoint("TOPLEFT", 12, -44)
     page.sub:SetJustifyH("LEFT")
     page.sub:SetWordWrap(false)
-    -- An ink link: faded, or in blood and underlined when it is the one chosen. Refresh fills and places them.
-    -- A choice of what the page shows (the leaderboard's This week and All time): the game's radio button
-    -- with its words beside it, the words part of what you click. As underlined ink they were not seen to
-    -- be choices at all ("det var vanskelig å se at det var tabs der", the owner, 2026-11-06).
+    -- A choice of what the page shows - the leaderboard's This week and All time, Most wanted's Killed us
+    -- most and Marked, the News's All and Kill orders: an ink tab on the paper, in capitals, the chosen one
+    -- in blood with a thick line under it, and a rule under the row of them (tabRule). The owner's pick from
+    -- the mockup (2026-11-18), over a bronze switch and leather bookmarks; it took the place of the game's
+    -- radio buttons ("liker ikke de stygge radiobuttonsa"). Ink links with a thin underline, before those,
+    -- "det var vanskelig å se at det var tabs der" (2026-11-06): the rule under the row and the thick line
+    -- are what make these read as tabs.
     local function Link(click)
         local b = CreateFrame("Button", nil, page)
         b:SetHeight(18)
-        b.radio = CreateFrame("CheckButton", nil, b, "UIRadioButtonTemplate")
-        b.radio:SetSize(16, 16)
-        b.radio:SetPoint("LEFT")
-        b.radio:EnableMouse(false)                    -- the whole choice is the button
         b.text = b:CreateFontString(nil, "ARTWORK")
         Ink(b.text, FADED, TEXT_FONT, 11)
-        b.text:SetPoint("LEFT", b.radio, "RIGHT", 3, 0)
+        b.text:SetPoint("LEFT", 1, 1)
+        b.mark = b:CreateTexture(nil, "ARTWORK")
+        Paint(b.mark, "blood", 0.9)
+        b.mark:SetHeight(2)
+        b.mark:SetPoint("BOTTOMLEFT", 0, -3)
+        b.mark:SetPoint("BOTTOMRIGHT", 0, -3)
         function b:Set(text, on)
-            self.text:SetText(text)
+            self.text:SetText(text:upper())
             self.on = on and true or false
-            self.radio:SetChecked(self.on)
-            Ink(self.text, self.on and INK or FADED, TEXT_FONT, 11)
-            self:SetWidth(19 + math.ceil(TextWidth(self.text)) + 2)
+            Ink(self.text, self.on and BLOOD or FADED, TEXT_FONT, 11)
+            self.mark:SetShown(self.on)
+            self:SetWidth(math.ceil(TextWidth(self.text)) + 2)
         end
         b:SetScript("OnClick", function(self)
             click(self)
@@ -1441,9 +1402,43 @@ local function BuildList(page)
         b:SetScript("OnLeave", function(self) if not self.on then self.text:SetTextColor(FADED[1], FADED[2], FADED[3]) end end)
         return b
     end
-    -- the page's own links (the leaderboard's this week and all time), laid out from its links()
+    -- the page's own views, laid out from its links()
     page.links = {}
     for i = 1, 4 do page.links[i] = Link(function(self) self.click() end) end
+    page.tabRule = page:CreateTexture(nil, "BORDER")
+    Paint(page.tabRule, "rule")
+    page.tabRule:SetHeight(1)
+    page.tabRule:SetPoint("TOPLEFT", 8, -(TAB_INK_Y + 21))
+    page.tabRule:SetPoint("TOPRIGHT", -8, -(TAB_INK_Y + 21))
+    -- Links on the line under the title of a page without tabs (the kill orders page's watched guild,
+    -- WatchLinks): in blood and underlined, or plain ink that underlines under the mouse.
+    page.subLinks = {}
+    for i = 1, 2 do
+        local b = CreateFrame("Button", nil, page)
+        b:SetHeight(16)
+        b.text = b:CreateFontString(nil, "ARTWORK")
+        Ink(b.text, BLOOD, TEXT_FONT, 11)
+        b.text:SetPoint("LEFT")
+        b.line = b:CreateTexture(nil, "ARTWORK")
+        Paint(b.line, "blood", 0.7)
+        b.line:SetHeight(1)
+        b.line:SetPoint("BOTTOMLEFT", 0, 1)
+        b.line:SetPoint("BOTTOMRIGHT", 0, 1)
+        function b:Set(text, plain)
+            self.plain = plain and true or false
+            Ink(self.text, self.plain and INK or BLOOD, TEXT_FONT, 11)
+            self.text:SetText(text)
+            self.line:SetShown(not self.plain)
+            self:SetWidth(math.ceil(TextWidth(self.text)) + 2)
+        end
+        b:SetScript("OnClick", function(self)
+            GK.Sound("IG_ABILITY_PAGE_TURN")
+            if self.click then self.click() end
+        end)
+        b:SetScript("OnEnter", function(self) self.line:Show() end)
+        b:SetScript("OnLeave", function(self) self.line:SetShown(not self.plain) end)
+        page.subLinks[i] = b
+    end
     -- Only mine: the game's own checkbox, on the line under the title at the page's right, its words in
     -- ink after it. (Drawn in ink at the foot of the page it read as part of the page; the frame has real
     -- controls now, so this is one too - previewed 2026-11-06.)
@@ -1481,8 +1476,7 @@ local function BuildList(page)
     -- page, and "knapper osv ikke har noe tydelig 'jeg er en knapp'" (the owner, 2026-11-06); before that,
     -- three buttons at the foot of the page that said too little, where Post a kill order did nothing
     -- without a target. It opens the who-picker, so it works with no target.
-    local add = CreateFrame("Button", nil, page, "UIPanelButtonTemplate")
-    add:SetHeight(22)
+    local add = GK.MakeButton(page, 110, 22)
     add:SetPoint("TOPRIGHT", page, "TOPRIGHT", -4, -14)
     function add:Set(def)
         self.def = def
@@ -1554,7 +1548,7 @@ local function BuildList(page)
     -- on the foot's line, Read all covered "1-9" and left "of 21" (the store pictures, 2026-11-10)
     page.count = page:CreateFontString(nil, "ARTWORK")
     Ink(page.count, FADED, TEXT_FONT, 10)
-    page.count:SetPoint("BOTTOMRIGHT", -46, 39)
+    page.count:SetPoint("BOTTOMRIGHT", -46, 16)
     local function Arrow(kind, dir)
         local b = CreateFrame("Button", nil, page)
         b:SetSize(20, 20)
@@ -1577,44 +1571,8 @@ local function BuildList(page)
         offset = GK.TurnPage(page.starts, offset, delta > 0 and -1 or 1)
         Refresh()
     end)
-    -- Letters and Settings: the game's red buttons at the foot of the list, as previewed (2026-11-06).
-    -- On the book they went from buttons here to bookmarks on its edge, with words, then icons, then words
-    -- turned down the leather - none of it looked right ("tabs på siden funker ikke").
-    local function Foot(onClick, title, line)
-        local b = CreateFrame("Button", nil, page, "UIPanelButtonTemplate")
-        b:SetHeight(22)
-        function b:Set(text)
-            self:SetText(text)
-            self:SetWidth(math.max(80, math.ceil(self:GetTextWidth() or 60) + 28))
-        end
-        b:SetScript("OnClick", onClick)
-        b:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:AddLine(title(), 1, 1, 1)
-            GameTooltip:AddLine(line, nil, nil, nil, true)
-            GameTooltip:Show()
-        end)
-        b:SetScript("OnLeave", function() GameTooltip:Hide() end)
-        return b
-    end
-    page.letters = Foot(function() GK.OpenLetters() end, function()
-        local n = GK.Unread()
-        return n > 0 and ("Letters - %d unread"):format(n) or "Letters"
-    end, "New kill orders, your new titles and what you are owed. A letter goes once it is read and closed - "
-        .. "the ledger keeps what it said.")
-    page.letters:SetPoint("BOTTOMLEFT", 8, 10)
-    page.letters:Set("Letters")
-    -- the settings' own pages (Options.lua), where the ledger lies: it gives them its place
-    page.settings = Foot(function() if GK.OpenOptions(nil, win) then win:Hide() end end,
-        function() return SETTINGS or "Settings" end, "Grudgekeeper's settings: letters, warnings, sharing.")
-    page.settings:SetPoint("LEFT", page.letters, "RIGHT", 6, 0)
-    page.settings:Set(SETTINGS or "Settings")
-    -- a pile of letters, read in one click (GK.ReadAllLetters): there while two or more wait (Refresh)
-    page.readAll = Foot(function() GK.ReadAllLetters() end, function() return "Read all letters" end,
-        "Every letter waiting, read at once - and so gone. The ledger keeps what they said.")
-    page.readAll:SetPoint("LEFT", page.settings, "RIGHT", 6, 0)
-    page.readAll:Set("Read all")
-    page.readAll:Hide()
+    -- Letters and Settings are buttons in the title bar since 2026-11-18, beside the fold and the X (Build):
+    -- at the foot of the list they were "litt i veien" (the owner), and the foot is the pager's.
 end
 
 -- Where the card's parts sit, in units from the page's top left. The ledger's right page has these; the
@@ -1921,8 +1879,7 @@ local function BuildDetail(page, L)
     page.sign:SetText("- the Grudgekeeper")
     page.buttons = {}
     for i = 1, 2 do
-        local b = CreateFrame("Button", nil, page, "UIPanelButtonTemplate")
-        b:SetSize(140, 22)
+        local b = GK.MakeButton(page, 140, 22)
         if i == 1 then b:SetPoint("BOTTOMLEFT", L.padX, L.buttonY) else b:SetPoint("LEFT", page.buttons[1], "RIGHT", 6, 0) end
         page.buttons[i] = b
     end
@@ -2160,6 +2117,7 @@ local function Layout()
         Tone(win.sheet)
     end
     win.divider:SetShown(not folded)                 -- folded there is one page: nothing to divide
+    if settingsOn then win.divider:Hide() end        -- the settings draw their own, at the menu's edge
     -- folded, the tabs down the right side stay on the screen with the frame (PlaceTabs)
     win:SetClampRectInsets(0, folded and -(TAB_H_ON - TAB_TUCK) or 0, 0, 0)
     win.list:ClearAllPoints()
@@ -2178,14 +2136,19 @@ GK.OnLook(function()
 end)
 
 --- Keep the left edge where it is when the window changes width: anchor it by its top left first.
-local function Fold(on)
-    GK.db.ledgerFolded = on or nil
-    turned = false
+local function KeepLeft()
     local l, t = win:GetLeft(), win:GetTop()
     if l and t then
         win:ClearAllPoints()
         win:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", l, t)
     end
+end
+
+local function Fold(on)
+    GK.db.ledgerFolded = on or nil
+    turned = false
+    if settingsOn then SetSettings(false) end        -- the fold is the ledger's: back to its pages
+    KeepLeft()
     Layout()
     Refresh()
 end
@@ -2347,20 +2310,42 @@ TabSide = function(t, side)
     TabLook(t)
 end
 
+--- The settings up in the ledger (on), or its pages again. While they are up no tab is chosen, so every
+--- one of them is a way back; the Settings button stays pressed in, and a click on it goes back as well.
+SetSettings = function(on)
+    settingsOn = on and true or false
+    win.settingsPage:SetShown(settingsOn)
+    win.settings:SetButtonState(settingsOn and "PUSHED" or "NORMAL", settingsOn)
+    for j, t in ipairs(win.tabs) do
+        t.selected = not settingsOn and j == tab
+        if t.selected then PanelTemplates_SelectTab(t) else PanelTemplates_DeselectTab(t) end
+        TabLook(t)
+    end
+end
+
+--- Out of the settings to the page they lay over, folded again if it was (the settings are two pages wide).
+local function LeaveSettings()
+    if not settingsOn then return end
+    SetSettings(false)
+    KeepLeft()
+    Layout()
+end
+
 local function SelectTab(i)
+    -- the tab of the page under the settings: back to that page as it was
+    if settingsOn and i == tab then
+        LeaveSettings()
+        return Refresh()
+    end
+    LeaveSettings()
     tab, offset, turned = i, 0, false
-    showFree = nil                                   -- a page chosen starts afresh: No bounty by its own rule
     -- ...and on the right page the top name of its list, not the row chosen there the last time it was up:
     -- "når vi bytter tabs, burde høyre page swappe til top navn i hvilken enn liste den tabben har" (the
     -- owner, 2026-11-14). Whatever opens a page on a row of its own (GK.OpenOrder, GK.ShowLedgerPage) sets
     -- it after this; the window opened again with no page asked for (GK.OpenWindow()) keeps what it had.
     selected[i], pinned = nil, nil
-    -- the game's chosen look: the tab raised and joined to the frame, and not clickable again
-    for j, t in ipairs(win.tabs) do
-        t.selected = j == i
-        if t.selected then PanelTemplates_SelectTab(t) else PanelTemplates_DeselectTab(t) end
-        TabLook(t)
-    end
+    -- the game's chosen look on its tab: raised and joined to the frame, and not clickable again
+    SetSettings(false)
     PlaceTabs(Folded())                              -- folded, the row shows the group of the page
     Refresh()
 end
@@ -2471,6 +2456,12 @@ local function Build()
     win.detail:SetFrameLevel(level + 3)
     win.detail:SetSize(PAGE_W, PAGE_H)
     BuildDetail(win.detail)
+    -- the settings' page (Options.lua draws on it): the whole frame, as their own window was, so what is
+    -- on it sits where it sat there
+    win.settingsPage = CreateFrame("Frame", "GrudgekeeperSettings", win)
+    win.settingsPage:SetFrameLevel(level + 3)
+    win.settingsPage:SetAllPoints()
+    win.settingsPage:Hide()
     -- One thin inner frame round both pages, the profession window's own as Skillwright has it
     -- (common-insideframe, its corners kept as drawn at any size), and one line between the pages. Two
     -- bronze inset boxes, one per page, "ser litt rart ut" - "hva med den tynne rammen som hadde litt
@@ -2551,6 +2542,87 @@ local function Build()
     end)
     fold:SetScript("OnLeave", function() GameTooltip:Hide() end)
     win.fold = fold
+    -- Letters and Settings, the same red squares beside the fold (art/make_grudgekeeper_buttons.py: the game
+    -- has no gear or letter in that series), with the game's own glow on them. At the foot of the list they
+    -- were "litt i veien" (the owner, 2026-11-18): "bedre å ha noe top right?" A count on the letters while
+    -- some are unread; a right-click reads them all, as Read all at the foot did.
+    local function TitleButton(art, anchor, tip, onClick)
+        local b = CreateFrame("Button", nil, win)
+        b:SetFrameLevel(close:GetFrameLevel())
+        b:SetSize(24, 24)
+        b:SetPoint("RIGHT", anchor, "LEFT", -1, 0)
+        b:SetNormalTexture(MEDIA .. art)
+        b:SetPushedTexture(MEDIA .. art .. "_down")
+        b:SetHighlightAtlas("RedButton-Highlight", "ADD")
+        b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        b:SetScript("OnClick", function(self, button)
+            GK.Sound("IG_MAINMENU_OPTION_CHECKBOX_ON")
+            onClick(self, button)
+        end)
+        b:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            for n, line in ipairs(tip()) do
+                if n == 1 then GameTooltip:AddLine(line, 1, 1, 1) else GameTooltip:AddLine(line, nil, nil, nil, true) end
+            end
+            GameTooltip:Show()
+        end)
+        b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        return b
+    end
+    win.settings = TitleButton("button_settings", fold, function()
+        if settingsOn then return { SETTINGS or "Settings", "Back to the ledger: click again, or any tab." } end
+        return { SETTINGS or "Settings", "Grudgekeeper's settings: letters, warnings, sharing, the look." }
+    end, function()
+        -- the settings (Options.lua), a page of the ledger over both of its own; pressed in while they are up
+        if settingsOn then
+            LeaveSettings()
+            Refresh()
+        else
+            GK.OpenOptions()
+        end
+    end)
+    win.letters = TitleButton("button_letters", win.settings, function()
+        local n = GK.Unread()
+        local out = { n > 0 and ("Letters - %d unread"):format(n) or "Letters",
+            "New kill orders, your new titles and what you are owed. A letter goes once it is read and closed - "
+                .. "the ledger keeps what it said." }
+        if n > 1 then out[#out + 1] = "Right-click: read them all" end
+        return out
+    end, function(_, button)
+        if button == "RightButton" then
+            if GK.Unread() > 0 then GK.ReadAllLetters() end
+        else
+            GK.OpenLetters()
+        end
+    end)
+    -- the count: a small blood-red disc on its corner, while letters wait unread
+    local count = CreateFrame("Frame", nil, win.letters)
+    count:SetSize(14, 14)
+    count:SetPoint("TOPRIGHT", 5, 5)
+    count:SetFrameLevel(win.letters:GetFrameLevel() + 2)
+    count.disc = count:CreateTexture(nil, "ARTWORK")
+    count.disc:SetAllPoints()
+    count.disc:SetColorTexture(BLOOD[1], BLOOD[2], BLOOD[3], 1)
+    count.mask = count:CreateMaskTexture()
+    count.mask:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask", "CLAMPTOBLACKADDITIVE",
+        "CLAMPTOBLACKADDITIVE")
+    count.mask:SetAllPoints(count.disc)
+    count.disc:AddMaskTexture(count.mask)
+    count.text = count:CreateFontString(nil, "OVERLAY")
+    count.text:SetFont(TEXT_FONT, 9, "OUTLINE")
+    count.text:SetTextColor(1, 0.89, 0.6)
+    count.text:SetPoint("CENTER", 0, 0)
+    win.letters.count = count
+    function win.letters:Update()
+        local n = GK.Unread()
+        self.count:SetShown(n > 0)
+        self.count.text:SetText(n > 9 and "9+" or tostring(n))
+        -- with no letter waiting it has nothing to open: a read letter is gone once closed (Letters.lua)
+        local any = #GK.char.letters > 0
+        self:SetEnabled(any)
+        local art = self:GetNormalTexture()
+        if art then art:SetDesaturated(not any) end
+    end
     win:Hide()
     if LIB.RegisterWindow then LIB.RegisterWindow(win, GK.db, "window") end
     win:HookScript("OnShow", function() Refresh() end)
@@ -2559,6 +2631,7 @@ local function Build()
     win:HookScript("OnHide", function()
         pinned = nil
         GK.CloseLedgerSheets()
+        LeaveSettings()                              -- opened again, it opens on its pages
     end)
     Layout()
     SelectTab(tab)
@@ -2583,6 +2656,11 @@ end
 
 Refresh = function()
     if not (win and win:IsShown()) then return end
+    win.letters:Update()                               -- the title bar's letters button and its count
+    -- the settings over both pages: the list and the card wait under them, as they were
+    win.list:SetShown(not settingsOn)
+    win.detail:SetShown(not settingsOn)
+    if settingsOn then return end
     local folded = Folded()
     local def = GK.LedgerPages[tab]
     local items, empty = def.items()
@@ -2595,6 +2673,7 @@ Refresh = function()
     local chosen = not pinned and Chosen(items) or nil
     -- the list page
     list.title:SetText(def.name)
+    -- the page's views as ink tabs on the paper, under the title, with a rule under the row of them
     local links = def.links and def.links() or {}
     local last
     for i, b in ipairs(list.links) do
@@ -2604,38 +2683,52 @@ Refresh = function()
             b:Set(l.text, l.on)
             b.click = l.click
             b:ClearAllPoints()
-            if last then b:SetPoint("LEFT", last, "RIGHT", 12, 0) else b:SetPoint("TOPLEFT", 10, -40) end
+            if last then b:SetPoint("LEFT", last, "RIGHT", TAB_INK_GAP, 0) else b:SetPoint("TOPLEFT", 10, -TAB_INK_Y) end
             last = b
         end
     end
-    list.reset:ClearAllPoints()
-    if last then list.reset:SetPoint("LEFT", last, "RIGHT", 4, 0) end
-    list.reset:SetText(last and def.linksTail and def.linksTail() or "")
-    list.sub:ClearAllPoints()
-    if last then
-        -- on the links' line, after the tail if there is one; under them it ran into the links
-        list.sub:SetPoint("LEFT", list.reset:GetText() ~= "" and list.reset or last, "RIGHT", 10, 0)
-    else
-        list.sub:SetPoint("TOPLEFT", 12, -44)
-    end
+    list.tabRule:SetShown(last ~= nil)
     local sortable = def.sortable == true
     list.mine:SetShown(sortable)
     if sortable then list.mine:Set("Only mine", GK.db.mineOnly == true) end
-    -- the line stops short of Only mine, on its own line at the page's right (after links it is free:
-    -- no page has both)
+    -- the tail (the leaderboard's "resets in 1 day") at the tabs' right end, short of Only mine
+    list.reset:ClearAllPoints()
+    list.reset:SetPoint("TOPRIGHT", list, "TOPRIGHT", -(sortable and list.mine.width + 14 or 12), -(TAB_INK_Y + 3))
+    list.reset:SetText(last and def.linksTail and def.linksTail() or "")
+    -- the line under the title on a page without tabs: words, and links after them (WatchLinks)
+    list.sub:ClearAllPoints()
+    list.sub:SetPoint("TOPLEFT", 12, -44)
     list.sub:SetWidth(last and 0 or (PAGE_W - 24 - (sortable and list.mine.width + 10 or 0)))
-    list.sub:SetText(def.sub and def.sub(items, all) or "")
-    list.add:SetShown(def.add ~= nil)
-    list.underline:SetShown(#def.headings > 0)
-    local top, perPage = ListFrame(def)
+    -- the words decided here, not read back: the game's GetText gives no "" for an empty line, so the
+    -- watched guild's links hung after the empty line's far end, out on the right page (the owner's
+    -- screenshot, 2026-11-18)
+    local subText = not last and def.sub and def.sub(items, all) or ""
+    list.sub:SetText(subText)
+    local subLinks = not last and def.subLinks and def.subLinks() or {}
+    local after = subText ~= "" and list.sub or nil
+    for i, b in ipairs(list.subLinks) do
+        local l = subLinks[i]
+        b:SetShown(l ~= nil)
+        if l then
+            b:Set(l.text, l.plain)
+            b.click = l.click
+            b:ClearAllPoints()
+            if after then b:SetPoint("LEFT", after, "RIGHT", 8, 0) else b:SetPoint("TOPLEFT", 12, -42) end
+            after = b
+        end
+    end
+    local heads, action = Headings(def), Action(def)
+    list.add:SetShown(action ~= nil)
+    list.underline:SetShown(#heads > 0)
+    local top, perPage = ListFrame(def, last ~= nil or subText ~= "" or #subLinks > 0)
     if list.top ~= top then
         list.top = top
         for i, row in ipairs(list.rows) do row:SetPoint("TOPLEFT", 4, -(top + (i - 1) * ROW_H)) end
     end
-    if def.add then list.add:Set(def.add) end
+    if action then list.add:Set(action) end
     local sortKey = GK.SortKey(def)
     for i, b in ipairs(list.heads) do
-        local h = def.headings[i]
+        local h = heads[i]
         b:ClearAllPoints()
         b:SetShown(h ~= nil)
         if not h then b.key, b.on = nil, false end
@@ -2667,6 +2760,12 @@ Refresh = function()
             row:Show()
             FillRow(row, it, chosen ~= nil and it.key == chosen.key)
         else
+            -- a row the list no longer reaches, under the mouse: its tooltip goes with it, as a heading's does
+            if row.tipped then
+                row.tipped = false
+                GameTooltip:Hide()
+            end
+            row.hovered = false
             row:Hide()
         end
     end
@@ -2681,11 +2780,6 @@ Refresh = function()
         list.prev:SetEnabled(at > 1)
         list.next:SetEnabled(at < #starts)
     end
-    local unread = GK.Unread()
-    list.letters:Set(unread > 0 and ("Letters \194\183 %d new"):format(unread) or "Letters")      -- "Letters · 2 new"
-    -- with no letter waiting it has nothing to open: a read letter is gone once closed (Letters.lua)
-    list.letters:SetEnabled(#GK.char.letters > 0)
-    list.readAll:SetShown(unread > 1)
     -- the detail: the right-hand page, or the page turned
     local showDetail = not folded or turned
     list:SetShown(not folded or not turned)
@@ -2715,9 +2809,12 @@ end
 function GK.OpenOrder(orderKey)
     GK.OpenWindow(1)                                 -- first: choosing the tab starts the page afresh
     local o = type(orderKey) == "string" and GK.Store().orders[orderKey]
-    if o then
-        -- an open order with no gold may be folded under No bounty, where it has no row to choose
-        if o.state == "o" and (GK.Pot(o)) == 0 then showFree = true end
+    if o and o.state ~= "o" then
+        -- an order that is over has no row on the page, which lists the open ones: its card, pinned over it
+        pinned = PosterSpec(o.n, o, o)
+        turned = turned or Folded()
+        Refresh()
+    elseif o then
         selected[1] = "o:" .. orderKey
         -- the turn of the list its row is on, so the row marked is in sight (Refresh finds the turn's start)
         for n, it in ipairs(GK.LedgerPages[1].items()) do
@@ -2735,11 +2832,43 @@ function GK.ToggleWindow()
     if win and win:IsShown() then win:Hide() else GK.OpenWindow() end
 end
 
+function GK.CloseWindow()
+    if win then win:Hide() end
+end
+
+--- The page the settings are drawn on (Options.lua): the frame's whole inside, over the list and the card.
+function GK.LedgerSettingsPage()
+    if not win then Build() end
+    return win.settingsPage
+end
+
+--- The ledger open on its settings, its tabs under them to go back by. Folded it opens to both pages, its
+--- left edge where it was; it folds again when they are left.
+function GK.ShowLedgerSettings()
+    if not win then Build() end
+    if not settingsOn then
+        SetSettings(true)
+        KeepLeft()
+        Layout()
+    end
+    win:Show()
+    win:Raise()
+    Refresh()
+end
+
+--- The ledger at a page found by its name, in one of its views: Most wanted's "killed" or "marked", the
+--- News's "all" or "orders". The notes' Marked (GK.OpenNotes) opens here.
+function GK.OpenLedgerView(name, view)
+    if name == "Most wanted" then wantedView = view == "marked" and "marked" or "killed" end
+    if name == "News" then newsView = view == "orders" and "orders" or "all" end
+    GK.OpenLedgerPage(name)
+end
+
 -- Where a card opened from outside the book looks for a row about them, after the page that is up: an
 -- enemy on your Grudges, then Most wanted (an open order on them goes first of all, GK.ShowInLedger); a
 -- guildie or you on the You page (yours) and the leaderboard; a note's card on the lists it is from.
 local HOMES = { poster = { "Grudges", "Most wanted" }, record = { "You", "Leaderboard" },
-    card = { "Shame", "Kudos", "Kill orders" } }
+    card = { "Shame", "Kudos", "Most wanted" } }       -- Most wanted: in its Marked view, for a Marked note
 
 --- Is this row about whom the spec is: the same kind of card, on the same player (GK.SameName: another
 --- realm spelling, a surname one side left off). A card made by a function says whose it is with key.
@@ -2787,8 +2916,11 @@ function GK.ShowInLedger(spec)
     for _, name in ipairs(not at and HOMES[spec.kind] or {}) do
         for i, def in ipairs(GK.LedgerPages) do
             if def.name == name then
+                -- a note's card is in Most wanted's Marked view, not the one it shows by itself
+                local was = wantedView
+                if name == "Most wanted" and spec.kind == "card" then wantedView = "marked" end
                 n, key = RowAbout(i, spec)
-                if n then at = i end
+                if n then at = i else wantedView = was end
                 break
             end
         end
@@ -2801,6 +2933,7 @@ function GK.ShowInLedger(spec)
     else
         pinned = spec
     end
+    LeaveSettings()                    -- a card asked for: off the settings, to the page it is on
     turned = Folded() or turned
     win:Show()
     win:Raise()

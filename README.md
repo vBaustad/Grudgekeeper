@@ -3,14 +3,18 @@
 World PvP score-keeping for WoW: Forever: who you killed, who killed you and how often, a guild
 leaderboard, and kill orders with a bounty on them.
 
-- `/grudge` opens the window: kill orders, the leaderboard, who has killed the guild most, your grudges.
+- `/grudge` opens the window: kill orders, the leaderboard, who has killed the guild most, your grudges, the
+  guild's news and your own page. Letters and the settings are the two red buttons beside the X.
+- The kill orders page lists the open orders: those with gold first, the biggest first, then those with
+  none, the newest first, with how long ago each was posted. The guild on watch is the line under the title.
+- Where a page shows two things - this week or all time, who killed us most or whom the guild marked, all the
+  news or only the kill orders - tabs under the title switch between them.
 - `/grudge post` writes a kill order on your target, or asks who when you have none. Posted on someone
   you saw a moment ago, it tells the guild where: the zone, and their pin on the world map.
 - Each page of the window that you can add to has its action at the top - **Post a kill order**, **Put
-  someone on Shame**, **Give someone kudos** - and the kill orders page's Marked heading has **mark someone**
-  beside it. It asks who: your target, the enemies you met lately, your group and who just left it, or a
-  name you type. Where a list has column headings, click one to sort by it; the kill orders page keeps its
-  own order.
+  someone on Shame**, **Give someone kudos**, and **Mark someone** on Most wanted's Marked tab. It asks who:
+  your target, the enemies you met lately, your group and who just left it, or a name you type. Where a list
+  has column headings, click one to sort by it; the kill orders page keeps its own order.
 - **Track someone** at the top of your Grudges, or **Track** in the right-click menu on an enemy: your own
   list of enemies to keep an eye on, never shared. One of them near warns you and wears an eye over their
   nameplate.
@@ -20,9 +24,9 @@ leaderboard, and kill orders with a bounty on them.
   merciless` (or bloodied, butcher, smoke, scythe, grudgebound, 20, 100, ended, tormentor) that one's
   splash. The settings say how long they show, and each milestone is a line in the News as well, with a
   spree an enemy ended and a tormentor put down.
-- A kill order fulfilled is told the same way - yours as a splash, with the bounty - and for a day it stands first on the kill orders
-  page and on the guild window's tab: who got them, where and when.
-- `/grudge options` opens the settings, in a window of their own. **Arrange on screen** there, or
+- A kill order fulfilled is told the same way - yours as a splash, with the bounty - and it is in the News's
+  Kill orders tab, and for a day first on the guild window's tab: who got them, where and when.
+- `/grudge options` opens the settings, a page of the ledger with its tabs still under it. **Arrange on screen** there, or
   `/grudge arrange`, lets you drag the letter icon, the splash and the toasts where you want them.
 - `/grudge test` puts five sample letters in your pile.
 - The **You** tab is your own page: your card, and your latest kills, assists and deaths.

@@ -23,7 +23,8 @@ local function Say(text) print(GK.TAG .. " (test): " .. text) end
 local function Begin()
     if GK.testMode or not GK.char then return end
     local store = GK.Store()
-    saved = { char = CopyTable(GK.char), store = CopyTable(store), storeTable = store }
+    -- and the letters' look, which its Letters: A, F, P buttons switch (Letters.lua, LAYOUTS)
+    saved = { char = CopyTable(GK.char), store = CopyTable(store), storeTable = store, letterStyle = GK.db.letterStyle }
     GK.testMode = true
 end
 
@@ -39,6 +40,7 @@ local function Restore()
     if saved then
         PutBack(GK.char, saved.char)
         PutBack(saved.storeTable, saved.store)
+        GK.db.letterStyle = saved.letterStyle
         saved = nil
     end
     GK.InvalidateOrders()
@@ -79,12 +81,34 @@ local function Hear(who, ...)
     GK.ReceiveForTest(nil, table.concat(parts, ";"), "GUILD", Guildie(who))
 end
 
+-- ---------------------------------------------------------------------------
+-- The letter's looks, side by side in the game (Letters.lua, LAYOUTS)
+-- ---------------------------------------------------------------------------
+-- A is today's; F the iron frame made small, P a loose burnt sheet ("F og P fra runde 2", the owner,
+-- 2026-11-18, after "letter vinduet er også blitt ganske stort"). The sample pile holds a kill order and
+-- the Grudgekeeper's own letters, so each look shows both kinds: walk them with the arrows at the foot.
+local function LettersIn(style)
+    GK.SetLetterStyle(style)
+    local any
+    for _, L in ipairs(GK.char.letters) do
+        if L.sample then any = true end
+    end
+    if not any then GK.SampleLetters() end
+    for i, L in ipairs(GK.char.letters) do
+        if L.sample and L.kind == "order" then return GK.ShowLetter(i) end
+    end
+    GK.OpenLetters()
+end
+
 local KARI_ORDER = 901
 
 -- { label } is a heading; { label, fn } a button.
 local ACTIONS = {
     { "Letters and the notice" },
     { "Sample letters", function() GK.SampleLetters() end },
+    { "Letters: A, today's", function() LettersIn("A") end },
+    { "Letters: F, small frame", function() LettersIn("F") end },
+    { "Letters: P, loose sheet", function() LettersIn("P") end },
     { "Your target is near", function()
         local v = TheEnemy()
         GK.Warn(GK.Show(v.key) .. " is near!", true, nil, v.key)
@@ -165,6 +189,8 @@ local ACTIONS = {
     { "Kari's record", function() GK.ShowRecord(Guildie("Kari")) end },
     { "Your record", function() GK.ShowRecord(LIB.Me(), "player") end },
     { "The leaderboard", function() GK.OpenWindow(2) end },
+    -- a new title as yours and a guildie's; /grudge rank <title> shows any one (Announce.lua)
+    { "A new title", function() GK.RankSample() end },
 
     { "What the game allows" },
     { "Screenshot in 1 second", function()
