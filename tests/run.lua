@@ -2750,32 +2750,34 @@ test("what's new: every letter missed, oldest first, once; none on a first insta
     GK.DeliverNews(false)
     eq(#GK.char.letters, 0, "a moment after login, not under the loading screen")
     W.advance(6)
-    eq(#GK.char.letters, 4)
+    eq(#GK.char.letters, 5)
     eq(GK.char.letters[1].news, "1.4.0", "the oldest first")
     eq(GK.char.letters[2].news, "1.5.0")
     eq(GK.char.letters[3].news, "1.6.0")
     eq(GK.char.letters[4].news, "1.7.0")
-    eq(GK.db.newsSeen, "1.7.0")
+    eq(GK.char.letters[5].news, "1.9.0", "1.8.0 had none")
+    eq(GK.db.newsSeen, "1.9.0")
     GK.DeliverNews(false)                          -- the next login
     W.advance(6)
-    eq(#GK.char.letters, 4, "once")
+    eq(#GK.char.letters, 5, "once")
 
     local GK1 = bootSheets({ me = ME })
     function GK1.NoticeUpdate() end
     GK1.db.newsSeen = "1.4.0"                      -- on 1.4.0: its letter came then
     GK1.DeliverNews(false)
     W.advance(6)
-    eq(#GK1.char.letters, 3)
+    eq(#GK1.char.letters, 4)
     eq(GK1.char.letters[1].news, "1.5.0", "only the ones after it")
     eq(GK1.char.letters[2].news, "1.6.0")
     eq(GK1.char.letters[3].news, "1.7.0")
+    eq(GK1.char.letters[4].news, "1.9.0")
 
     local GK2 = bootSheets({ me = ME })
     function GK2.NoticeUpdate() end
     GK2.DeliverNews(true)
     W.advance(6)
     eq(#GK2.char.letters, 0, "a first install: nothing is new")
-    eq(GK2.db.newsSeen, "1.7.0", "and not later either")
+    eq(GK2.db.newsSeen, "1.9.0", "and not later either")
 
     local GK3 = bootSheets({ me = ME })
     function GK3.NoticeUpdate() end
@@ -2783,7 +2785,7 @@ test("what's new: every letter missed, oldest first, once; none on a first insta
     GK3.DeliverNews(false)
     W.advance(6)
     eq(#GK3.char.letters, 0, "letters off: none")
-    eq(GK3.db.newsSeen, "1.7.0")
+    eq(GK3.db.newsSeen, "1.9.0")
 
     local GK4 = bootSheets({ me = ME })
     function GK4.NoticeUpdate() end
@@ -2801,7 +2803,8 @@ test("what's new: short notes from him about no one, each with a button to where
     local want = { ["1.4.0"] = { "A word from the keeper", "assists", "Leaderboard" },
         ["1.5.0"] = { "Eyes on them", "Track an enemy", "Grudges" },
         ["1.6.0"] = { "Blood in a row", "String your kills together", "Settings" },
-        ["1.7.0"] = { "Who's slacking?", "puts my ledger beside guild chat", "Settings" } }
+        ["1.7.0"] = { "Who's slacking?", "puts my ledger beside guild chat", "Settings" },
+        ["1.9.0"] = { "Louder now", "a fanfare of its own", "Leaderboard" } }
     for id, w in pairs(want) do
         local d = GK.LetterContent({ id = 1, kind = "news", news = id })
         eq(d.note, true, id)
@@ -2813,7 +2816,7 @@ test("what's new: short notes from him about no one, each with a button to where
         assert(not table.concat(d.lines, " "):find("%d"), id .. ": no numbers, those are on the Points heading")
         eq(d.buttons[1][1], w[3], id)
     end
-    eq(GK.LetterContent({ id = 1, kind = "news", sample = true }).title, "Who's slacking?", "a sample: the latest")
+    eq(GK.LetterContent({ id = 1, kind = "news", sample = true }).title, "Louder now", "a sample: the latest")
 end)
 
 test("the settings page and the help say the release, not how many changes there have been", function()

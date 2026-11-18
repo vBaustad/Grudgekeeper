@@ -23,8 +23,7 @@ local function Say(text) print(GK.TAG .. " (test): " .. text) end
 local function Begin()
     if GK.testMode or not GK.char then return end
     local store = GK.Store()
-    -- and the letters' look, which its Letters: A, F, P buttons switch (Letters.lua, LAYOUTS)
-    saved = { char = CopyTable(GK.char), store = CopyTable(store), storeTable = store, letterStyle = GK.db.letterStyle }
+    saved = { char = CopyTable(GK.char), store = CopyTable(store), storeTable = store }
     GK.testMode = true
 end
 
@@ -40,7 +39,6 @@ local function Restore()
     if saved then
         PutBack(GK.char, saved.char)
         PutBack(saved.storeTable, saved.store)
-        GK.db.letterStyle = saved.letterStyle
         saved = nil
     end
     GK.InvalidateOrders()
@@ -81,14 +79,9 @@ local function Hear(who, ...)
     GK.ReceiveForTest(nil, table.concat(parts, ";"), "GUILD", Guildie(who))
 end
 
--- ---------------------------------------------------------------------------
--- The letter's looks, side by side in the game (Letters.lua, LAYOUTS)
--- ---------------------------------------------------------------------------
--- A is today's; F the iron frame made small, P a loose burnt sheet ("F og P fra runde 2", the owner,
--- 2026-11-18, after "letter vinduet er også blitt ganske stort"). The sample pile holds a kill order and
--- the Grudgekeeper's own letters, so each look shows both kinds: walk them with the arrows at the foot.
-local function LettersIn(style)
-    GK.SetLetterStyle(style)
+--- The sample letters open on their kill order: the pile holds it and the Grudgekeeper's own letters, so
+--- both kinds are a click of the arrows apart. Made once; read again after that.
+local function ReadSamples()
     local any
     for _, L in ipairs(GK.char.letters) do
         if L.sample then any = true end
@@ -106,9 +99,7 @@ local KARI_ORDER = 901
 local ACTIONS = {
     { "Letters and the notice" },
     { "Sample letters", function() GK.SampleLetters() end },
-    { "Letters: A, today's", function() LettersIn("A") end },
-    { "Letters: F, small frame", function() LettersIn("F") end },
-    { "Letters: P, loose sheet", function() LettersIn("P") end },
+    { "Read the sample letters", ReadSamples },
     { "Your target is near", function()
         local v = TheEnemy()
         GK.Warn(GK.Show(v.key) .. " is near!", true, nil, v.key)
@@ -202,9 +193,74 @@ local ACTIONS = {
 GK.debugActions = ACTIONS    -- for tools/smoke_grudgekeeper.py, which presses every one
 
 -- ---------------------------------------------------------------------------
+-- What players hear: each splash and toast, down the right
+-- ---------------------------------------------------------------------------
+-- "jeg vil ha lydene som når det popper opp splash/toasts .. det er vel det folk hører" (the owner,
+-- 2026-11-18). Each button fires the event the game fires (Kills.lua, Guild.lua), so Announce.lua makes the
+-- splash or toast as it makes a real one: its effect, its sounds and its voice. For that moment the kind's
+-- setting is the one the button is listed under and when is "always", so it comes now whatever yours say;
+-- then yours are back. A sound picked in place of a tier's voice is what plays; with Sound off, nothing.
+local HELD = { "spreeMine", "spreeGuild", "spreeEnded", "spreeTormentor", "orderDone", "announceWhenMine",
+    "announceWhenGuild", "reaperEffect" }
+
+local function Announce(set, event, ...)
+    local was = {}
+    for _, k in ipairs(HELD) do was[k] = GK.db[k] end
+    GK.db.announceWhenMine, GK.db.announceWhenGuild = "always", "always"
+    for k, v in pairs(set) do GK.db[k] = v end
+    LIB.Fire(event, ...)        -- its listeners run at once (LibForever), so the settings above are what they read
+    for _, k in ipairs(HELD) do GK.db[k] = was[k] end
+    if not GK.db.sound then Say("Sound is off in Grudgekeeper's settings, so this one is silent.") end
+end
+
+local function Spree(mine, n, set)
+    local tier, key = GK.SpreeTierOf(n)
+    set = set or {}
+    set[mine and "spreeMine" or "spreeGuild"] = mine and "splash" or "toast"
+    Announce(set, "GK_SPREE", mine and LIB.Me() or Guildie("Kari"), n, tier, mine, key)
+end
+
+local function OrderDone(mine)
+    Announce({ orderDone = "toast" }, "GK_ORDER_DONE", mine and LIB.Me() or Guildie("Kari"), {}, TheEnemy().key,
+        50000, mine)
+end
+
+local function NewTitle(mine)
+    Announce(mine and { spreeMine = "splash" } or { spreeGuild = "toast" }, "GK_RANKUP",
+        mine and LIB.Me() or Guildie("Kari"), "Avenger", 450, mine)
+end
+
+-- { label } is a heading; { label, fn } a button.
+local HEAR = {
+    { "Splashes: yours" },
+    { "Bloodied, 3", function() Spree(true, 3) end },
+    { "Merciless, 5", function() Spree(true, 5) end },
+    { "Butcher, 7", function() Spree(true, 7) end },
+    { "Reaper, 10: smoke", function() Spree(true, 10, { reaperEffect = "smoke" }) end },
+    { "Reaper, 10: scythe", function() Spree(true, 10, { reaperEffect = "scythe" }) end },
+    { "Grudgebound, 15", function() Spree(true, 15) end },
+    { "Grudgebound, 20", function() Spree(true, 20) end },
+    { "100 in a row", function() Spree(true, 100) end },
+    { "Your kill order", function() OrderDone(true) end },
+    { "Your new title", function() NewTitle(true) end },
+    { "Toasts" },
+    { "Kari's spree, 5", function() Spree(false, 5) end },
+    { "Kari's kill order", function() OrderDone(false) end },
+    { "Kari's new title", function() NewTitle(false) end },
+    { "Your spree ended", function()
+        Announce({ spreeEnded = "toast" }, "GK_SPREE_ENDED", LIB.Me(), 12, GK.Show(TheEnemy().key), true)
+    end },
+    { "A tormentor put down", function()
+        Announce({ spreeTormentor = "toast" }, "GK_TORMENTOR", LIB.Me(), GK.Show(TheEnemy().key), 4, true)
+    end },
+}
+GK.debugHear = HEAR          -- for tools/smoke_grudgekeeper.py
+
+-- ---------------------------------------------------------------------------
 -- The panel
 -- ---------------------------------------------------------------------------
 local W, BUTTON_W, ROW = 400, 182, 26
+local HEAR_W, HEAR_ROW = 150, 22
 
 local function Build()
     panel = CreateFrame("Frame", "GrudgekeeperDebug", UIParent)
@@ -259,7 +315,31 @@ local function Build()
     done:SetPoint("TOPLEFT", 14, y - 10)
     done:SetText("Close and put everything back")
     done:SetScript("OnClick", function() GK.CloseDebug() end)
-    panel:SetSize(W, -y + 50)
+
+    -- what players hear, down the right (HEAR above)
+    local sy = -64
+    panel.hearButtons = {}
+    for _, a in ipairs(HEAR) do
+        if not a[2] then
+            local h = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+            h:SetPoint("TOPLEFT", W, sy - 6)
+            h:SetText(a[1])
+            sy = sy - 26
+        else
+            local b = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+            b:SetSize(HEAR_W, 20)
+            b:SetPoint("TOPLEFT", W, sy)
+            b:SetText(a[1])
+            local fn = a[2]
+            b:SetScript("OnClick", function()
+                local ok, err = pcall(fn)
+                if not ok then Say("error: " .. tostring(err)) end
+            end)
+            panel.hearButtons[a[1]] = b
+            sy = sy - HEAR_ROW
+        end
+    end
+    panel:SetSize(W + HEAR_W + 14, math.max(-y + 50, -sy + 14))
     panel:Hide()
     if LIB.RegisterWindow then LIB.RegisterWindow(panel, GK.db, "debugPanel") end
     -- Closing it any way at all - the X, Escape, the big button - puts everything back.
