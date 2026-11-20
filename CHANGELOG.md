@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.10.0
 
 - **A letter opens where it stays.** It slid a little down as it opened and then jumped back up. Now it fades in, in its place.
 - **A fulfilled kill order is a WANTED poster.** When you get an order's target, the splash is their wanted poster, not the red seal: it slaps up with their face in its window, a dagger pins it, two strokes of red ink cross the face out and FULFILLED is stamped across it, with the line about who got them and the bounty under it. A guildie's, when it comes as a toast, has the same poster, smaller, crossed out and stamped, without the dagger. `/grudge spree fulfilled` shows both.
