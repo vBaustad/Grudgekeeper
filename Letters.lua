@@ -13,7 +13,7 @@
 -- The paper, seals and blood are drawn by art/make_grudgekeeper_art.py (or imported from generated art by
 -- art/import_grudgekeeper.py); the stamps by art/make_grudgekeeper_stamps.py.
 local ADDON, GK = ...
-local LIB = LibStub("LibForever-1.0")
+local LIB = GK.Lib or LibStub("LibForever-1.0")      -- names by themselves (Core.lua, GK.Lib)
 
 local MAX_LETTERS = 30
 local MEDIA = "Interface\\AddOns\\Grudgekeeper\\Media\\"
@@ -340,7 +340,7 @@ local NEWS_WORDS = {
         "String your kills together and I'll call it out - louder, the longer you last.",
         "",
         "My settings have pages of their own now: have it shouted, shown small, or not at all.",
-    }, "seal_red", "Settings", function() GK.OpenOptions("Kill sprees") end },
+    }, "seal_red", "Settings", function() GK.OpenOptions("Notifications") end },
     -- The button goes to the tab's switch, not to the guild window: opening the game's window from an
     -- addon would run its opening as ours, and its roster asks the game for things only the game may ask.
     -- A first draft said what is on the page ("your week, the orders, the board"): "nja prøv annen tekst
@@ -708,13 +708,21 @@ local win                          -- the letter window, made on first use
 -- all on it - and they ran into each other: "de er litt små fordi du ser ting overlapper nederst" (the
 -- owner, 2026-11-18). Wider, and the pile a row of its own. The titles were 18, small beside the portrait
 -- with room under them: "gjør header på kortene (spesielt de som ikke har sub headers osv større?) ser dumt
--- ut når det er stort mellomrom og liten skrift" (the owner, the same day).
+-- ut når det er stort mellomrom og liten skrift" (the owner, the same day). On an order the name was small and
+-- the level, race and class a faint line under it: "navnet på spilleren er for lite. og med icon + class icon
+-- så trenger vi ikke extra text 'undead rogue' og lvl 33 kan flyttes til høyre side og gjøres større ... og
+-- reward kan også gjøres større" (the owner, 2026-11-19). The name 16 to 21, the level a number on the right
+-- (levelW wide), the bounty 11 to 14; race and class are the face and the crest on its shoulder. Then: "forsatt
+-- vanskelig å se navnet. er det litt lite luft og kanskje pga fonten? ... level i hjørnet også er litt tynn og
+-- vanskelig å se ... kanskje litt langt ut i hjørnet" (2026-11-20). The name in the plain text font, not the
+-- title's thin capitals, at 19, with nameGap over it and bountyGap under it; the level in the same plain font,
+-- dark, levelIn further in from the right margin and down by the face's middle (levelY).
 local LAYOUT = { w = 440, h = 300, maxH = 540, face = 60, faceX = 30, faceY = 34, textX = 30, right = 30, headY = 32,
-    title = 22, titleLong = 18, note = 28, noteLong = 22, name = 16, signY = 100, sealRoom = 30, ruleY = 90,
-    footY = 28, pileY = 62, edge = 28, pile = 9, blood = { 120, -40, 160 } }
+    title = 22, titleLong = 18, note = 28, noteLong = 22, name = 19, level = 26, levelW = 72, levelIn = 16,
+    levelY = 45, nameGap = 8, bountyGap = 6, bounty = 14, signY = 100, sealRoom = 30, ruleY = 90, footY = 28, pileY = 62, edge = 28, pile = 9, blood = { 120, -40, 160 } }
 local BUTTON_GAP = 12              -- between the words and the letter's buttons
 
---- The letters closed - by X, Close or Escape: the read ones go. A moment later, so a letter's own button
+--- The letters closed - by Close or Escape: the read ones go. A moment later, so a letter's own button
 --- that opens something else (the order in the ledger) has run first.
 local function Closed()
     C_Timer.After(0, function()
@@ -1470,16 +1478,52 @@ local function BuildLetter()
     local L = LAYOUT
     local f = LetterSheet("GrudgekeeperLetter", L)
     f.layout = L
-    -- where the writing starts: the title beside the face, short of the cross in the corner; the words under both
+    -- where the writing starts: the title beside the face, to the right margin (an order's short of its level);
+    -- the words under both
     local headX = L.faceX + L.face + 12
-    local headW = L.w - headX - L.right - 20
+    local headW = L.w - headX - L.right
     local textW = L.w - L.textX - L.right
     -- An order's page: the face of whom it is about in the bronze ring, where his own portrait is on a note,
     -- and its bounty a line under who they are.
     f.face = GK.MakePortrait(f, L.face)
     f.face.tex:SetPoint("CENTER", f.disc, "CENTER")
+    -- the face opens the order in the ledger, and the letter shuts: two windows on one order is one too many.
+    -- It was a button, Open in the ledger, beside Add to the pot ("fjern 'open in the ledger' kanskje?", the
+    -- owner, 2026-11-19); the face is where you look to see who it is.
+    f.faceButton = CreateFrame("Button", nil, f)
+    f.faceButton:SetSize(L.face, L.face)
+    f.faceButton:SetPoint("CENTER", f.disc, "CENTER")
+    f.faceButton:SetFrameLevel(f:GetFrameLevel() + 6)
+    local lit = f.faceButton:CreateTexture(nil, "HIGHLIGHT")
+    lit:SetAllPoints()
+    lit:SetTexture(MEDIA .. "portrait_ring")
+    lit:SetBlendMode("ADD")
+    lit:SetAlpha(0.45)
+    f.faceButton:SetScript("OnClick", function()
+        local key = f.faceOrder
+        if not key then return end
+        f:Hide()
+        GK.OpenOrder(key)
+    end)
+    f.faceButton:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:AddLine("Open in the ledger", 1, 1, 1)
+        GameTooltip:Show()
+    end)
+    f.faceButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
     f.goldCap = f:CreateFontString(nil, "ARTWORK")
-    Ink(f.goldCap, FADED, TEXT_FONT, 11)
+    Ink(f.goldCap, FADED, TEXT_FONT, L.bounty)
+    -- an order's level, on the right of the head by the face's middle: LEVEL small, the number large under it,
+    -- both in the plain font and dark ink (the title's capitals were thin and the faded ink hard to see)
+    f.levelCap = f:CreateFontString(nil, "ARTWORK")
+    Ink(f.levelCap, INK, TEXT_FONT, 10)
+    f.levelCap:SetPoint("TOPRIGHT", f, "TOPRIGHT", -(L.right + L.levelIn), -L.levelY)
+    f.levelCap:SetText("LEVEL")
+    f.level = f:CreateFontString(nil, "ARTWORK")
+    Ink(f.level, INK, TEXT_FONT, L.level)
+    f.level:SetPoint("TOPRIGHT", f.levelCap, "BOTTOMRIGHT", 0, -2)
+    f.level:SetWidth(L.levelW - L.levelIn)
+    f.level:SetJustifyH("RIGHT")
 
     -- The writing, beside the face: the title, whom it is about, the words, and the letter's own buttons
     -- right under them.
@@ -1490,14 +1534,11 @@ local function BuildLetter()
     f.title:SetJustifyH("LEFT")
     f.title:SetMaxLines(2)                                 -- a long title takes two lines before it runs on
     f.name = f:CreateFontString(nil, "ARTWORK")
-    Ink(f.name, INK, TITLE_FONT, L.name)
-    f.name:SetPoint("TOPLEFT", f.title, "BOTTOMLEFT", 0, -4)
-    f.name:SetWidth(headW)
+    Ink(f.name, INK, TEXT_FONT, L.name)
+    f.name:SetPoint("TOPLEFT", f.title, "BOTTOMLEFT", 0, -L.nameGap)
+    f.name:SetWidth(headW - L.levelW)                      -- an order's alone: short of its level
     f.name:SetJustifyH("LEFT")
     f.name:SetWordWrap(false)
-    f.info = f:CreateFontString(nil, "ARTWORK")
-    Ink(f.info, FADED, TEXT_FONT, 11)
-    f.info:SetPoint("TOPLEFT", f.name, "BOTTOMLEFT", 0, -3)
     f.body = f:CreateFontString(nil, "ARTWORK")
     Ink(f.body, INK, TEXT_FONT, 13)
     f.body:SetWidth(textW)
@@ -1544,9 +1585,11 @@ local function BuildLetter()
     end)
     f.slam = slam
 
-    -- The foot: a faint rule, Read all on the left, the pile in the middle, Close on the right. Close stays as
-    -- well as the X: "X oppe i høyre funker ikke så bra" (the owner, 2026-11-07), and it was Later once, which
-    -- kept the letter unread and brought the notice straight back ("burde være lukk isteden?", 2026-11-08).
+    -- The foot: a faint rule, Read all on the left, the pile in the middle, Close on the right. Close is the one
+    -- way out (and Escape): "X oppe i høyre funker ikke så bra" (the owner, 2026-11-07), and the cross went when
+    -- it was "vi trenger ikke to close. men close button ser bedre ut der den er enn X button" (2026-11-19).
+    -- Close was Later once, which kept the letter unread and brought the notice back ("burde være lukk
+    -- isteden?", 2026-11-08).
     f.rule = f:CreateTexture(nil, "ARTWORK")
     f.rule:SetHeight(1)
     f.rule:SetPoint("BOTTOMLEFT", L.edge - 6, L.ruleY)
@@ -1564,17 +1607,12 @@ local function BuildLetter()
     close:SetScript("OnClick", function() GK.CloseLetters() end)
     f.closeButton = close
     f.pile = BuildPile(f)
-    -- And the ledger's iron cross in the corner, as on the post sheet.
-    f.x = GK.MakeCloseButton(f, 20, function() GK.CloseLetters() end, 14)
-    f.x:SetPoint("TOPRIGHT", -14, -14)
-    f.x:SetFrameLevel(f:GetFrameLevel() + 12)
 
-    -- Arrives with a small drop and a fade, nothing more; turning to the next letter only turns the page.
+    -- Arrives with a fade, nothing more; turning to the next letter only turns the page. A fade alone: it
+    -- dropped 8 into place as well, but a Translation's offset goes when the animation ends,
+    -- so the sheet slid down and then jumped back up - "de åpnes og så snapper de typ, 10 px opp nesten med en
+    -- gang" (the owner, 2026-11-18).
     local arrive = f:CreateAnimationGroup()
-    local drop = arrive:CreateAnimation("Translation")
-    drop:SetOffset(0, -8)
-    drop:SetDuration(0.18)
-    drop:SetSmoothing("OUT")
     local fadeIn = arrive:CreateAnimation("Alpha")
     fadeIn:SetFromAlpha(0)
     fadeIn:SetToAlpha(1)
@@ -1584,6 +1622,17 @@ local function BuildLetter()
     f:Hide()
     -- where it stood, if it was moved (a key of its own: the iron frame's place was for a frame twice its size)
     if LIB.RegisterWindow then LIB.RegisterWindow(f, GK.db, "letter") end
+    -- Nothing is drawn again under the mouse while it is dragged: what changed meanwhile waits for it to be
+    -- let go. The letter was filled again on every change the guild sent, as it moved: "det er noe rart med
+    -- texten når jeg drar vinduet rundt, det flickerer" (the owner, 2026-11-18).
+    f:HookScript("OnDragStart", function(self) self.dragging = true end)
+    f:HookScript("OnDragStop", function(self)
+        self.dragging = false
+        if self.stale then
+            self.stale = false
+            GK.Changed()                          -- the open letter is filled again (StartLetters)
+        end
+    end)
     -- RegisterWindow owns OnShow/OnHide; ours only ever hooks.
     f:HookScript("OnHide", Closed)
     win = f
@@ -1599,20 +1648,34 @@ local function FillLetter(L)
     -- fills the line at the size "KILL ORDER" wants). A note's has nothing under it: large, and in the middle
     -- of the portrait beside it, where it hung small at the top with the room under it empty.
     local headX = lay.faceX + lay.face + 12
+    local headW = lay.w - headX - lay.right
     f.title:ClearAllPoints()
+    f.title:SetWidth(order and headW - lay.levelW or headW)
     if order then
         Ink(f.title, BLOOD, TITLE_FONT, #d.title > 11 and lay.titleLong or lay.title)
         f.title:SetPoint("TOPLEFT", f, "TOPLEFT", headX, -lay.headY)
     else
         Ink(f.title, BLOOD, TITLE_FONT, #d.title > 16 and lay.noteLong or lay.note)
-        f.title:SetPoint("LEFT", f, "TOPLEFT", headX, -(lay.faceY + lay.face / 2))
     end
     f.title:SetText(d.title)
+    if not order then
+        -- in the middle of the portrait by its top edge, on a whole pixel: by its own middle a title of an
+        -- odd height stood on a half pixel, and a half pixel can round either way as the sheet is dragged
+        local h = f.title:GetStringHeight() or lay.note
+        f.title:SetPoint("TOPLEFT", f, "TOPLEFT", headX, -(lay.faceY + math.floor((lay.face - h) / 2 + 0.5)))
+    end
 
     -- the head: whom an order is about, and its bounty; on a note, the Grudgekeeper with their class on his
     -- shoulder
     f.name:SetShown(order)
-    f.info:SetShown(order)
+    -- the level, on the right of an order's head; none when we never saw it
+    local lvl = order and tonumber(L.l) or nil
+    f.level:SetText(lvl == -1 and "??" or lvl and tostring(math.floor(lvl)) or "")
+    f.level:SetShown(lvl ~= nil)
+    f.levelCap:SetShown(lvl ~= nil)
+    -- the face opens the order in the ledger, while we still have it; a sample's opens nothing
+    f.faceOrder = order and not L.sample and L.o or nil
+    f.faceButton:SetShown(f.faceOrder ~= nil)
     f.disc:SetShown(not order)
     f.portrait:SetShown(not order)
     local coords = not order and L.c and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[L.c]
@@ -1630,14 +1693,13 @@ local function FillLetter(L)
         f.face:SetShown(true)                       -- its ring as well: Set shows the face alone
         f.face:Set({ key = L.n, c = L.c, rf = L.rf, sx = L.sx })
         f.name:SetText(d.name or "")
-        f.info:SetText(d.info or "")
     else
         f.face:SetShown(false)
     end
     if b then
         -- one line under who they are: the gold first, or the order's own words where there is none
-        Ink(f.goldCap, gold and INK or BLOOD, TEXT_FONT, 11)
-        f.goldCap:SetPoint("TOPLEFT", f.info, "BOTTOMLEFT", 0, -3)
+        Ink(f.goldCap, gold and INK or BLOOD, TEXT_FONT, lay.bounty)
+        f.goldCap:SetPoint("TOPLEFT", f.name, "BOTTOMLEFT", 0, -lay.bountyGap)
         f.goldCap:SetText(gold and (GK.Coins(b.copper) .. " bounty" .. ((b.from or 0) > 1
             and (" - from %d guildies"):format(b.from) or "")) or "No bounty - for the guild's honour")
     end
@@ -1646,19 +1708,15 @@ local function FillLetter(L)
     -- the head beside the face, the words under whichever ends lower
     local top = lay.headY + (f.title:GetStringHeight() or lay.title)
     if order then
-        top = top + 4 + (f.name:GetStringHeight() or lay.name) + 3 + (f.info:GetStringHeight() or 11)
-            + (b and 3 + (f.goldCap:GetStringHeight() or 11) or 0)
+        top = top + lay.nameGap + (f.name:GetStringHeight() or lay.name)
+            + (b and lay.bountyGap + (f.goldCap:GetStringHeight() or lay.bounty) or 0)
     end
-    top = math.max(top, lay.faceY + lay.face) + 10
+    top = math.floor(math.max(top, lay.faceY + lay.face) + 10 + 0.5)      -- a whole pixel (see the title)
     f.body:ClearAllPoints()
     f.body:SetPoint("TOPLEFT", f, "TOPLEFT", lay.textX, -top)
-    -- what the letter asks of you, and on an order the way to it in the ledger, which closes the letter: two
-    -- windows on one order is one too many
+    -- what the letter asks of you (the way to an order in the ledger is its face)
     local specs = {}
     for _, spec in ipairs(d.buttons or {}) do specs[#specs + 1] = spec end
-    if order and L.o then
-        specs[#specs + 1] = { "Open in the ledger", function() GK.OpenOrder(L.o) end, away = true }
-    end
     -- the room down to the seal over the signature, at the sheet's most; then the sheet as tall as its words
     local buttonsH = #specs > 0 and (LETTER_BUTTON_H + BUTTON_GAP) or 0
     local room = lay.maxH - lay.signY - lay.sealRoom - 6 - buttonsH - top
@@ -1679,11 +1737,6 @@ local function FillLetter(L)
             x = x + btn.w + 8
             Pressable(btn, not L.sample)
             btn:SetScript("OnClick", function()
-                if spec.away then
-                    f:Hide()
-                    spec[2]()
-                    return
-                end
                 spec[2]()
                 if f:IsShown() and GK.char.letters[index] == L then FillLetter(L) end
             end)
@@ -1806,6 +1859,8 @@ function GK.StartLetters(fresh)
     -- An open letter follows changes to its order (taken, paid, closed), and its pile a letter landing.
     LIB.Listen("GRUDGEKEEPER_CHANGED", function()
         local L = index and GK.char.letters[index]
-        if L and win and win:IsShown() then FillLetter(L) end
+        if not (L and win and win:IsShown()) then return end
+        if win.dragging then win.stale = true return end   -- when it is let go (BuildLetter)
+        FillLetter(L)
     end)
 end

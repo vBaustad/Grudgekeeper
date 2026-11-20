@@ -7,7 +7,7 @@
 -- ("hvis du har en 'outstanding payment' burde det poppe opp noe når du åpner mailbox ... og så kan vi
 -- registrere om det blir sendt penger til personen via mail eller trade", the owner, 2026-11-09.)
 local ADDON, GK = ...
-local LIB = LibStub("LibForever-1.0")
+local LIB = GK.Lib or LibStub("LibForever-1.0")      -- names by themselves (Core.lua, GK.Lib)
 
 local W, ROW_H, ROWS_TOP, MAX_ROWS = 320, 44, 34, 5
 local SEND_WINDOW = 60      -- seconds from Send to the game's word that the letter went

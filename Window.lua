@@ -14,7 +14,7 @@
 -- The art: Media/sheet_wide and sheet_single (the parchment), rank_1..3 (the top three's seals),
 -- portrait_ring.
 local ADDON, GK = ...
-local LIB = LibStub("LibForever-1.0")
+local LIB = GK.Lib or LibStub("LibForever-1.0")      -- names by themselves (Core.lua, GK.Lib)
 
 local MEDIA = "Interface\\AddOns\\Grudgekeeper\\Media\\"
 local TITLE_FONT = "Fonts\\MORPHEUS.ttf"
@@ -44,7 +44,8 @@ local OPEN = { W = 2 * FX + 2 * PAGE_W + FGAP, H = FY + PAGE_H + FB, x = FX, y =
 OPEN.x2 = FX + PAGE_W + FGAP                         -- where the right-hand page starts
 local FOLDED = { W = 2 * FX + PAGE_W, H = OPEN.H, x = FX, y = FY, x2 = FX }               -- 408 x 544
 -- Rows of 38 with a faint stripe on every other one, as previewed (2026-11-06): 32 with a ruled line under
--- each read as a column of text. Nine fit between the headings and the foot, where Letters and Settings are.
+-- each read as a column of text. Nine fit between the headings and the page arrows at the foot; a page with no
+-- heading row has room for ten (ListFrame).
 local ROW_H, ROWS = 38, 9
 local FACE = 30                                      -- a row's portrait; 26 blended into the page
 -- Where a row's name starts: after its face, and on the leaderboard after its rank as well. Every page
@@ -56,14 +57,18 @@ local NAME_X, NAME_X_RANKED = 44, 74
 local TIP_GAP = 28
 local LIST_TOP = 96                                  -- the first row, down from the page's top
 local TAB_INK_Y, TAB_INK_GAP = 40, 16                -- the ink tabs under the title: how far down, and apart
--- The rows of the kill orders page, which has nothing between its title and its list and so room for a
--- row more than the others (ListFrame, which a test holds this to).
-local ORDER_ROWS = ROWS + 1
+-- The foot of a list: its rows stop over the page arrows (page.count, 16 up, the arrows round it), all that
+-- stands there since Letters and Settings went to the title bar (2026-11-18). A page fits as many rows as reach
+-- it. Until 2026-11-20 only the kill orders page had a tenth, by the foot the buttons had kept, and Grudges and
+-- You ended with a row's room empty ("det er plass til en linje til at least? ... det er veldig tomt nederst",
+-- the owner).
+local LIST_FOOT = PAGE_H - 34
+local MAX_ROWS = math.floor((LIST_FOOT - (LIST_TOP - 46)) / ROW_H)    -- the most any page fits: no line, no headings
 -- the right-hand column stops short of the row's end: folded, room for the » that says a click turns
 -- the page (they ran into each other in the preview)
 local COL1, COL2, COL_WIDE, COL_RIGHT = 232, 266, 196, PAGE_W - 36
 -- A word under the first count (Most wanted's "2 days ago" under how often they killed us): the count
--- stands C1_LIFT higher, the word C1_UNDER under the row's middle, as a grudge's "they lead" under its
+-- stands C1_LIFT higher, the word C1_UNDER under the row's middle, as a grudge's "owed 3" under its
 -- score. The line under the name stops C1_UNDER_W short of the column's middle: half of "38 days ago" in
 -- that type and a gap. Worked out from the type's size, not measured in the game.
 local C1_LIFT, C1_UNDER, C1_UNDER_W = 5, 10, 36
@@ -126,7 +131,8 @@ local SWAP_ICON = { Friends = ICONS .. "INV_Misc_GroupNeedMore", Enemies = MEDIA
 --- Where a page's list starts, down from the page's top, and how many rows of it fit over the foot. Under
 --- the heading row; without one, where the headings would be (the Grudges page's list "trenger ikke bli
 --- dytta så langt inn", the owner, 2026-11-07); and with no line under the title either - no sub, no
---- links - right under the title, where a tenth row fits. The kill orders page is that one: its line said
+--- links - right under the title. Rows to the foot (LIST_FOOT): nine under a heading row, ten without one. The
+--- kill orders page has neither line nor headings: its line said
 --- how many orders are open and your points and place, its headings sorted a list that is in order, and
 --- with Only mine they were "dead space med ting som ikke trengs og bare tar opp plass" (the owner,
 --- 2026-11-14).
@@ -148,8 +154,7 @@ local function ListFrame(def, line)
         top = top - 30
         if not line then top = top - 16 end
     end
-    local tenth = top + (ROWS + 1) * ROW_H <= LIST_TOP + ROWS * ROW_H
-    return top, tenth and ROWS + 1 or ROWS
+    return top, math.floor((LIST_FOOT - top) / ROW_H)
 end
 
 --- Where each page of a list starts (0-based offsets into it): perPage rows a page (ROWS, where a page does
@@ -424,31 +429,30 @@ local function WantedItems()
     return items, "Nobody has killed the guild yet - not that the Grudgekeeper heard of."
 end
 
--- How your grudges are ordered: the word at the right of their heading, clicked, goes to the next. The
--- page has no heading row to sort by - it stood over the page's own big headings (the owner, 2026-11-07).
-local GRUDGE_ORDERS = { { "fought", "most fought first" }, { "recent", "latest first" }, { "name", "A to Z" } }
-local grudgeOrder = 1
+-- Grudges is one list since 2026-11-20, in a fixed order: who you track first, an eye on their face, even at
+-- 0 - 0; then who leads over you, the most owed first; then, under a faint line, who stands even, and who you
+-- lead, the closest to catching you first. "det er liksom folk som dreper deg som du vil ha på notification
+-- ... folk du har møtt og folk som er 0-0 osv er ikke så spennende" (the owner), drawn first
+-- (art/mockups/grudges) and built to it. It had a Tracked section with Your grudges under it, in an order
+-- picked by a word at the heading's right (most fought, latest, A to Z), and a row for an enemy you had only
+-- helped kill.
 
---- The order the Grudges page is in now, by its word: "fought", "recent" or "name".
-function GK.GrudgeOrder() return GRUDGE_ORDERS[grudgeOrder][1] end
+--- Who leads, and by how much: above 0 they lead over you, by what it takes to stand even ("owed 3").
+local function Owed(f) return (f.d or 0) - (f.k or 0) end
 
---- The Tracked section at the top of Grudges: the enemies you keep an eye on (Sightings.lua, GK.Track),
---- whoever was seen latest first - a warning names them, and here is where to find them after it.
+--- The ones you track (Sightings.lua, GK.Track), whoever was seen latest first - a warning names them, and
+--- here is where to find them after it.
 local function TrackedItems(items, c)
     local tracked = {}
     for key, t in pairs(c.tracked or {}) do
         tracked[#tracked + 1] = { key = key, t = t, s = GK.Seen and GK.Seen(key), name = GK.Show(key) }
     end
-    if #tracked == 0 then return end
     table.sort(tracked, function(a, b)
         local x, y = a.s and a.s.t or -1, b.s and b.s.t or -1
         if x ~= y then return x > y end
         if a.name:lower() ~= b.name:lower() then return a.name:lower() < b.name:lower() end
         return a.key < b.key
     end)
-    items[#items + 1] = { header = true, name = "Tracked", order = "track someone",
-        clickTip = "Track an enemy: a warning when they are near, and an eye over their plate",
-        click = function() GK.OpenPicker("track") end }
     local clock, wall = GetTime(), time()
     for _, e in ipairs(tracked) do
         local f = c.foes[e.key]
@@ -461,9 +465,9 @@ local function TrackedItems(items, c)
             sub = "tracked since " .. GK.Ago(e.t.t)
         end
         local look = f or e.t
-        local you, they = f and (f.k or 0), f and (f.d or 0)
+        local you, they = f and (f.k or 0) or 0, f and (f.d or 0) or 0
         items[#items + 1] = { key = "t:" .. e.key, name = e.name, class = look.c, face = { key = e.key, c = look.c },
-            desc = Short(look.l, look.c, look.r), sub = sub, score = f and { you, they } or nil,
+            desc = Short(look.l, look.c, look.r), sub = sub, score = { you, they }, eye = true,
             select = PosterSpec(e.key, look), you = you, they = they, ts = f and f.last or e.t.t, own = true }
     end
 end
@@ -503,36 +507,27 @@ local function GrudgeItems()
         if e.n and not lastOf[e.n] then lastOf[e.n] = e end
     end
     local foes = {}
-    -- not one you track: Tracked above has them, with the same score (one row each, 2026-11-16)
+    -- not one you track: they are at the top already, with the same score (one row each, 2026-11-16); and
+    -- not one you only helped kill - the score is kills against deaths, and 0 - 0 says nothing
     local tracked = c.tracked or {}
     for k, v in pairs(c.foes) do
-        if (v.k or 0) + (v.d or 0) + (v.a or 0) > 0 and not tracked[k] then
-            foes[#foes + 1] = { key = k, f = v, name = GK.Show(k) }
+        if (v.k or 0) + (v.d or 0) > 0 and not tracked[k] then
+            foes[#foes + 1] = { key = k, f = v, name = GK.Show(k), owed = Owed(v) }
         end
     end
-    local how = GRUDGE_ORDERS[grudgeOrder][1]
-    local function Before(a, b, by)
-        if by == "recent" then
-            if (a.f.last or 0) ~= (b.f.last or 0) then return (a.f.last or 0) > (b.f.last or 0) end
-        elseif by == "fought" then
-            local x = (a.f.k or 0) + (a.f.d or 0) + (a.f.a or 0)
-            local y = (b.f.k or 0) + (b.f.d or 0) + (b.f.a or 0)
-            if x ~= y then return x > y end
-        end
+    -- who leads over you, the most owed first; then even; then who you lead, the smallest lead first. Within
+    -- each, the latest met first.
+    table.sort(foes, function(a, b)
+        local x, y = a.owed, b.owed
+        if (x > 0) ~= (y > 0) then return x > 0 end
+        if x > 0 and x ~= y then return x > y end
+        if x <= 0 and y <= 0 and x ~= y then return x > y end
+        if (a.f.last or 0) ~= (b.f.last or 0) then return (a.f.last or 0) > (b.f.last or 0) end
         if a.name:lower() ~= b.name:lower() then return a.name:lower() < b.name:lower() end
         return a.key < b.key
-    end
-    -- LIST_MAX of them, the first by the order chosen; A to Z the latest met, put in that order - the
-    -- first names of the alphabet would say nothing about who matters
-    table.sort(foes, function(a, b) return Before(a, b, how == "name" and "recent" or how) end)
+    end)
     for i = #foes, LIST_MAX + 1, -1 do foes[i] = nil end
-    if how == "name" then table.sort(foes, function(a, b) return Before(a, b, "name") end) end
-    if #foes > 0 then
-        local nextOrder = GRUDGE_ORDERS[grudgeOrder % #GRUDGE_ORDERS + 1]
-        items[#items + 1] = { header = true, name = "Your grudges", order = GRUDGE_ORDERS[grudgeOrder][2],
-            clickTip = "Click: " .. nextOrder[2],
-            click = function() grudgeOrder = grudgeOrder % #GRUDGE_ORDERS + 1 end }
-    end
+    local lined = false
     for i = 1, #foes do
         local e = foes[i]
         local you, they = e.f.k or 0, e.f.d or 0
@@ -547,8 +542,14 @@ local function GrudgeItems()
         end
         -- the score is kills against deaths; assists go first under the name, where they aren't cut
         if (e.f.a or 0) > 0 then sub = Plural(e.f.a, "assist") .. " \194\183 " .. sub end
+        -- the faint line over the first who does not lead over you, where anything stands above it
+        local rule = nil
+        if not lined and e.owed <= 0 then
+            lined = true
+            rule = #items > 0 or nil
+        end
         items[#items + 1] = { key = "f:" .. e.key, name = e.name, class = e.f.c, face = { key = e.key, c = e.f.c },
-            desc = Short(e.f.l, e.f.c, e.f.r), sub = sub, score = { you, they },
+            desc = Short(e.f.l, e.f.c, e.f.r), sub = sub, score = { you, they }, rule = rule,
             select = PosterSpec(e.key, e.f), you = you, they = they, ts = e.f.last, own = true }
     end
     -- Your log is the You page's: it stood here under Lately as well, the same 25 rows twice (2026-11-16).
@@ -865,11 +866,11 @@ GK.LedgerPages = {
           return { { text = "Killed us most", on = wantedView ~= "marked", click = function() wantedView = "killed" end },
                    { text = "Marked", on = wantedView == "marked", click = function() wantedView = "marked" end } }
       end },
-    -- no heading row: each grudge says its own score, and the order is a word on the section's line
+    -- no heading row: each grudge says its own score, in an order of its own (GrudgeItems)
     { name = "Grudges", items = GrudgeItems, headings = {}, icon = ICONS .. "Ability_DualWield",
       add = { text = "Track someone", kind = "track" },
       sub = function() return "Who you have a history with" end,       -- not everyone: LIST_MAX of them
-      -- its first row, the top of Tracked where you track anyone; your own record only on a page with none
+      -- its first row, the first you track where you track anyone; your own record only on a page with none
       default = function(items)
           for _, it in ipairs(items) do
               if not it.header then return nil end
@@ -1112,6 +1113,13 @@ local function BuildRow(parent, i)
     row.rank:SetPoint("CENTER", row.seal, "CENTER", 0, 0)
     row.face = MakePortrait(row, FACE)
     row.face.tex:SetPoint("CENTER", row, "LEFT", NAME_X - 19, 0)        -- FillRow moves it for a rank
+    -- the eye of one you track, on the face's lower left: the class crest has the lower right. 22 across: at 16
+    -- it "kunne vært litt større" (the owner, 2026-11-20)
+    row.eye = row:CreateTexture(nil, "OVERLAY", nil, 3)
+    row.eye:SetTexture(MEDIA .. "eye")
+    row.eye:SetSize(22, 22)
+    row.eye:SetPoint("CENTER", row.face.tex, "BOTTOMLEFT", 3, 3)
+    row.eye:Hide()
     row.name = row:CreateFontString(nil, "ARTWORK")
     -- the name in the game's plain type: Morpheus' small capitals at this size were "litt vanskelig å
     -- lese" in a list (the owner, 2026-11-06); the titles over the lists and on the card keep it
@@ -1252,6 +1260,7 @@ local function FillRow(row, it, chosen)
         row.seal:Hide()
         row.rank:SetText("")
         row.face:SetShown(false)
+        row.eye:Hide()
         row.mark:Hide()
         row.open:Hide()
         row.rule:Show()
@@ -1275,11 +1284,12 @@ local function FillRow(row, it, chosen)
         local mine = you > they and Hex(LEAD_YOU) or (you > 0 and you == they and tie or dim)
         local theirs = they > you and Hex(BLOOD) or (they > 0 and you == they and tie or dim)
         row.score:SetText(("|cff%s%d|r |cff%s-|r |cff%s%d|r"):format(mine, you, dim, theirs, they))
+        -- by how much: "owed 3" is what it takes to stand even with them again (2026-11-20)
         if you > they then
-            row.lead:SetText("you lead")
+            row.lead:SetText(("you lead %d"):format(you - they))
             row.lead:SetTextColor(LEAD_YOU[1], LEAD_YOU[2], LEAD_YOU[3])
         elseif they > you then
-            row.lead:SetText("they lead")
+            row.lead:SetText(("owed %d"):format(they - you))
             row.lead:SetTextColor(BLOOD[1], BLOOD[2], BLOOD[3])
         else
             row.lead:SetText("even")
@@ -1300,8 +1310,9 @@ local function FillRow(row, it, chosen)
     -- The name runs to whichever column is there. Before a right-hand number it stops at that number's
     -- own width, not a fixed 70 kept for "12g 34s": a "+2" in the news cut "Seedkek One" to "Seedke..."
     -- with half the row empty (2026-11-05), and a long sum ran past the fixed stop into the name. Before
-    -- a score, short of its "they lead", the widest thing under it.
-    local stop = (it.score and SCORE_X - 32) or (it.c3 and BOARD_K - 20) or (it.c1 and COL1 - 20) or (it.wide and COL_WIDE - 8)
+    -- a score, short of the word under it ("owed 3", "you lead 12"), the widest thing there.
+    local scoreStop = it.score and SCORE_X - math.max(32, math.ceil(TextWidth(row.lead) / 2) + 8)
+    local stop = scoreStop or (it.c3 and BOARD_K - 20) or (it.c1 and COL1 - 20) or (it.wide and COL_WIDE - 8)
         or (it.right and COL_RIGHT - 4 - row.right:GetStringWidth() - 12) or (PAGE_W - 24)
     local room = stop - x0
     -- A line too long for its room steps down a size, then says its short form (first names only, where
@@ -1344,6 +1355,7 @@ local function FillRow(row, it, chosen)
     row.rank:SetText(it.rank and tostring(it.rank) or "")
     row.face:SetShown(true)
     row.face:Set(it.face or {})
+    row.eye:SetShown(it.eye == true)
     -- with a third count (the leaderboard) the first two move closer, to make it room
     row.c1:ClearAllPoints()
     row.c1:SetPoint("CENTER", row, "LEFT", (it.c3 and BOARD_K or COL1) - 4, it.c1under and C1_LIFT or 0)
@@ -1536,7 +1548,7 @@ local function BuildList(page)
     underline:SetPoint("TOPRIGHT", -8, -(LIST_TOP - 4))
     page.underline = underline                         -- a page with no heading row has no line under it
     page.rows = {}
-    for i = 1, ROWS + 1 do page.rows[i] = BuildRow(page, i) end        -- one more than most pages show (ListFrame)
+    for i = 1, MAX_ROWS do page.rows[i] = BuildRow(page, i) end        -- as many as any page shows (ListFrame)
     page.empty = page:CreateFontString(nil, "ARTWORK")
     Ink(page.empty, FADED, TEXT_FONT, 12)
     page.empty:SetPoint("TOPLEFT", 12, -(LIST_TOP + 12))
@@ -1838,9 +1850,14 @@ local function BuildDetail(page, L)
     page.name = page:CreateFontString(nil, "ARTWORK")
     Ink(page.name, INK, TITLE_FONT, 15)
     page.name:SetPoint("TOPLEFT", page.title, "BOTTOMLEFT", 0, -4)
+    page.name:SetJustifyH("LEFT")
+    page.name:SetWordWrap(false)
     page.info = page:CreateFontString(nil, "ARTWORK")
     Ink(page.info, FADED, TEXT_FONT, 11)
     page.info:SetPoint("TOPLEFT", page.name, "BOTTOMLEFT", 0, -3)
+    page.info:SetJustifyH("LEFT")
+    page.info:SetWordWrap(true)
+    page.info:SetMaxLines(2)                       -- two at most: there is room for them over the tiles
     -- A page with room for the rich card: the small red line over the name, the number on a rank's wax
     -- seal, and the pools FillRich draws the rest from.
     if L.rich then
@@ -1926,7 +1943,12 @@ local function FillDetail(page, d, anyRows)
         size = size - 1
         Ink(page.title, BLOOD, TITLE_FONT, size)
     end
+    -- The name and what they are stop short of the seal as the title does: "Level 59 Windshaper Skyborne Warrior"
+    -- ran under a kill order's seal ("overlapp på texten her", the owner's screenshot, 2026-11-20). The line
+    -- under the name goes on to a second line where it is long.
+    page.name:SetWidth(room)
     page.name:SetText(sub)
+    page.info:SetWidth(room)
     -- what they are right under the name when nothing stands between (a poster's enemy who is no nemesis)
     page.info:ClearAllPoints()
     page.info:SetPoint("TOPLEFT", sub ~= "" and page.name or page.title, "BOTTOMLEFT", 0, -3)
@@ -2001,6 +2023,17 @@ function GK.BuildCardPage(page, layout, refill)
 end
 
 function GK.FillCardPage(page, d) FillDetail(page, d, false) end
+
+--- The ledger's own card at the ledger's size, on a page of someone else's: the profile window (Profile.lua),
+--- which shows a player as the ledger's right page does. Filled with GK.FillCardPage.
+function GK.BuildLedgerCard(page, refill)
+    BuildDetail(page, DETAIL)
+    page.back:Hide()
+    page.refill = refill
+end
+
+--- The card a spec opens, as GK.ShowInLedger makes it: nil when there is nothing to show of it.
+function GK.CardForSpec(spec) return DetailCard(spec) end
 
 --- The parchment's tone (see Tone), for a page of ours drawn elsewhere.
 GK.Tone = function(tex, r, g, b) Tone(tex, r, g, b) end

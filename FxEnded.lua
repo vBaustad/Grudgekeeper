@@ -79,6 +79,74 @@ function ended.update(splash, age, P)
 end
 
 -- ---------------------------------------------------------------------------
+-- E1 at a toast's size: the cracked seal bursting into its six shards in the toast's 64 px seal. As a toast -
+-- which is how your own spree's end comes out of the box - there was no effect, only the broken seal: "lag
+-- toast versjon" (the owner, 2026-11-20). The splash's numbers times K. Once the shards have fallen nothing is
+-- left of it, as on the splash: the toast's own broken stamp is another drawing, and it does not show.
+-- ---------------------------------------------------------------------------
+local TOAST_SEAL = 64
+local K = TOAST_SEAL / 170             -- the toast's seal against the splash's
+
+GK.TOASTFX = GK.TOASTFX or {}
+local endedToast = { cues = { { 0, "endpulse" }, { B, "endshatter" } } }
+GK.TOASTFX.ended_shatter = endedToast
+
+function endedToast.build(toast, P)
+    toast.fxOrigin = { point = "TOPLEFT", x = 32, y = -32 }      -- the toast's seal's centre (FxToast.lua)
+    local r = P.rng(11)
+    local s = {}
+    s.whole = P.Tex(toast, "fx_shatter_whole", "ARTWORK", 1)
+    s.bright = P.Tex(toast, "fx_shatter_whole", "ARTWORK", 2, true)
+    s.shards = {}
+    for i, sh in ipairs(SHARDS) do
+        s.shards[i] = { n = P.Tex(toast, "fx_shard_" .. i, "ARTWORK", 4), x0 = sh[1] * K, y0 = sh[2] * K,
+            rot = sh[3], vx = (sh[1] * (3 + r() * 2) + (r() - .5) * 80) * K,
+            vy = (sh[2] * 2.2 - 160 - r() * 120) * K, spin = (r() - .5) * 6 }
+    end
+    s.chips = P.Burst(toast, 14, { t0 = B, speed = 380 * K, life = 0.9, size = 5, gravity = 700 * K,
+        file = "spree_spark" })
+    toast.endedFx = s
+end
+
+function endedToast.update(toast, age, P)
+    local s = toast.endedFx
+    local pulse = 0
+    if age < B then
+        for i, h in ipairs({ .07, .67 }) do
+            if age >= h then pulse = math.max(pulse, (i == 2 and 1 or .55) * math.exp(-(age - h) * 7)) end
+        end
+    end
+    local whole = { w = TOAST_SEAL * 1.15, h = TOAST_SEAL * 1.15, a = 0 }
+    if age < B then
+        whole.a = P.prog(age, 0, .15)
+        whole.s = 1 + pulse * .03 + (age / B) * .04
+        if age > B - .3 then whole.x = (math.random() - .5) * 2 end
+    end
+    P.Set(toast, s.whole, whole)
+    local bright = {}
+    for k, v in pairs(whole) do bright[k] = v end
+    bright.a = whole.a * pulse * .5
+    P.Set(toast, s.bright, bright)
+    for _, sh in ipairs(s.shards) do
+        local d = age - B
+        if d < 0 then
+            sh.n:Hide()
+        else
+            P.Set(toast, sh.n, { w = 92 * K, h = 92 * K, x = sh.x0 + sh.vx * d, y = sh.y0 + sh.vy * d + 650 * K * d * d,
+                r = sh.rot + sh.spin * d, a = math.max(0, 1 - d * .8) })
+        end
+    end
+    s.chips(age)
+    -- only the seal that shatters, as on the splash: the toast's own stamp never shows. It settled after the burst,
+    -- another drawing beside the shards ("vi skal ikke ha stempelet, kun det som knuses", the owner, 2026-11-20).
+    -- The line is there from the start and greys as the seal bursts: a toast's words are what it says, and they
+    -- came only after the shatter ("viser den splash animasjonen først uten text og så kommer text")
+    toast.seal:Hide()
+    local grey = P.prog(age, B, .4)
+    toast.line:SetTextColor(P.lerp(1, GREY[1], grey), P.lerp(1, GREY[2], grey), P.lerp(1, GREY[3], grey), 1)
+end
+
+-- ---------------------------------------------------------------------------
 -- T3: the black seal, and a PAID stamp slammed onto it at an angle
 -- ---------------------------------------------------------------------------
 local H = 0.45                         -- when the stamp lands

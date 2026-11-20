@@ -56,7 +56,7 @@
 -- lines and 20 backers per order (a share passed on, P, counts against the same 20). Every sender is
 -- also held to LibForever's 30 messages / 10 s.
 local ADDON, GK = ...
-local LIB = LibStub("LibForever-1.0")
+local LIB = GK.Lib or LibStub("LibForever-1.0")      -- names by themselves (Core.lua, GK.Lib)
 
 local PREFIX = "Grudgekeeper"
 GK.PREFIX = PREFIX
@@ -847,7 +847,7 @@ function GK.Fulfil(o, zone)
     -- and told as it happens, as a guildie's is (Announce.lua): the hunter had the letter alone, which waits
     -- for the fight to end, and nothing on the screen ("dukker det opp en splash eller noe?", the owner,
     -- 2026-11-16). Yours (mine = true): a splash.
-    LIB.Fire("GK_ORDER_DONE", me, o.helpers, o.n, (GK.Pot(o)), true)
+    LIB.Fire("GK_ORDER_DONE", me, o.helpers, o.n, (GK.Pot(o)), true, o.c)
 end
 
 --- One line in guild chat, for the guildies who don't run Grudgekeeper. Chat sent as the player, so:
@@ -944,9 +944,11 @@ local function SendBoardNow()
     local w, c = GK.Week(), GK.char
     local nemesis, f = GK.Nemesis()
     local _, raceFile = UnitRace("player")
-    Send(Msg("B", PROTO, c.points, c.kills, c.deaths, UnitLevel("player"), class,
+    local text = Msg("B", PROTO, c.points, c.kills, c.deaths, UnitLevel("player"), class,
         w.p, w.k, w.d, w.id, c.streak or 0, c.bestStreak or 0, c.done or 0, c.won or 0,
-        nemesis, f and f.d or nil, raceFile, UnitSex("player"), c.assists or 0, w.a or 0, GK.MyPartsText()))
+        nemesis, f and f.d or nil, raceFile, UnitSex("player"), c.assists or 0, w.a or 0, GK.MyPartsText())
+    Send(text)
+    GK.StoreOwnRow(text)
 end
 
 --- Our row, a moment after the last change - or at once (now), as the login's does, ahead of its Q.
@@ -977,13 +979,17 @@ function GK.NoteSlain(killer, key, c, r, l, times)
     if e.by[killer] or Count(e.by) < MAX_SLAYERS then e.by[killer] = times end
 end
 
-function GK.SendKill(v, zone, points, avenged, times, spree)
+--- Our kill, to the guild. revenge: they had killed us since we last got them (Kills.lua), and deaths how
+--- often they have killed us: fields 14 and 15 since 2026-11-20, for a guildie's Revenge (GK_REVENGE). An
+--- older client sends neither, and then there is no Revenge to tell.
+function GK.SendKill(v, zone, points, avenged, times, spree, revenge, deaths)
     local me = LIB.Me()
     AddFeed({ t = time(), who = me, kind = "K", n = v.key, c = v.c, l = v.l, p = points, z = zone, av = avenged })
     GK.NoteSlain(me, v.key, v.c, v.r, v.l, times)
     if not GK.db.share then return end
     local rf, sx = LookOf(v.key, v.rf, v.sx)
-    Send(Msg("K", PROTO, v.key, v.c, v.r, v.l, zone, points, avenged, times, rf, sx, spree))
+    Send(Msg("K", PROTO, v.key, v.c, v.r, v.l, zone, points, avenged, times, rf, sx, spree,
+        revenge and 1 or 0, deaths))
 end
 
 --- Our assist: the news only. The guild's tally of who killed whom stays with the killer's K.
@@ -1209,12 +1215,10 @@ end
 --- A guildie a relay names, in our spelling. Every guildie reaches us without a realm and is filed under
 --- ours (GK.LocalKey's note), so one we have not heard of yet is filed under ours too: else the order a
 --- relay brought and the one its poster sends later would be two.
+--- Since 2026-11-20 by name alone, whatever realm the writer gave it (GK.Lib): GK.PlayerKey.
 local function GuildieKey(full)
     if type(full) ~= "string" then return nil end
-    local k = GK.LocalKey(full)
-    if k ~= full then return k end
-    local name = full:match("^(.-)%-[^%-]+$") or full
-    return name .. "-" .. LIB.Realm()
+    return GK.PlayerKey(full)
 end
 
 --- A race's file token (letters only, as the client's are) and a sex the game knows (2 male, 3 female),
@@ -1287,6 +1291,7 @@ end
 -- happens: their B after it is the score that kill made. A B with no kill just before it - a login, a
 -- reload, a score we missed while away - is no rank up to tell: it may have been days ago.
 local scored = {}
+local scoredZone = {}             -- and the zone that K or A was in: the title's, for a guildie's only in my zone
 local RANKUP_WINDOW = 15          -- seconds from their K or A to the B it sends
 local MAX_SCORED = 200            -- one per guildie who scored since login, at most
 
@@ -1298,11 +1303,13 @@ local function RankedUp(sender, before, r)
     if not at or GetTime() - at > RANKUP_WINDOW then return end
     scored[sender] = nil                          -- told once, whatever B comes after
     local title = GK.Title(r.p)
-    if title ~= GK.Title(before) then LIB.Fire("GK_RANKUP", sender, title, r.p, false) end
+    if title ~= GK.Title(before) then LIB.Fire("GK_RANKUP", sender, title, r.p, false, scoredZone[sender]) end
 end
 
-local function Scored(sender)
-    if scored[sender] or Count(scored) < MAX_SCORED then scored[sender] = GetTime() end
+local function Scored(sender, zone)
+    if scored[sender] or Count(scored) < MAX_SCORED then
+        scored[sender], scoredZone[sender] = GetTime(), zone
+    end
 end
 
 --- A guildie's own B. With parts, they join the parts we have of their row and the row is the sum; a row we
@@ -1327,6 +1334,17 @@ local function OnBoard(sender, f)
     r.parts = set
     Total(r)
     RankedUp(sender, before, r)
+end
+
+--- Our own B, kept on the board as a guildie keeps it (OnBoard). The store is the account's, one for all our
+--- characters in the guild, and LibForever drops our own messages, so nothing ever wrote our own row: on an
+--- alt, the main stood as a copy a guildie had once passed on (R never writes over a row we have) - 24
+--- points from 7 November where the main's own record had 217 ("mainen min på all time leaderboard fælt
+--- langt nede uten poeng nesten?", the owner, on an alt, 2026-11-19). Now it is the main as last played.
+--- GK.Board leaves our own key out and makes that row from the record, so it is never there twice.
+function GK.StoreOwnRow(text)
+    local me = LIB.Me()
+    if me and type(text) == "string" then OnBoard(me, Split(text)) end
 end
 
 --- A guildie's row, passed on by another while they are away (R). Only a row we have none of: never over
@@ -1364,9 +1382,9 @@ local lastSpree = {}
 local function OnKill(sender, f)
     local name = GK.PlayerKey(GK.Clean(f[3], 64))
     if not name then return end
-    Scored(sender)                                -- their B after this may be a new title (RankedUp)
     local c, r, l = GK.ValidClass(f[4]), GK.Clean(f[5], 20), GK.ValidLevel(f[6])
     local zone = GK.Clean(f[7], 40)
+    Scored(sender, zone)                          -- their B after this may be a new title (RankedUp)
     AddFeed({ t = time(), who = sender, kind = "K", n = name, c = c, l = l,
         z = zone, p = Int(f[8], 0, 100), av = GK.LocalKey(GK.Clean(f[9], 64)) })
     GK.NoteSlain(sender, name, c, r, l, Int(f[10], 1, 1e6))
@@ -1379,21 +1397,27 @@ local function OnKill(sender, f)
         -- over on a death whose D we missed, and its milestones count again.
         local tier, key = GK.SpreeTier(spree)
         if tier and spree ~= before then
-            LIB.Fire("GK_SPREE", sender, spree, tier, false, key)
+            LIB.Fire("GK_SPREE", sender, spree, tier, false, key, zone)     -- where: a guildie's only in my zone
             GK.SpreeNews("S", sender, { key = name, c = c, l = l }, zone, spree, tier)
         end
     end
     local tormented = GK.TormentorEnded(name)
     if tormented then
-        LIB.Fire("GK_TORMENTOR", sender, GK.Show(name), tormented, false)
+        LIB.Fire("GK_TORMENTOR", sender, GK.Show(name), tormented, false, zone)
         GK.SpreeNews("M", sender, { key = name, c = c, l = l }, zone, tormented)
+    end
+    -- their Revenge: field 14 says it was one, 15 how often that enemy has killed them, 10 how often they
+    -- got that enemy (this kill too). Nothing from an older client, nor when a field does not read.
+    local times, deaths = Int(f[10], 1, 1e6), Int(f[15], 0, 1e6)
+    if f[14] == "1" and times and deaths then
+        LIB.Fire("GK_REVENGE", sender, GK.Show(name), times, deaths, false, name, c, zone)
     end
 end
 
 local function OnAssist(sender, f)
     local name = GK.PlayerKey(GK.Clean(f[3], 64))
     if not name then return end
-    Scored(sender)
+    Scored(sender, GK.Clean(f[7], 40))
     AddFeed({ t = time(), who = sender, kind = "H", n = name, c = GK.ValidClass(f[4]), l = GK.ValidLevel(f[6]),
         z = GK.Clean(f[7], 40), p = Int(f[8], 0, 100) })
 end
@@ -1412,7 +1436,7 @@ local function OnDeath(sender, f)
     local spree = lastSpree[sender]
     if spree then
         if spree >= GK.SPREE_MIN then
-            LIB.Fire("GK_SPREE_ENDED", sender, spree, GK.Show(name), false)
+            LIB.Fire("GK_SPREE_ENDED", sender, spree, GK.Show(name), false, zone)
             GK.SpreeNews("E", sender, { key = name, c = c, l = l }, zone, spree)
         end
         lastSpree[sender] = 0
@@ -1536,7 +1560,7 @@ local function OnFulfil(sender, f)
     -- for whatever tells it as it happens (Announce.lua). A guildie's, always: the F of our own kill finds
     -- the order closed already (GK.Fulfil), and so does one said a second time. Got with you there: yours
     -- too (mine), as it is on your profile below.
-    LIB.Fire("GK_ORDER_DONE", sender, o.helpers, o.n, (GK.Pot(o)), Helped(o) or nil)
+    LIB.Fire("GK_ORDER_DONE", sender, o.helpers, o.n, (GK.Pot(o)), Helped(o) or nil, o.c, o.doneZone)
     local me = LIB.Me()
     local share = (o.by == me and (o.reward or 0)) or (o.pot and o.pot[me]) or 0
     if o.by == me then SendOrder(o) end               -- the poster's word settles who was first
@@ -1622,9 +1646,7 @@ local function OnSighting(sender, f)
     o.seen = { by = sender, z = zone, t = time(), l = GK.ValidLevel(f[6]), m = m, x = x, y = y }
     GK.OrderLevel(o.n, o.guid, o.seen.l)           -- and the level they were seen at, on every order on them
     -- Everyone hears where: nobody takes an order, every guildie is the hunter (the owner, 2026-11-07).
-    if GK.db.alertNear then
-        GK.Warn(("%s saw %s%s"):format(GK.Show(sender), GK.Show(o.n), zone and (" in " .. zone) or ""), false)
-    end
+    GK.WarnAs("alertNear", ("%s saw %s%s"):format(GK.Show(sender), GK.Show(o.n), zone and (" in " .. zone) or ""), false)
 end
 
 -- ---------------------------------------------------------------------------
@@ -1809,6 +1831,8 @@ local HANDLERS = { B = OnBoard, Q = OnAsk, K = OnKill, H = OnAssist, D = OnDeath
 
 local function OnMessage(_, text, dist, sender)
     if dist ~= "GUILD" or type(text) ~= "string" or #text > 600 or not GK.char then return end
+    sender = GK.PlayerKey(sender)                  -- by name alone, whatever realm the lib gave it (GK.Lib)
+    if not sender then return end
     local f = Split(text)
     if Int(f[2], 1, 1000) ~= PROTO then return end
     local fn = HANDLERS[f[1]]

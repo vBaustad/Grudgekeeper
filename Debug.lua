@@ -10,7 +10,7 @@
 -- The pretend guildies are Kari and Edvard; the pretend enemies are Pølse Hans and Gærd Balle, of
 -- whichever side is not yours. With an enemy player targeted, "your target" is them instead.
 local ADDON, GK = ...
-local LIB = LibStub("LibForever-1.0")
+local LIB = GK.Lib or LibStub("LibForever-1.0")      -- names by themselves (Core.lua, GK.Lib)
 
 local panel
 local saved            -- { char, store, storeTable } while testing
@@ -81,6 +81,23 @@ end
 
 --- The sample letters open on their kill order: the pile holds it and the Grudgekeeper's own letters, so
 --- both kinds are a click of the arrows apart. Made once; read again after that.
+-- A first look, as a player who just installed it sees it, in a guild where nobody else has it ("trenger en
+-- 'helt fresh addon, no guildies have it' test også", the owner, 2026-11-20): your record starts at nothing
+-- and the guild's store is empty while the panel is open - closing it puts both back - and the guild's
+-- messages wait outside, as for every button here. Your settings stay as they are.
+local function FreshStart()
+    local c, s = GK.char, GK.Store()
+    local fresh = GK.FreshChar()
+    wipe(c)
+    for k, v in pairs(fresh) do c[k] = v end
+    wipe(s)
+    s.board, s.orders, s.wanted, s.slain, s.tormentors, s.feed, s.people, s.nextId = {}, {}, {}, {}, {}, {}, {}, 1
+    GK.InvalidateOrders()
+    GK.CloseLetters()
+    GK.NoticeUpdate(false)
+    GK.OpenWindow(1)
+end
+
 local function ReadSamples()
     local any
     for _, L in ipairs(GK.char.letters) do
@@ -95,20 +112,55 @@ end
 
 local KARI_ORDER = 901
 
+--- Kari's and Edvard's scores, as their clients send them: the leaderboard, their cards and Kari's profile.
+local function Scores()
+    local week = GK.WeekId()
+    Hear("Kari", "B", 1, 47, 31, 12, 40, "MAGE", 14, 9, 2, week, 4, 11, 4, 850000,
+        Enemy("Pølse Hans").key, 6)
+    Hear("Edvard", "B", 1, 23, 15, 20, 38, "WARRIOR", 5, 3, 4, week, 0, 6, 1, 20000,
+        Enemy("Gærd Balle").key, 3)
+end
+
+-- A warning as its row on Settings, Warnings would tell it, with the words the game uses (Sightings.lua,
+-- NotesUI.lua): for that moment the row is its own way, so it comes whatever yours says.
+local WARN_WAY = { alertNear = "screen", leadNear = "screen", noteAlerts = "screen", watchGroup = "screen",
+    kudosGroup = "chat" }
+local function Warning(key, text, urgent, ownSound, target)
+    local was = GK.db[key]
+    GK.db[key] = WARN_WAY[key]
+    GK.WarnAs(key, text, urgent, ownSound, target, target)
+    GK.db[key] = was
+end
+
+-- The panel as Grudgekeeper is now (2026-11-20): "test panelet er fult av gamle toasts og splashes og
+-- animations. og mye gammel testeknapper, oppdater hele" (the owner). Gone: a mark that was a kill order, the
+-- letter icon's own mover (Arrange on screen has it), a warning in no row's words, and the research buttons.
 -- { label } is a heading; { label, fn } a button.
 local ACTIONS = {
-    { "Letters and the notice" },
+    { "Windows" },
+    { "Open the ledger", function() GK.OpenWindow(1) end },
+    { "Settings", function() GK.OpenOptions() end },
+    { "Arrange on screen", function() GK.OpenMover() end },
+    { "Kari's profile", function()
+        Scores()
+        GK.ShowProfile({ kind = "record", key = Guildie("Kari") })
+    end },
+    { "Your target's grudge file", function() GK.ShowPoster(TheEnemy()) end },
+    { "Fresh, no guildies", function() FreshStart() end },
+
+    { "Letters" },
     { "Sample letters", function() GK.SampleLetters() end },
     { "Read the sample letters", ReadSamples },
-    { "Your target is near", function()
-        local v = TheEnemy()
-        GK.Warn(GK.Show(v.key) .. " is near!", true, nil, v.key)
-    end },
-    { "Place the letter icon", function() GK.PlaceNotice() end },
-    { "Open the window", function() GK.OpenWindow(1) end },
 
     { "You" },
     { "Kill your target", function() GK.RecordKill(TheEnemy()) end },
+    -- a kill that earns the revenge point: they killed you twice since you last got them (Kills.lua)
+    { "Revenge on your target", function()
+        local v = TheEnemy()
+        local f = GK.Foe(v.key, { n = GK.Show(v.key), c = v.c, r = v.r, l = v.l })
+        f.d, f.lastDeath = (f.k or 0) + 2, time() - 60
+        GK.RecordKill(v)
+    end },
     { "Die to your target", function()
         local v = TheEnemy()
         v.spell = "Ambush"
@@ -159,36 +211,32 @@ local ACTIONS = {
             .. "- while this panel stays open."):format(m, x * 100, y * 100))
     end },
     { "Edvard fulfils it", function() Hear("Edvard", "F", 1, Guildie("Kari"), KARI_ORDER, GK.Zone()) end },
-    { "Kari and Edvard's scores", function()
-        local week = GK.WeekId()
-        Hear("Kari", "B", 1, 47, 31, 12, 40, "MAGE", 14, 9, 2, week, 4, 11, 4, 850000,
-            Enemy("Pølse Hans").key, 6)
-        Hear("Edvard", "B", 1, 23, 15, 20, 38, "WARRIOR", 5, 3, 4, week, 0, 6, 1, 20000,
-            Enemy("Gærd Balle").key, 3)
-    end },
-    { "Mark your target", function()
-        local t = GK.ReadUnit("target")
-        if not t then
-            Say("target an enemy player first; the seal shows over their nameplate (enemy nameplates on: V).")
-            return
-        end
-        GK.PostOrder(t, 0, "Test mark")
-    end },
+    { "Kari and Edvard's scores", Scores },
 
-    { "Look" },
-    { "Wanted poster", function() GK.ShowPoster(TheEnemy()) end },
-    { "Kari's record", function() GK.ShowRecord(Guildie("Kari")) end },
-    { "Your record", function() GK.ShowRecord(LIB.Me(), "player") end },
-    { "The leaderboard", function() GK.OpenWindow(2) end },
-    -- a new title as yours and a guildie's; /grudge rank <title> shows any one (Announce.lua)
-    { "A new title", function() GK.RankSample() end },
-
-    { "What the game allows" },
-    { "Screenshot in 1 second", function()
-        C_Timer.After(1, function() pcall(Screenshot) end)
-        Say("\"Screen captured\" in a moment means a screenshot works from a timer.")
+    -- the rows of Settings, Warnings, in its order, and the tracked enemy's, which has no row
+    { "Warnings" },
+    { "Kill order target near", function()
+        local v = TheEnemy()
+        Warning("alertNear", ("%s is near!"):format(GK.Show(v.key)), true, nil, v.key)
     end },
-    { "Print diagnostics", function() GK.Debug() end },
+    { "One who leads over me", function()
+        local v = TheEnemy()
+        Warning("leadNear", ("%s is near - owed %d"):format(GK.Show(v.key), 2), true, nil, v.key)
+    end },
+    { "Tracked enemy near", function()
+        local v = TheEnemy()
+        GK.Warn(("Tracked: %s is near!"):format(GK.Show(v.key)), true, nil, v.key, v.key)
+    end },
+    { "Marked player near", function()
+        local v = TheEnemy()
+        Warning("noteAlerts", ("Marked: %s is near!"):format(GK.Show(v.key)), true, nil, v.key)
+    end },
+    { "Shame player joins", function()
+        Warning("watchGroup", ("Shame list: %s joined your group"):format("Edvard"), true, true)
+    end },
+    { "Kudos player joins", function()
+        Warning("kudosGroup", ("|cff4dff66Kudos:|r %s joined your group"):format("Edvard"), false)
+    end },
 }
 GK.debugActions = ACTIONS    -- for tools/smoke_grudgekeeper.py, which presses every one
 
@@ -199,14 +247,17 @@ GK.debugActions = ACTIONS    -- for tools/smoke_grudgekeeper.py, which presses e
 -- 2026-11-18). Each button fires the event the game fires (Kills.lua, Guild.lua), so Announce.lua makes the
 -- splash or toast as it makes a real one: its effect, its sounds and its voice. For that moment the kind's
 -- setting is the one the button is listed under and when is "always", so it comes now whatever yours say;
--- then yours are back. A sound picked in place of a tier's voice is what plays; with Sound off, nothing.
-local HELD = { "spreeMine", "spreeGuild", "spreeEnded", "spreeTormentor", "orderDone", "announceWhenMine",
-    "announceWhenGuild", "reaperEffect" }
+-- then yours are back. A guildie's comes whatever its threshold and zone say, and with its sound (the
+-- Notifications page, 2026-11-20). A sound picked in place of a tier's voice is what plays; with Sound off, nothing.
+local HELD = { "spreeMine", "spreeGuild", "spreeGuildFrom", "rankMine", "rankGuild", "rankGuildFrom", "orderMine",
+    "orderDone", "spreeEnded", "spreeEndedGuild", "spreeTormentor", "spreeTormentorGuild", "guildZoneOnly",
+    "guildSounds", "announceWhenMine", "announceWhenGuild", "reaperEffect", "revengeMine", "revengeGuild" }
 
 local function Announce(set, event, ...)
     local was = {}
     for _, k in ipairs(HELD) do was[k] = GK.db[k] end
     GK.db.announceWhenMine, GK.db.announceWhenGuild = "always", "always"
+    GK.db.spreeGuildFrom, GK.db.rankGuildFrom, GK.db.guildZoneOnly, GK.db.guildSounds = 3, 0, false, true
     for k, v in pairs(set) do GK.db[k] = v end
     LIB.Fire(event, ...)        -- its listeners run at once (LibForever), so the settings above are what they read
     for _, k in ipairs(HELD) do GK.db[k] = was[k] end
@@ -221,38 +272,64 @@ local function Spree(mine, n, set)
 end
 
 local function OrderDone(mine)
-    Announce({ orderDone = "toast" }, "GK_ORDER_DONE", mine and LIB.Me() or Guildie("Kari"), {}, TheEnemy().key,
-        50000, mine)
+    -- the order's class goes with it, as Guild.lua's does: the poster's face falls back to their class crest
+    local v = TheEnemy()
+    Announce(mine and { orderMine = "splash" } or { orderDone = "toast" }, "GK_ORDER_DONE",
+        mine and LIB.Me() or Guildie("Kari"), {}, v.key, 50000, mine, v.c)
+end
+
+local function Revenge(mine)
+    -- the enemy's key and class go with it, as Kills.lua's and Guild.lua's do: their face in the ring
+    local v = TheEnemy()
+    Announce(mine and { revengeMine = "splash" } or { revengeGuild = "toast" }, "GK_REVENGE",
+        mine and LIB.Me() or Guildie("Kari"), GK.Show(v.key), mine and 3 or 1, mine and 5 or 2, mine, v.key, v.c)
 end
 
 local function NewTitle(mine)
-    Announce(mine and { spreeMine = "splash" } or { spreeGuild = "toast" }, "GK_RANKUP",
+    Announce(mine and { rankMine = "splash" } or { rankGuild = "toast" }, "GK_RANKUP",
         mine and LIB.Me() or Guildie("Kari"), "Avenger", 450, mine)
 end
 
+local function Ended(mine)
+    Announce(mine and { spreeEnded = "splash" } or { spreeEndedGuild = "toast" }, "GK_SPREE_ENDED",
+        mine and LIB.Me() or Guildie("Kari"), 12, GK.Show(TheEnemy().key), mine)
+end
+
+local function Tormentor(mine)
+    Announce(mine and { spreeTormentor = "splash" } or { spreeTormentorGuild = "toast" }, "GK_TORMENTOR",
+        mine and LIB.Me() or Guildie("Kari"), GK.Show(TheEnemy().key), 4, mine)
+end
+
+-- The rows of Settings, Notifications, in its order: yours as splashes, each with its effect - a spree ended and
+-- a tormentor too, which come as toasts out of the box: their splashes are dakristia's shatter and PAID stamp,
+-- and as toasts the panel showed neither ("hvorfor er det ikke den animasjonen som kom fra daniel hvor streaken
+-- knuses?", the owner, 2026-11-20) - then a guildie's, Kari's, as toasts. Each tier of a spree has its own
+-- effect and voice; Reaper's is the one Settings, Look picks. The smoke had a button of its own until the
+-- scythe became Reaper's (2026-11-20).
 -- { label } is a heading; { label, fn } a button.
 local HEAR = {
-    { "Splashes: yours" },
+    { "Yours" },
     { "Bloodied, 3", function() Spree(true, 3) end },
     { "Merciless, 5", function() Spree(true, 5) end },
     { "Butcher, 7", function() Spree(true, 7) end },
-    { "Reaper, 10: smoke", function() Spree(true, 10, { reaperEffect = "smoke" }) end },
-    { "Reaper, 10: scythe", function() Spree(true, 10, { reaperEffect = "scythe" }) end },
+    { "Reaper, 10", function() Spree(true, 10) end },
     { "Grudgebound, 15", function() Spree(true, 15) end },
     { "Grudgebound, 20", function() Spree(true, 20) end },
     { "100 in a row", function() Spree(true, 100) end },
-    { "Your kill order", function() OrderDone(true) end },
-    { "Your new title", function() NewTitle(true) end },
-    { "Toasts" },
-    { "Kari's spree, 5", function() Spree(false, 5) end },
-    { "Kari's kill order", function() OrderDone(false) end },
+    { "A new title", function() NewTitle(true) end },
+    -- a kill order fulfilled: its target's WANTED poster (FxOrders.lua), their face if you have them targeted
+    { "A kill order fulfilled", function() OrderDone(true) end },
+    -- their face struck in the ring (FxRevenge.lua), your target's if you have one
+    { "Revenge", function() Revenge(true) end },
+    { "A spree ended", function() Ended(true) end },
+    { "A tormentor put down", function() Tormentor(true) end },
+    { "Kari's" },
+    { "Kari's kill spree", function() Spree(false, 10) end },
     { "Kari's new title", function() NewTitle(false) end },
-    { "Your spree ended", function()
-        Announce({ spreeEnded = "toast" }, "GK_SPREE_ENDED", LIB.Me(), 12, GK.Show(TheEnemy().key), true)
-    end },
-    { "A tormentor put down", function()
-        Announce({ spreeTormentor = "toast" }, "GK_TORMENTOR", LIB.Me(), GK.Show(TheEnemy().key), 4, true)
-    end },
+    { "Kari's kill order", function() OrderDone(false) end },
+    { "Kari's revenge", function() Revenge(false) end },
+    { "Kari's spree ended", function() Ended(false) end },
+    { "Kari's tormentor", function() Tormentor(false) end },
 }
 GK.debugHear = HEAR          -- for tools/smoke_grudgekeeper.py
 

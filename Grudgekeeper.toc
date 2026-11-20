@@ -44,6 +44,8 @@ FxReaper.lua
 FxGrudgebound.lua
 FxEnded.lua
 FxToast.lua
+FxOrders.lua
+FxRevenge.lua
 Announce.lua
 Move.lua
 Window.lua

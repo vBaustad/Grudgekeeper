@@ -11,7 +11,7 @@
 -- Everything on a card is what this client has heard: a guildie who never runs Grudgekeeper has no
 -- record, and kills made while you were offline count once the killer's next kill tells their total.
 local ADDON, GK = ...
-local LIB = LibStub("LibForever-1.0")
+local LIB = GK.Lib or LibStub("LibForever-1.0")      -- names by themselves (Core.lua, GK.Lib)
 
 local LABEL = "Grudgekeeper profile"
 local NAMES = 3                  -- names on a line before "and 2 more"
@@ -589,8 +589,9 @@ end
 -- ---------------------------------------------------------------------------
 -- Menu.ModifyMenu is how the game lets addons add to its menus: our part runs after Blizzard's own
 -- entries are built, and adds its lines at the end. Nothing of Blizzard's is replaced or wrapped.
--- An enemy player always gets two: the poster, and the kill order on them. A friendly player gets the
--- record line only when there is a record: you, or a guildie on the board.
+-- An enemy player gets the poster, the kill order on them and Track, and an officer their guild on watch:
+-- the only lines of ours on an enemy, since Shame and Kudos are a friendly player's (NotesUI.lua, 2026-11-20).
+-- A friendly player gets the record line only when there is a record: you, or a guildie on the board.
 local FRIENDLY = { "SELF", "PLAYER", "PARTY", "RAID_PLAYER", "RAID", "FRIEND", "COMMUNITIES_GUILD_MEMBER", "GUILD" }
 
 --- A name from the menu's context: a plain string the client lets us read, or nil.
@@ -599,11 +600,245 @@ local function Text(v)
     return v
 end
 
-local function AddLine(root, fn, also, alsoFn)
+local function AddLine(root, label, fn, also, alsoFn)
     if root.CreateDivider then root:CreateDivider() end
-    root:CreateButton(LABEL, fn)
+    root:CreateButton(label, fn)
     if also then root:CreateButton(also, alsoFn) end
 end
+
+-- ---------------------------------------------------------------------------
+-- Asking a player outside the guild for their score (2026-11-20)
+-- ---------------------------------------------------------------------------
+-- A guildie's score reaches us on the guild's channel. A player on your side outside it is asked, one at a time,
+-- when you open their profile or inspect them, and only they can answer: "melding mellom de som ikke er i guild
+-- må være spesifikk så en inspect sender forespørsel og kun den du inspecter kan svare" (the owner). It goes on
+-- a channel of its own, straight through the client: LibForever's comms read no whisper from outside the guild,
+-- and send only from inside one. An ask is a whisper to that player with a number of ours (the nonce), and the
+-- answer counts only when it comes from them, with that number, within ANSWER_WAIT. What they answer is shown
+-- and kept in memory alone: not on the board, never passed on. An enemy is never asked (no addon message crosses
+-- factions), nor a guildie (their score is on the board).
+--   A;1;nonce                                           the ask
+--   R;1;nonce;points;kills;deaths;assists;best streak   the answer
+local PROFILE_PREFIX = "GKProfile"
+local ASK_GAP = 60            -- the same player asked once a minute at most, however often their profile opens
+local ANSWER_WAIT = 10        -- an answer counts this long after the ask
+local MAX_ANSWERS = 5         -- answers we give in a minute, to anyone: the asks past them go unanswered
+local MAX_KEPT = 100          -- players asked, answered or answering, kept at most (in memory)
+local asked, heard = {}, {}   -- [key] = { nonce, t }; [key] = { p, k, d, a, bs, t }
+local answers, answeredTo = {}, {}   -- when we answered this past minute; [key] = when we last answered them
+
+--- Forget the oldest entry of t once it holds more than MAX_KEPT. An entry is a time, or a table with one (t).
+local function Prune(t)
+    local n, oldest, at = 0, nil, nil
+    for k, v in pairs(t) do
+        n = n + 1
+        local when = type(v) == "table" and v.t or v
+        if not at or when < at then oldest, at = k, when end
+    end
+    if n > MAX_KEPT and oldest then t[oldest] = nil end
+end
+
+--- A whisper on our own channel to one player. Nothing while the test panel or the pictures stand in for the
+--- world (GK.testMode): nothing leaves this client then.
+local function SendProfile(key, text)
+    if GK.testMode or not (C_ChatInfo and C_ChatInfo.SendAddonMessage) then return false end
+    local ok = pcall(C_ChatInfo.SendAddonMessage, PROFILE_PREFIX, text, "WHISPER", LIB.WhisperName(key))
+    return ok
+end
+
+--- A whole number off the wire within lo..hi, or nil.
+local function Int(v, lo, hi)
+    local n = tonumber(v)
+    if not n or n ~= math.floor(n) or n < lo or n > hi then return nil end
+    return n
+end
+
+--- The ask an answer is for: by the sender's key, else by name alone - a name off the wire may carry another of
+--- the live servers' internal realms than the one we file them under (CLAUDE.md).
+local function AskOf(sender)
+    if asked[sender] then return sender, asked[sender] end
+    local name = GK.Lower(sender:match("^(.-)%-[^%-]+$") or sender)
+    for key, a in pairs(asked) do
+        if GK.Lower(key:match("^(.-)%-[^%-]+$") or key) == name then return key, a end
+    end
+    return nil
+end
+
+--- Ask a player outside the guild for their score: once a minute at most, and never yourself, a guildie or a
+--- player we have a record of. Returns whether an ask went out.
+function GK.AskProfile(key)
+    if type(key) ~= "string" or LIB.IsMyStoredName(key) or GK.HasRecord(key) or LIB.KnownGuildie(key) then
+        return false
+    end
+    local now = GetTime()
+    local a = asked[key]
+    if a and now - a.t < ASK_GAP then return false end
+    local nonce = tostring(math.random(100000, 999999999))
+    asked[key] = { nonce = nonce, t = now }
+    Prune(asked)
+    if not SendProfile(key, ("A;1;%s"):format(nonce)) then return false end
+    C_Timer.After(ANSWER_WAIT + 0.1, GK.Changed)        -- the tiles' "..." becomes "-" when no answer came
+    return true
+end
+
+--- Where an ask of this player stands: "answered" and what they said, "asking", "silent" (no answer in time),
+--- or nil (never asked).
+function GK.ProfileHeard(key)
+    if heard[key] then return "answered", heard[key] end
+    local a = asked[key]
+    if not a then return nil end
+    if GetTime() - a.t <= ANSWER_WAIT then return "asking" end
+    return "silent"
+end
+
+local function OnProfileMessage(prefix, text, channel, sender)
+    if prefix ~= PROFILE_PREFIX or channel ~= "WHISPER" or type(text) ~= "string" or #text > 120 then return end
+    if not (GK.db and GK.char) then return end
+    sender = LIB.FullName(GK.Clean(sender, 64))
+    if not sender or LIB.IsMyStoredName(sender) then return end
+    local f = {}
+    for part in (text .. ";"):gmatch("([^;]*);") do f[#f + 1] = part end
+    if Int(f[2], 1, 1) ~= 1 then return end
+    if f[1] == "A" then
+        -- asked: answered when we share outside the guild, once a minute to each, a few a minute to all
+        local nonce = f[3]
+        if not (nonce and nonce:match("^%d+$") and #nonce <= 10) then return end
+        if GK.db.shareOutside == false or GK.testMode then return end
+        local now = GetTime()
+        if answeredTo[sender] and now - answeredTo[sender] < ASK_GAP then return end
+        local recent = {}
+        for _, t in ipairs(answers) do
+            if now - t < 60 then recent[#recent + 1] = t end
+        end
+        answers = recent
+        if #answers >= MAX_ANSWERS then return end
+        answers[#answers + 1] = now
+        answeredTo[sender] = now
+        Prune(answeredTo)
+        local c = GK.char
+        SendProfile(sender, ("R;1;%s;%d;%d;%d;%d;%d"):format(nonce, c.points or 0, c.kills or 0, c.deaths or 0,
+            c.assists or 0, c.bestStreak or 0))
+    elseif f[1] == "R" then
+        -- an answer: only from the player we asked, with our number, in time - and only once
+        local key, a = AskOf(sender)
+        if not (a and a.nonce and f[3] == a.nonce and GetTime() - a.t <= ANSWER_WAIT) then return end
+        local p, k, d = Int(f[4], 0, 1e7), Int(f[5], 0, 1e6), Int(f[6], 0, 1e6)
+        local as, bs = Int(f[7], 0, 1e6), Int(f[8], 0, 1e6)
+        if not (p and k and d and as and bs) then return end
+        a.nonce = nil
+        heard[key] = { p = p, k = k, d = d, a = as, bs = bs, t = time() }
+        Prune(heard)
+        GK.Changed()
+    end
+end
+
+-- ---------------------------------------------------------------------------
+-- A player on your side we have no record of
+-- ---------------------------------------------------------------------------
+local DOTS, DASH = "\226\128\166", "\226\128\147"   -- the tiles while it asks, and with no answer
+
+--- What the game shows of a player on your side - level, class, race, face and guild - read when their profile
+--- opens, so a unit token that later means someone else ("target") never puts another player's on their card.
+--- nil when the unit is not that player.
+function GK.UnitLook(key, unit)
+    if type(unit) ~= "string" or not UnitExists(unit) or GK.UnitKey(unit) ~= key then return nil end
+    local function Plain(v)
+        if v ~= nil and not GK.Secret(v) then return v end
+        return nil
+    end
+    local _, class = UnitClass(unit)
+    local race, raceFile = UnitRace(unit)
+    return { l = GK.ValidLevel(Plain(UnitLevel(unit))), c = GK.ValidClass(Plain(class)), r = GK.Clean(Plain(race), 20),
+        rf = Plain(raceFile), sx = Plain(UnitSex(unit)), g = GK.Clean(Plain((GetGuildInfo(unit))), 32) }
+end
+
+--- Their card: what the game shows of them (look, GK.UnitLook), and their score once they answered an ask
+--- (GK.AskProfile). The tiles say "..." while it asks and "-" with no answer; nothing else is said.
+function GK.StrangerCard(key, look)
+    if type(key) ~= "string" then return nil end
+    look = look or {}
+    local state, h = GK.ProfileHeard(key)
+    local function Tile(v)
+        if h then return tostring(v) end
+        return state == "asking" and DOTS or DASH
+    end
+    local title = h and GK.Title(h.p) or nil
+    local guild = look.g and ("<" .. look.g .. ">") or nil
+    local info = GK.Describe(look.l, look.c, look.r)
+    local d = { key = key, c = look.c, rf = look.rf, sx = look.sx, title = GK.Show(key),
+        name = title or guild or "", info = info, lines = {}, buttons = {} }
+    if h then
+        d.lines[1] = ("All time: %s, %s, %s."):format(Plural(h.k, "kill"), Plural(h.a, "assist"), Plural(h.d, "death"))
+        if h.bs > 0 then d.lines[2] = ("Best kill streak: %d."):format(h.bs) end
+    end
+    local sub = (title and guild) and (title .. " \194\183 " .. guild) or title or guild or ""
+    d.rich = { head = GK.Show(key), sub = sub, info = info,
+        kicker = LIB.KnownGuildie(key) and "Your guild" or "Not in your guild",
+        tiles = { { Tile(h and h.p), "Points" }, { Tile(h and h.k), "Kills" }, { Tile(h and h.d), "Deaths" },
+            { Tile(h and h.a), "Assists" } },
+        sections = {} }
+    if h and h.bs > 0 then
+        d.rich.sections[1] = { head = "Highlights", kind = "facts", rows = { { "Best spree", ("%d kills in a row"):format(h.bs) } } }
+    end
+    return d
+end
+
+-- ---------------------------------------------------------------------------
+-- The profile window (2026-11-20)
+-- ---------------------------------------------------------------------------
+-- The right-click menu's line opens a player here, in a window of their own, as the ledger's right page shows
+-- them - the ledger's own card at its size (GK.BuildLedgerCard) - with the way to the ledger under it: "eget
+-- vindu kanskje? profil vindu når man høyreklikker? standalone fra inspect og tab og main addon vindu?" (the
+-- owner). Drawn first (art/mockups/profile) and built to it. From 2026-11-16 the line opened the ledger itself,
+-- and before that a small card with less on it than the ledger.
+local PAGE_W, PAGE_H = 368, 496
+local profile, shown             -- the window, and the spec it shows (as GK.ShowInLedger takes one)
+
+local function FillProfile()
+    if not (profile and shown) then return end
+    local d = GK.CardForSpec(shown)
+    if d then GK.FillCardPage(profile.page, d) end
+end
+
+local function BuildProfile()
+    profile = GK.MakeFrameSheet("GrudgekeeperProfile", PAGE_W + 10, PAGE_H + 60, "Grudgekeeper")
+    profile.page = CreateFrame("Frame", nil, profile)
+    profile.page:SetSize(PAGE_W, PAGE_H)
+    profile.page:SetPoint("TOP", 2, -22)
+    GK.BuildLedgerCard(profile.page, FillProfile)
+    local open = GK.MakeButton(profile, 180, 22)
+    open:SetPoint("BOTTOM", 2, 10)
+    open:SetText("Open in the ledger")
+    open:SetScript("OnClick", function()
+        local spec = shown
+        profile:Hide()
+        if spec then GK.ShowInLedger(spec) end
+    end)
+    profile.open = open
+    LIB.Listen("GRUDGEKEEPER_CHANGED", function() if profile:IsShown() then FillProfile() end end)
+    GK.OnLook(function() if profile:IsShown() then FillProfile() end end)
+end
+
+--- Open a player in the profile window. spec: as GK.ShowInLedger takes one. Nothing opens for a spec with
+--- nothing to show; returns whether it opened.
+function GK.ShowProfile(spec)
+    if type(spec) ~= "table" or not GK.CardForSpec(spec) then return false end
+    if not profile then BuildProfile() end
+    shown = spec
+    FillProfile()
+    profile:Show()
+    profile:Raise()
+    return true
+end
+
+--- What a friendly player's profile opens on: their record (you, or a guildie on the board), else what the game
+--- shows of them and what they answer when asked.
+local function FriendSpec(key, unit)
+    if GK.HasRecord(key) then return { kind = "record", key = key, unit = unit } end
+    local look = GK.UnitLook(key, unit)
+    return { kind = "card", key = key, make = function() return GK.StrangerCard(key, look) end }
+end
+GK.FriendProfileSpec = FriendSpec        -- for the Inspect tab (Inspect.lua)
 
 --- Who a friendly menu is about, as a key: from its unit, else the name it was opened on (a chat
 --- line's full "Name-Realm" before the menu split it, then the plain name), else its GUID.
@@ -621,6 +856,11 @@ function GK.MenuKey(ctx)
     return nil
 end
 
+-- An enemy's line is their Grudge file: what the guild knows of them, which is no profile - an enemy has no way
+-- to share one ("nå vises det som om det er en kill order? litt confusing ... det er jo egentlig ikke profiler",
+-- the owner, 2026-11-20).
+local FILE_LABEL = "Grudge file"
+
 local function OnEnemyMenu(_, root, ctx)
     if not (GK.db and GK.db.unitMenu and GK.char) or type(ctx) ~= "table" then return end
     local unit = Text(ctx.unit)
@@ -629,7 +869,8 @@ local function OnEnemyMenu(_, root, ctx)
     t.unit = unit
     -- and the kill order itself, one click from the enemy: opening the ledger to post one was too much
     -- work (the owner, 2026-11-05). The label says which of the sheet's three cases it will open.
-    AddLine(root, function() GK.ShowPoster(t) end, GK.PostLabel(t), function() GK.OpenPost(t) end)
+    AddLine(root, FILE_LABEL, function() GK.ShowProfile({ kind = "poster", t = t }) end, GK.PostLabel(t),
+        function() GK.OpenPost(t) end)
     -- Tracked (Sightings.lua): yours alone, one line that says which way it goes
     if GK.IsTracked then
         local on = GK.IsTracked(t.key)
@@ -651,14 +892,24 @@ local function OnEnemyMenu(_, root, ctx)
     end
 end
 
+-- A friendly player's profile, every one of them since 2026-11-20: a player outside the guild is asked for
+-- their score as it opens (GK.AskProfile), and it fills in when they answer.
 local function OnFriendlyMenu(_, root, ctx)
     if not (GK.db and GK.db.unitMenu and GK.char) then return end
     local key, unit = GK.MenuKey(ctx)
-    if not (key and GK.HasRecord(key)) then return end
-    AddLine(root, function() GK.ShowRecord(key, unit) end)
+    if not key then return end
+    AddLine(root, LABEL, function()
+        GK.ShowProfile(FriendSpec(key, unit))
+        GK.AskProfile(key)
+    end)
 end
 
 function GK.StartProfiles()
+    -- the channel a player outside the guild is asked on, and answers on
+    if C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix then
+        pcall(C_ChatInfo.RegisterAddonMessagePrefix, PROFILE_PREFIX)
+    end
+    LIB.On("CHAT_MSG_ADDON", OnProfileMessage)
     if not (Menu and Menu.ModifyMenu) then return end
     -- pcall: a menu tag this client doesn't have must not stop the others
     pcall(Menu.ModifyMenu, "MENU_UNIT_ENEMY_PLAYER", OnEnemyMenu)

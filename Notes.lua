@@ -26,7 +26,7 @@
 -- Every sender is also held to LibForever's 30 messages / 10 s, and so are we: everything we send
 -- goes through one queue (see "The outbound queue").
 local ADDON, GK = ...
-local LIB = LibStub("LibForever-1.0")
+local LIB = GK.Lib or LibStub("LibForever-1.0")      -- names by themselves (Core.lua, GK.Lib)
 
 local PREFIX = "GrudgeNotes"
 GK.NOTES_PREFIX = PREFIX
@@ -93,9 +93,11 @@ local function Int(v, lo, hi)
 end
 
 --- A player key as other players may send it: clean, "Name-Realm", not absurdly long. nil otherwise.
+--- A player's key off the wire: a name, by itself since 2026-11-20 (GK.Lib) - an older client's "Name-Realm" is
+--- made plain by GK.PlayerKey where it is read. It had to carry a realm until then.
 local function ValidKey(s)
     s = GK.Clean(s, 64)
-    return (s and s:find("-", 1, true)) and s or nil
+    return (s and s:find("%S")) and s or nil
 end
 
 --- A time from another client. One from far in the future would never lose to an honest edit, so it
@@ -414,6 +416,8 @@ end
 --- Our record of one player, made when first needed (create). nil at the 500 limit.
 function GK.Person(key, create)
     if type(key) ~= "string" then return nil end
+    key = GK.PlayerKey(key)                        -- by name alone, whatever a caller gave (GK.Lib)
+    if not key then return nil end
     local people = Tables().people
     local p = people[key]
     if p or not create then return p end
@@ -865,6 +869,7 @@ end
 
 --- My vote (1, -1, or 0 to take it back) on author's note id. Not on my own.
 function GK.VoteNote(key, author, id, v)
+    key, author = GK.PlayerKey(key), GK.PlayerKey(author)
     local me, p = LIB.Me(), GK.Person(key, false)
     v = Vote(v)
     local n = p and p.notes[author] and p.notes[author][id]
@@ -878,11 +883,13 @@ function GK.VoteNote(key, author, id, v)
 end
 
 function GK.NoteScore(key, author, id)
+    author = GK.PlayerKey(author)
     local p = GK.Person(key, false)
     return p and NoteScoreOf(p, author, id) or 0
 end
 
 function GK.MyNoteVote(key, author, id)
+    author = GK.PlayerKey(author)
     local p = GK.Person(key, false)
     return p and MyVoteOf(p, author, id) or 0
 end
@@ -1035,6 +1042,7 @@ local HANDLERS = { N = OnNote, L = OnMark, V = OnVote, W = OnGuildWatch, Q = OnA
 
 local function OnMessage(_, text, dist, sender)
     if dist ~= "GUILD" or type(text) ~= "string" or #text > 600 or not (GK.char and GK.db) then return end
+    sender = GK.PlayerKey(sender)                  -- by name alone, whatever realm the lib gave it (GK.Lib)
     if type(sender) ~= "string" or sender == "" or sender == LIB.Me() then return end
     local f = Split(text)
     if Int(f[2], 1, 1000) ~= PROTO then return end

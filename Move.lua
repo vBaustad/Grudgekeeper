@@ -9,7 +9,7 @@
 -- secure frame, laid over the bubble again only out of combat (Notice.lua).
 -- Each thing keeps its own place in its own file (GK.db.notice, splashAt, toastAt); this file only asks.
 local ADDON, GK = ...
-local LIB = LibStub("LibForever-1.0")
+local LIB = GK.Lib or LibStub("LibForever-1.0")      -- names by themselves (Core.lua, GK.Lib)
 
 -- { its name; show(on): shown to be moved, returning its frame (on), or as it was (off); moved(): keep
 -- where it was dragged; reset(): back where it starts }

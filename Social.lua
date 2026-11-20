@@ -4,7 +4,7 @@
 --             "Grudge: killed you 24 - you got them 3 - kill order 20s". Nobody you've never met gets one.
 -- (The round badge on the guild window's edge lived here until it became a tab there: GuildTab.lua.)
 local ADDON, GK = ...
-local LIB = LibStub("LibForever-1.0")
+local LIB = GK.Lib or LibStub("LibForever-1.0")      -- names by themselves (Core.lua, GK.Lib)
 local Secret = GK.Secret
 
 -- ---------------------------------------------------------------------------

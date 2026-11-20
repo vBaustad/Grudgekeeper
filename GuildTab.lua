@@ -58,7 +58,7 @@
 -- alone (CommunitiesFrameMixin:UpdateCommunitiesTabs). C_Club.GetClubInfo would say it outright, but it
 -- answers in secrets while chat is locked down (ClubDocumentation.lua: SecretInChatMessagingLockdown).
 local ADDON, GK = ...
-local LIB = LibStub("LibForever-1.0")
+local LIB = GK.Lib or LibStub("LibForever-1.0")      -- names by themselves (Core.lua, GK.Lib)
 local Secret = GK.Secret
 
 local MEDIA = "Interface\\AddOns\\Grudgekeeper\\Media\\"

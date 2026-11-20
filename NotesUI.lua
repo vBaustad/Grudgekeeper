@@ -4,7 +4,7 @@
 --   cards               a noted player's card, on the ledger's right page, and a line or two on the
 --                       wanted poster and the record when there are notes on that player
 --   the note sheet      in the game's own frame: whom, the list, a tag, a few words, Save
---   the right-click menu   a Grudgekeeper notes submenu on any player, friend or foe
+--   the right-click menu   Put on Shame and Give kudos on a friendly player, with their tags
 --   quiet marks         a line on the tooltip, a dim mark on the nameplate. They never open anything
 --   warnings            only when asked: a Marked player near (off by default), a Shame player
 --                       near (off), a Shame player joining your group (on), a Kudos one (a chat line, off)
@@ -12,7 +12,7 @@
 -- record cards, the tooltip line and /grudge. Each wrapper calls the
 -- original, and changes nothing unless its own setting or a notes command asks.
 local ADDON, GK = ...
-local LIB = LibStub("LibForever-1.0")
+local LIB = GK.Lib or LibStub("LibForever-1.0")      -- names by themselves (Core.lua, GK.Lib)
 local Secret = GK.Secret
 
 local MEDIA = "Interface\\AddOns\\Grudgekeeper\\Media\\"
@@ -229,11 +229,11 @@ end
 -- orders page (Window.lua).
 local PAGE_WORD = { kos = "Marked", watch = "Shame", kudos = "Kudos" }
 local EMPTY = {
-    kos = "Nobody is marked. Right-click an enemy and pick Grudgekeeper notes to mark them.",
+    kos = "Nobody is marked. Use Mark someone, at the top of this page, to mark an enemy.",
     watch = "Nobody is on your Shame list. It is for players to be careful with - a ninja looter, a scammer. "
         .. "Use Put someone on Shame, at the top of this page - someone who just left your group is on its list.",
     kudos = "Nobody has kudos yet. Use Give someone kudos, at the top of this page, or right-click a good "
-        .. "player and pick Grudgekeeper notes.",
+        .. "player and pick Give kudos.",
 }
 
 -- each list page's own action, at the top of the page: it opens the who-picker (Pick.lua)
@@ -384,7 +384,8 @@ WrapCard("RecordCard")
 --- or nil and why not.
 function GK.WriteNote(t, list, text, tag)
     local key = t and t.key
-    if type(key) ~= "string" or not key:find("-", 1, true) then return nil, "That player has no name we can keep." end
+    key = GK.PlayerKey(key)                        -- a name by itself (GK.Lib); it had to carry a realm until 2026-11-20
+    if type(key) ~= "string" or not key:find("%S") then return nil, "That player has no name we can keep." end
     text, tag = strtrim(text or ""), strtrim(tag or "")
     local info = { c = t.c, r = t.r, rf = t.rf, sx = t.sx, l = t.l }
     if text == "" and tag == "" then
@@ -592,8 +593,10 @@ local function ShowNotes(key)
     GK.ShowCard(function() return GK.NoteCard(key) end, key)       -- on their row of a list, if one has them
 end
 
-local function OnNotesMenu(_, root, ctx)
-    if not (GK.db and GK.db.unitMenu and GK.char) or type(ctx) ~= "table" then return end
+--- Who a menu is about, learned for the who-picker (Pick.lua): { key, ... }, or nil for a mob, an NPC, a pet,
+--- yourself, or a name the client keeps from us.
+local function MenuPlayer(ctx)
+    if not (GK.db and GK.db.unitMenu and GK.char) or type(ctx) ~= "table" then return nil end
     local unit = Text(ctx.unit)
     local t
     if unit then
@@ -602,20 +605,36 @@ local function OnNotesMenu(_, root, ctx)
         local key = GK.MenuKey(ctx)         -- a name in chat or the roster: always a player
         if key and not LIB.IsMyStoredName(key) then t = { key = key } end
     end
+    if t then GK.LearnPerson(t.key, t) end
+    return t
+end
+
+-- The two lists you keep of the players you meet, each with its tags, are a friendly player's: the words are
+-- the ledger's own actions (Put someone on Shame, Give someone kudos). An enemy gets none of them: what is
+-- done about an enemy is Track (yours) and a kill order (the guild's), the lines Profile.lua puts on its
+-- menu, and Marked is a kill order's work ("jeg tenker bare en KoS for deg selv(tracker) og Hitlist for
+-- guilden? og friendly har shame og kudos i guess?", the owner, 2026-11-20). A note in words is written in
+-- the ledger: each list page's action at its top, or Add a note on their notes' card.
+local MENU_LIST = { watch = "Put on Shame", kudos = "Give kudos" }
+
+local function OnFriendlyNotesMenu(_, root, ctx)
+    local t = MenuPlayer(ctx)
     if not t then return end
-    GK.LearnPerson(t.key, t)
     local key = t.key
     if root.CreateDivider then root:CreateDivider() end
-    local sub = root:CreateButton("Grudgekeeper notes")
-    sub:CreateButton("Add a note", function() GK.OpenNoteSheet(t, "kos") end)
     for _, list in ipairs({ "watch", "kudos" }) do
-        local lists = sub:CreateButton(WORD[list] .. (list == "watch" and " list" or ""))
+        local lists = root:CreateButton(MENU_LIST[list])
         for _, tag in ipairs(GK.TAGS[list]) do
             lists:CreateButton(GK.TagText(tag), function() GK.WriteNote(t, list, "", tag) end)
         end
         lists:CreateButton("No tag", function() GK.WriteNote(t, list, "", "") end)
     end
-    if GK.IsNoted(key) then sub:CreateButton("Their notes", function() ShowNotes(key) end) end
+    if GK.IsNoted(key) then root:CreateButton("Their notes", function() ShowNotes(key) end) end
+end
+
+--- An enemy's menu: learned for the who-picker, and no line of ours here (Profile.lua has them).
+local function OnEnemyNotesMenu(_, _, ctx)
+    MenuPlayer(ctx)
 end
 
 -- ---------------------------------------------------------------------------
@@ -733,9 +752,10 @@ end
 --- twice within NEAR_GAP, and Kudos is never announced.
 local function Nearby(key, s)
     local kos, watch = #s.lists.kos > 0, #s.lists.watch > 0
-    local warn = kos and GK.db.noteAlerts
-    -- the Shame line stands in only when the Marked warning will not run (a player can be on both lists)
-    local line = not warn and watch and GK.db.watchNearby
+    local warn = kos and GK.WarnStyle("noteAlerts") ~= "off"
+    -- the Shame one stands in only when the Marked one will not come (a player can be on both lists); each
+    -- told its row's way (GK.WarnAs: on screen, a chat line, or not at all)
+    local line = not warn and watch and GK.WarnStyle("watchNearby") ~= "off"
     if not (warn or line) then return end
     local now = GetTime()
     if nearAt[key] and now - nearAt[key] < NEAR_GAP then return end
@@ -743,9 +763,9 @@ local function Nearby(key, s)
     nearAt[key] = now
     local name = GK.Show(key)
     if warn then
-        GK.Warn(("Marked: %s is near!%s"):format(name, TagSuffix(s.tags.kos)), true, nil, key, key)
+        GK.WarnAs("noteAlerts", ("Marked: %s is near!%s"):format(name, TagSuffix(s.tags.kos)), true, nil, key, key)
     else
-        print(("%s: %s from your Shame list is near%s"):format(GK.TAG, name, TagSuffix(s.tags.watch)))
+        GK.WarnAs("watchNearby", ("%s from your Shame list is near%s"):format(name, TagSuffix(s.tags.watch)), false)
     end
 end
 
@@ -797,12 +817,12 @@ function GK.CheckNotesGroup()
         if not s then return end
         GK.LearnPerson(key, ReadPlayer(unit))
         local name = GK.Show(key)
-        if #s.lists.watch > 0 and GK.db.watchGroup then
-            GK.Warn(("Shame list: %s joined your group%s"):format(name, TagSuffix(s.tags.watch)), true, true)
+        if #s.lists.watch > 0
+            and GK.WarnAs("watchGroup", ("Shame list: %s joined your group%s"):format(name, TagSuffix(s.tags.watch)), true, true) then
             shamed = true
         end
-        if #s.lists.kudos > 0 and GK.db.kudosGroup then
-            print(("%s: |cff4dff66Kudos:|r %s joined your group%s"):format(GK.TAG, name, TagSuffix(s.tags.kudos)))
+        if #s.lists.kudos > 0 then
+            GK.WarnAs("kudosGroup", ("|cff4dff66Kudos:|r %s joined your group%s"):format(name, TagSuffix(s.tags.kudos)), false)
         end
     end
     if IsInRaid() then
@@ -977,8 +997,8 @@ LIB.On("PLAYER_LOGIN", function()
     end
     if Menu and Menu.ModifyMenu then
         -- pcall: a menu tag this client doesn't have must not stop the others
-        pcall(Menu.ModifyMenu, "MENU_UNIT_ENEMY_PLAYER", OnNotesMenu)
-        for _, which in ipairs(FRIENDLY) do pcall(Menu.ModifyMenu, "MENU_UNIT_" .. which, OnNotesMenu) end
+        pcall(Menu.ModifyMenu, "MENU_UNIT_ENEMY_PLAYER", OnEnemyNotesMenu)
+        for _, which in ipairs(FRIENDLY) do pcall(Menu.ModifyMenu, "MENU_UNIT_" .. which, OnFriendlyNotesMenu) end
     end
     if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall and Enum and Enum.TooltipDataType then
         TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Unit, OnNoteTip)

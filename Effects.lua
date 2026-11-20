@@ -33,7 +33,7 @@ local KIND = { ended = "ended_shatter", tormentor = "debt_paid" }
 function GK.SpreeEffect(kind, key, spree, db)
     if kind ~= "spree" then return KIND[kind] end
     if key == "reaper" then
-        return (db and db.reaperEffect == "scythe") and "reaper_scythe" or "reaper_smoke"
+        return (db and db.reaperEffect == "smoke") and "reaper_smoke" or "reaper_scythe"   -- the scythe unless picked
     end
     if key == "grudgebound" and spree then
         if spree == 100 then return "hundred" end
@@ -247,7 +247,8 @@ function P.Cues(frame, fx, age)
     if not list then return end
     local n = frame.cueN or 1
     while list[n] and age >= list[n][1] do
-        if GK.db and GK.db.sound then PlaySoundFile(MEDIA .. "sfx\\" .. list[n][2] .. ".mp3", "Master") end
+        -- not on a silent one: a guildie's with Sounds from guildies off, or a sample's second (Announce.lua)
+        if GK.db and GK.db.sound and not frame.silent then PlaySoundFile(MEDIA .. "sfx\\" .. list[n][2] .. ".mp3", "Master") end
         n = n + 1
     end
     frame.cueN = n

@@ -3,7 +3,7 @@
 -- paid by you, by mail (Mail.lua fills the letter in). Its parts - the head, the ruled lines, the wax
 -- seal - are the sheets' own (Letters.lua), the same as the note's.
 local ADDON, GK = ...
-local LIB = LibStub("LibForever-1.0")
+local LIB = GK.Lib or LibStub("LibForever-1.0")      -- names by themselves (Core.lua, GK.Lib)
 
 local TEXT_FONT = "Fonts\\FRIZQT__.TTF"
 local FADED = { 0.35, 0.25, 0.15 }

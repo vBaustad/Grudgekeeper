@@ -2,8 +2,8 @@
 -- Blizzard's own opens their page of the ledger - title and points, their week, streak, nemesis -
 -- inside the Inspect window, not in a window of ours (the owner's idea, 2026-11-05). An enemy player,
 -- if the game lets you inspect one, gets their wanted poster, and the tab glows while there is an order
--- on them. Anyone else - no guildie, no enemy - gets no tab, as the game shows no Guild tab for a
--- player without a guild: the Grudgekeeper has nothing to say about them.
+-- on them. A player on your side outside the guild is asked for their score as you inspect them, and gets
+-- the tab once they answer (2026-11-20, Profile.lua); one who never answers - no Grudgekeeper - gets none.
 --
 -- How it sits in Blizzard's window: the tab and the page are frames of ours, parented to the Inspect
 -- frame, and nothing of Blizzard's is replaced or written to. We follow it with hooksecurefunc - one of
@@ -12,7 +12,7 @@
 -- page laid on top), and shown again when ours goes - unless one of the game's tabs was chosen, which
 -- shows its own. The window loads on demand (Blizzard_InspectUI), so all of this waits for it.
 local ADDON, GK = ...
-local LIB = LibStub("LibForever-1.0")
+local LIB = GK.Lib or LibStub("LibForever-1.0")      -- names by themselves (Core.lua, GK.Lib)
 
 local MEDIA = "Interface\\AddOns\\Grudgekeeper\\Media\\"
 -- The ledger's card laid out for the Inspect window's inside, about 332 x 395 units, at the ledger's
@@ -65,6 +65,11 @@ function GK.InspectCard(unit)
             info = GK.Describe(Plain(UnitLevel(unit)), class), buttons = {},
             lines = { "The Grudgekeeper has heard nothing from them. A guildie's score reaches you from their "
                 .. "own Grudgekeeper - if they have one." } }
+    elseif GK.AskProfile then
+        -- someone on your side outside the guild (2026-11-20): inspecting them asks them for their score, and
+        -- only they can answer (Profile.lua); the tab comes once they have, as they have Grudgekeeper
+        GK.AskProfile(key)
+        if GK.ProfileHeard(key) == "answered" then d = GK.StrangerCard(key, GK.UnitLook(key, unit)) end
     end
     if not d then return nil end
     -- their face: from the score when it brought one, else from the player in front of you

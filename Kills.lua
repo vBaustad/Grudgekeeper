@@ -16,7 +16,7 @@
 -- id), and the damage meter is asked when the recap is empty. It counts as a PvP death only when that
 -- name belongs to an enemy player we saw - a name alone can't tell a rogue from a murloc.
 local ADDON, GK = ...
-local LIB = LibStub("LibForever-1.0")
+local LIB = GK.Lib or LibStub("LibForever-1.0")      -- names by themselves (Core.lua, GK.Lib)
 local Secret = GK.Secret
 
 local recapId          -- the death recap the last "You died" line pointed at
@@ -122,7 +122,7 @@ function GK.RecordKill(v)
     GK.AddLog({ k = "K", t = now, n = v.key, c = v.c, r = v.r, l = v.l, z = zone, p = points,
         o = orders[1] and orders[1].key or nil, rv = revenge or nil, av = avenged })
     for _, o in ipairs(orders) do GK.Fulfil(o, zone) end
-    GK.SendKill(v, zone, points, avenged, f.k, c.spree)
+    GK.SendKill(v, zone, points, avenged, f.k, c.spree, revenge, f.d or 0)
     -- What the kill made of it, for whatever shows it (GK_SPREE, GK_TORMENTOR). Only after the send: the
     -- guild hears the kill first.
     -- Each is a line in the guild's news as well (GK.SpreeNews), after the kill's own.
@@ -138,6 +138,8 @@ function GK.RecordKill(v)
         LIB.Fire("GK_TORMENTOR", LIB.Me(), GK.Show(v.key), tormented, true)
         GK.SpreeNews("M", LIB.Me(), v, zone, tormented)
     end
+    -- Revenge, told (Announce.lua): the kill that earns the revenge point, with where you stand now
+    if revenge then LIB.Fire("GK_REVENGE", LIB.Me(), GK.Show(v.key), f.k, f.d or 0, true, v.key, v.c) end
     GK.SendBoard()
     -- A new title, told on screen as a spree is (GK_RANKUP, Announce.lua): the letter below waits for the
     -- fight to end, and says where you stand

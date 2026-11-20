@@ -13,7 +13,7 @@
 -- use): the same data gives the same ids whatever order it is walked in. A vote on someone else's
 -- imported note is kept to count, not sent: that id is only ours.
 local ADDON, GK = ...
-local LIB = LibStub("LibForever-1.0")
+local LIB = GK.Lib or LibStub("LibForever-1.0")      -- names by themselves (Core.lua, GK.Lib)
 
 --- A Guild Grudge name ("First Surname", or "Name-Realm") as one of our player keys.
 local function Key(name)

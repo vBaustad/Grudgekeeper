@@ -11,7 +11,7 @@
 -- right-click menu needs one of its players in sight - "la GM skrive inn et guildnavn ... om vi ikke
 -- klarer å finne noen fra den guilden" (the owner, 2026-11-08).
 local ADDON, GK = ...
-local LIB = LibStub("LibForever-1.0")
+local LIB = GK.Lib or LibStub("LibForever-1.0")      -- names by themselves (Core.lua, GK.Lib)
 
 -- In the game's own frame (Letters.lua, GK.MakeFrameSheet), in the skin as the note sheet it leads to:
 -- parchment and ink, or the game's dark panel in white and gold (Core.lua, GK.SetLook).

@@ -15,33 +15,46 @@ leaderboard, and kill orders with a bounty on them.
   someone on Shame**, **Give someone kudos**, and **Mark someone** on Most wanted's Marked tab. It asks who:
   your target, the enemies you met lately, your group and who just left it, or a name you type. Where a list
   has column headings, click one to sort by it; the kill orders page keeps its own order.
+- **Grudges** puts who you owe first: the enemies you track, then those who lead over you, the one you owe
+  most first ("owed 3"), and under a faint line those you stand even with and those you lead. An enemy who
+  leads over you warns you when they come near, until you stand even. Kill one who killed you since you last
+  got them and Revenge is told on screen, with where the two of you stand.
 - **Track someone** at the top of your Grudges, or **Track** in the right-click menu on an enemy: your own
   list of enemies to keep an eye on, never shared. One of them near warns you and wears an eye over their
   nameplate.
 - Kill sprees: your kills worth points in a row are called out at 3, 5, 7, 10 and 15 and every five after,
   yours and your guildies', as a splash in the middle of the screen or a small toast by the letter icon -
   each tier with an effect and sounds of its own. `/grudge spree` shows a sample of both, and `/grudge spree
-  merciless` (or bloodied, butcher, smoke, scythe, grudgebound, 20, 100, ended, tormentor) that one's
-  splash. The settings say how long they show, and each milestone is a line in the News as well, with a
-  spree an enemy ended and a tormentor put down.
+  merciless` (or bloodied, butcher, smoke, scythe, grudgebound, 20, 100, ended, tormentor, revenge) that one's
+  splash. Each milestone is a line in the News as well, with a spree an enemy ended and a tormentor put down.
+- Settings, **Notifications** holds every splash and toast: your own and your guildies' side by side, each a
+  splash, a toast or off. The warnings, who is near or joins your group, are on **Warnings**. **All of it**, **Big moments** and
+  **Quiet** set them all at once (Quiet: your own as small toasts, nothing from guildies). A guildie's sprees
+  and titles have a threshold, and can be held to your zone. Every sound is on **Sounds**, where your
+  guildies' can be switched off.
 - A kill order fulfilled is told the same way - yours as a splash, with the bounty - and it is in the News's
   Kill orders tab, and for a day first on the guild window's tab: who got them, where and when.
 - `/grudge options` opens the settings, a page of the ledger with its tabs still under it. **Arrange on screen** there, or
   `/grudge arrange`, lets you drag the letter icon, the splash and the toasts where you want them.
 - `/grudge test` puts five sample letters in your pile.
 - The **You** tab is your own page: your card, and your latest kills, assists and deaths.
-- Right-click a player and pick **Grudgekeeper profile**: the ledger opens on them - a wanted poster for an
-  enemy, the record of a guildie. On an enemy, **Post a kill order** is right below it, and for an officer **Watch their guild**
+- Right-click a player on your side and pick **Grudgekeeper profile**: their profile in a window of its own -
+  title, points, kills and deaths - with the way to the ledger under it. A player outside your guild is asked
+  for theirs as it opens, and it fills in when they answer. On an enemy the line is **Grudge file**: what your
+  guild knows of them. **Post a kill order** is right below it, and for an officer **Watch their guild**
   when they are in one: the guild watches one enemy guild at a time, and anyone from it warns whoever
   comes across them. `/grudge guild` puts a guild on watch by its name, for one nobody has met lately.
 - A grudge that is wrong goes with **Forget grudge** on that player's card (two clicks): your record of
   them, here and in the guild's lists. Your score stays.
-- Inspect a guildie and the **Grudgekeeper** tab below the game's own shows their page of the ledger.
+- Inspect a guildie and the **Grudgekeeper** tab below the game's own shows their page of the ledger. Inspect a
+  player outside your guild who has Grudgekeeper, and the tab comes once they have answered.
 - On the guild window, the **Grudgekeeper** tab under the game's own turns the window into a page of the
   ledger: you this week, the biggest kill orders, the leaderboard, and guild chat to read and write in.
   Click one of the game's tabs to have the guild window back.
-- Right-click any player and pick **Grudgekeeper notes**: a note on them, or put them on Marked, Shame or
-  Kudos with a tag. `/grudge note`, `/grudge shame` and `/grudge kudos` do the same from chat. The notes
+- Right-click a player on your own side and pick **Put on Shame** or **Give kudos**, with a tag. A note in
+  words is written in the ledger: **Mark someone** on Most wanted's Marked tab, the action at the top of
+  Shame or Kudos, or **Add a note** on their notes' card.
+  `/grudge note`, `/grudge shame` and `/grudge kudos` do the same from chat. The notes
   came from Guild Grudge, by dakristia; `/grudge import` takes over its saved notes.
 
 Forever closes the combat log to addons. Grudgekeeper counts what the client does hand over: your

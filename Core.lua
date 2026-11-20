@@ -9,7 +9,91 @@
 -- score of the open world only. The guild hears about it over the addon channel (Guild.lua), and
 -- news arrives as a sealed scroll you open when you like (Letters.lua, Notice.lua) - never a popup.
 local ADDON, GK = ...
-local LIB = LibStub("LibForever-1.0")
+local REAL = LibStub("LibForever-1.0")
+
+-- ---------------------------------------------------------------------------
+-- Every player by name alone: "First Last" (2026-11-20)
+-- ---------------------------------------------------------------------------
+-- Forever names every player "First Last" and nothing more since build 1.60.1.71037 - no realm in any API, the
+-- roster or a sender - and its names are unique in the region (the surname is what makes them so). The realm in
+-- our keys was noise besides: the owner's file held one player under up to three ("Critical Mango" with
+-- CAMWOWEU4Realm4PvP, CAMWOWEU5Realm6PvP and the beta's), whoever wrote them down giving them their own. "hva om vi
+-- trimmmer alt bakover, fjerner - og realmnavn, nå kjører vi bare 'fornavn etternavn'?" (the owner). So
+-- Grudgekeeper sees LibForever through GK.Lib: the same lib, with every name it gives or takes plain. The other
+-- addons keep the lib's "Name-Realm"; the lib is shared, these are ours. The saved data moved once (keys v4).
+local Plain = REAL.Plain or function(key)
+    if type(key) ~= "string" then return key end
+    local name, rest = key:match("^([^%-#]+)%-[^%s#]*(.*)$")
+    return name and (name .. rest) or key
+end
+GK.Plain = Plain
+
+local Lib = setmetatable({}, { __index = REAL })
+local me
+
+--- Who I am, "First Last"; kept once the client has said.
+function Lib.Me()
+    if me then return me end
+    local m = REAL.PlainMe and REAL.PlainMe() or Plain(REAL.Me())
+    if type(m) == "string" and m ~= "" then me = m end
+    return m
+end
+
+-- GK.PlayerKey, not Plain: the lib may read a surname as a realm ("Unc-Allayra"), and Plain would keep only "Unc" -
+-- every Unc one player (the smoke's two Uncs, 2026-11-20)
+function Lib.UnitKey(unit) return GK.PlayerKey(REAL.UnitKey(unit)) end
+
+--- A name as a key: plain, and nil for none.
+function Lib.FullName(name)
+    if type(name) ~= "string" or name == "" then return nil end
+    return GK.PlayerKey(name)
+end
+
+--- Our guild by its name alone: its realm went with every other one.
+function Lib.GuildKey()
+    if IsInGuild and not IsInGuild() then return nil end
+    local name = GetGuildInfo and GetGuildInfo("player")
+    if type(name) == "string" and name ~= "" then return name end
+    local theirs = REAL.GuildKey and REAL.GuildKey()
+    return theirs and Plain(theirs) or nil
+end
+
+--- The lib keeps its guildies and itself as "Name-Realm" (its realm remembered, LIB.Realm), or by the name alone
+--- while it knows no realm: our plain name in the lib's own spelling, whichever that is.
+local function Theirs(key) return REAL.FullName(Plain(key)) or "" end
+
+--- Me, whatever realm a key gives me or none - and an old key without my surname, by the lib's own rule.
+function Lib.IsMyStoredName(key)
+    if type(key) ~= "string" or key == "" then return false end
+    local mine = Lib.Me()
+    if mine and Plain(key) == mine then return true end   -- asks the lib nothing about realms
+    return REAL.IsMyStoredName(Theirs(key))
+end
+
+function Lib.KnownGuildie(key)
+    return type(key) == "string" and REAL.KnownGuildie(Theirs(key)) or false
+end
+
+function Lib.IsOnline(key)
+    return type(key) == "string" and REAL.IsOnline(Theirs(key)) or false
+end
+
+function Lib.IsGuildie(key)
+    return type(key) == "string" and REAL.IsGuildie(Theirs(key)) or false
+end
+
+--- A whisper to the name alone, as the client names everyone.
+function Lib.WhisperName(key) return Plain(key) end
+
+-- The roster as the lib holds it, asked with a plain name (the lib's table is made anew at each rebuild).
+Lib.roster = setmetatable({}, { __index = function(_, key)
+    if type(key) ~= "string" then return nil end
+    local r = REAL.roster
+    return r and r[Theirs(key)]
+end })
+
+GK.Lib = Lib
+local LIB = Lib
 
 -- The release, from the TOC. Its own name: GK.version is the count of changes (GK.Changed), and was
 -- this until 1.4.0 - the settings page and the help said "v" and that count.
@@ -23,7 +107,10 @@ local defaults = {
     letters = true,          -- kill orders your guildies post arrive as letters
     myLetters = true,        -- a letter for a kill that earns a title, and a death that posts an order
     keepLetters = false,     -- an unread letter waits by the icon until read; off, it fades after a while (Letters.lua)
-    alertNear = true,        -- warn when the target of any open kill order is near, or a guildie sees them
+    -- The warnings (Settings, Notifications, Warnings): "screen" by the letter icon, "chat" one line, or "off".
+    -- An older saved file holds true or false here: GK.WarnStyle reads true as the row's own way.
+    alertNear = "screen",    -- the target of any open kill order is near, or a guildie sees them
+    leadNear = "screen",     -- an enemy who leads over you is near (Sightings.lua), until you stand even
     plateMarks = true,       -- a skull over anyone with an open order on them
     -- a screenshot when you fulfil an order: off to begin with, "ikke la screenshots være på ved default"
     -- (the owner, 2026-11-08). Defaults are written into the saved table, so an account that had it on
@@ -31,6 +118,7 @@ local defaults = {
     shotFulfil = false,
     shotEveryKill = false,   -- a screenshot at every kill
     share = true,            -- tell the guild your kills, deaths and score, and where targets are seen
+    shareOutside = true,     -- answer a player on your side outside the guild who asks for your score (Profile.lua)
     autoOrders = true,       -- your death to someone on a rampage or camping you posts a kill order (Guild.lua)
     sound = true,
     oldPortraits = true,     -- race faces from the old character-creation screen, not today's race icons (GK.SetPortrait);
@@ -43,24 +131,38 @@ local defaults = {
     inspectTab = true,       -- a tab of ours on the game's Inspect window: a guildie's record, an enemy's poster
     sortBy = {},             -- [ledger page name] = the column heading its rows are sorted by (none: the page's own order)
     mineOnly = false,        -- whether the ledger's sortable pages list only the rows that are yours
-    noteAlerts = false,      -- warn when a player on your Marked list is near
-    watchNearby = false,     -- one chat line when a player on your Shame list is near
-    watchGroup = true,       -- warn when a Shame list player joins your group
+    noteAlerts = "off",      -- a player on your Marked list is near
+    watchNearby = "off",     -- a player on your Shame list is near
+    watchGroup = "screen",   -- a Shame list player joins your group
     shameSound = "auto",     -- and the sound it plays (GK.SoundChoices; "off" for none; "auto" until one is picked: GK.ShameSoundKey)
     nearSound = "kit:PVP_THROUGH_QUEUE", -- the sound of a target near, a Marked player or the watched guild (GK.NearSound)
-    kudosGroup = false,      -- one friendly chat line when a Kudos player joins your group (chat: off, the owner doesn't read it)
+    kudosGroup = "off",      -- a Kudos player joins your group (off: the owner doesn't read chat lines)
     plateNotes = true,       -- a small dim mark on the nameplate of a player you have notes on
     guilds = {},             -- [guild key] = { board, orders, wanted, slain, feed, nextId } (Guild.lua)
-    spreeMine = "splash",    -- your spree milestone: "off", "toast" or "splash" (Announce.lua)
-    spreeGuild = "toast",    -- a guildie's spree milestone
-    spreeEnded = "toast",    -- a spree of ours or a guildie's that an enemy ended
-    spreeTormentor = "toast", -- one of the guild put an end to a tormentor
-    reaperEffect = "smoke", -- Reaper's splash: "smoke" or "scythe" (Effects.lua)
-    orderDone = "toast",     -- a guildie got the target of a kill order; yours is a splash unless "off" (Announce.lua)
+    -- What is told on screen (Announce.lua; Settings, Notifications): "off", "toast" or "splash", yours and a
+    -- guildie's each on its own. These are the Big moments (GK.NOTIFY_PRESETS, Options.lua), for a new install
+    -- and, since 2026-11-20, for a guildie's side of an older one (MoveNotifications, below).
+    spreeMine = "splash",    -- your spree milestone
+    spreeGuild = "toast",    -- a guildie's spree milestone...
+    spreeGuildFrom = 10,     -- ...from this many kills in a row, or "round": only 25, 50 and 100
+    rankMine = "splash",     -- your new title
+    rankGuild = "toast",     -- a guildie's new title...
+    rankGuildFrom = 450,     -- ...from a title this many points up (Avenger)
+    orderMine = "splash",    -- a kill order you fulfilled, or a guildie did with you there
+    orderDone = "toast",     -- a guildie fulfilled a kill order
+    spreeEnded = "toast",    -- your spree, ended by an enemy
+    spreeEndedGuild = "off", -- a guildie's spree, ended
+    spreeTormentor = "toast", -- you put an end to a tormentor
+    spreeTormentorGuild = "toast", -- a guildie put an end to one
+    revengeMine = "splash",  -- your revenge: you got one who had killed you since you last got them
+    revengeGuild = "off",    -- a guildie's: in a big guild somebody always has one
+    guildZoneOnly = false,   -- a guildie's only when they are in your zone
+    guildSounds = true,      -- a guildie's play their sound
+    reaperEffect = "scythe", -- Reaper's splash: "scythe" or "smoke" (Effects.lua); the scythe since 2026-11-20
     announceWhenMine = "always",       -- when yours may come: "always", "noCombat", "noCombatInInstance" or "noInstance"
     announceWhenGuild = "noCombat",    -- the same for a guildie's; one held back waits, then comes in order
     announceTime = 7,                  -- how many seconds a toast shows; a splash half of it (Announce.lua)
-    spreeSounds = {},        -- [tier key, "ended" or "tormentor"] = a sound (GK.SoundChoices); none picked: Announce.lua's own
+    spreeSounds = {},        -- [tier key, "ended", "tormentor" or "revenge"] = a sound (GK.SoundChoices); none picked: Announce.lua's own
     looks = {},              -- [player key] = race file and sex, "Scourge3": their race's face on cards (Sightings.lua)
 }
 -- This character's own record.
@@ -79,6 +181,9 @@ local charDefaults = {
     -- pc, u, parts: this PC's mark on the record, whether it held a score before marks existed, and the
     -- other PCs' parts of the score (GK.ClaimPC, and Guild.lua's "One character, more than one PC")
 }
+
+--- A character's record as a first install starts it, for the test panel's fresh start (Debug.lua).
+function GK.FreshChar() return CopyTable(charDefaults) end
 
 -- ---------------------------------------------------------------------------
 -- Values from the client and from other players
@@ -257,12 +362,24 @@ end
 -- ---------------------------------------------------------------------------
 -- Names, places, money
 -- ---------------------------------------------------------------------------
+--- A key a client wrote with an empty realm, made whole: "Snik Toby-" is "Snik Toby", and "Snik Toby--Realm" -
+--- what our realm put after the first makes - is "Snik Toby-Realm". A guildie's client that had no realm yet
+--- when it filed an order wrote its poster and target so, and passed them on in a relay: the order came in twice,
+--- the second copy under "Snik Toby--Realm" with its target "Mana Berry-", which no nameplate or sighting ever
+--- matched, and a letter said "Posted by Snik Toby-'s death" (the owner's screenshot, 2026-11-20; their saved
+--- file: 7 orders, each the twin of one under the whole name). No name has a "-" in it. Any other value as it is.
+function GK.NoEmptyRealm(key)
+    if type(key) ~= "string" then return key end
+    return (key:gsub("%-%-+", "-"):gsub("%-$", ""))
+end
+
 --- For display: no realm of ours, and the surname only when the player shows surnames.
 function GK.Show(key)
     if not key then return "?" end
     -- the screenshot mode (Shots.lua) puts a made-up name where yours would be
     local stand = GK.shotNames and GK.shotNames[key]
     if stand then return stand end
+    key = GK.NoEmptyRealm(key)
     -- First name and surname, never a realm: on Forever a realm is one of a server's internal ones
     -- ("CAMWOWEU5Realm2PvP"), which means nothing to anyone reading it ("nemesis viser spiller med
     -- realmnavn bak. det trengs ikke. bare fornavn etternavn", the owner, 2026-11-07). LIB.ShortName drops
@@ -273,9 +390,7 @@ end
 --- "Name-Realm" from a name and a realm the client gave us (GetPlayerInfoByGUID).
 function GK.KeyOf(name, realm)
     if type(name) ~= "string" or name == "" or Secret(name) then return nil end
-    if type(realm) == "string" and realm ~= "" and not Secret(realm) then
-        return name .. "-" .. LIB.NormalizeRealm(realm)
-    end
+    local _ = realm                                  -- a realm names nobody since 2026-11-20 (GK.Lib)
     return LIB.FullName(name)
 end
 
@@ -305,18 +420,11 @@ end
 --- board, or what known(spelling) says, for a record that only its owner can have made), and never when
 --- the name as written is known already. The client can't tell two such names apart either: it shows
 --- them without a realm.
+--- Since 2026-11-20 every key is the name alone (GK.Lib), and a name from the wire is plain whatever realm its
+--- writer gave it: GK.PlayerKey. known is no longer asked; kept for the callers.
 function GK.LocalKey(full, known)
-    if type(full) ~= "string" then return full end
-    local me = LIB.Me()
-    local function Known(k)
-        return k == me or LIB.KnownGuildie(k) or GK.Store().board[k] ~= nil or (known ~= nil and known(k) == true)
-    end
-    if Known(full) then return full end
-    local name = full:match("^(.-)%-[^%-]+$")
-    if not name or name == "" then return full end
-    local ours = name .. "-" .. LIB.Realm()
-    if ours ~= full and Known(ours) then return ours end
-    return full
+    local _ = known
+    return GK.PlayerKey(full)
 end
 
 --- Is this, after a name's dash, a realm? The live servers' internal realms ("CAMWOWEU4Realm4PvP") and the
@@ -326,33 +434,37 @@ local function LooksLikeRealm(s)
     return s == LIB.Realm() or s:find("%d") ~= nil or s:find("PvP", 1, true) ~= nil or s:find("PvE", 1, true) ~= nil
 end
 
---- Any player's key in the one spelling Grudgekeeper keeps: name and surname, and our realm. Every
---- Forever character has a surname (DECISIONS.md, 2026-10-03), and a name is unique across the region,
---- so the realm part of a key tells nobody apart - but on the live servers it varied, and so the same
---- player had several keys:
+--- Any player's key in the one spelling Grudgekeeper keeps: name and surname, and no realm (GK.Lib's note,
+--- 2026-11-20). Every Forever character has a surname (DECISIONS.md, 2026-10-03), and a name is unique across
+--- the region, so the realm part of a key tells nobody apart - but on the live servers it varied, and so the
+--- same player had several keys:
 ---   - LibForever reads the surname of a player on another of the server's internal realms as the realm:
 ---     "Unc-Shark" for Unc Shark. Every Unc then lost their surname wherever a realm was cut off, and
 ---     a death to Unc Allayra went to Unc Shark (the owner, 2026-11-06). A dash followed by a plain
 ---     word is put back as the surname.
 ---   - a guildie on another realm writes everyone with THEIR realm ("Unc Shark-CAMWOWEU4Realm8PvP"), so
----     their kill orders never met the same enemy on our nameplates. The realm becomes ours.
---- A key whose name has no surname and a realm after it stays as it is: "Unc-<realm>" is a name we were
---- given without one (a death recap, an old record), and guessing which Unc it is would be worse.
+---     their kill orders never met the same enemy on our nameplates. The realm goes.
+--- A name with no surname and a realm after it is the name alone: "Unc-<realm>" is "Unc", a name we were
+--- given without one (a death recap, an old record), and no surname is guessed for it.
 function GK.PlayerKey(key)
     if type(key) ~= "string" then return key end
+    key = GK.NoEmptyRealm(key)
+    if key == "" then return nil end
     local name, after = key:match("^(.-)%-([^%-]+)$")
-    if not name or name == "" then return LIB.FullName(key) end
+    if not name or name == "" then return Plain(key) end
     if not name:find(" ", 1, true) and not LooksLikeRealm(after) then
-        name = name .. " " .. after                    -- the surname, read as a realm
+        return name .. " " .. after                    -- the surname, read as a realm
     end
-    return name .. "-" .. LIB.Realm()
+    return name
 end
 
 -- What was kept before GK.PlayerKey (0.1.0-beta2 and the live servers' first days) moves to its spelling
 -- once: GK.db.keys and GK.char.keys say it has. A record that meets one already under the new key is
 -- added into it where we know how (the counts of a foe, the tallies of the guild); anything else keeps
 -- its old key rather than lose either.
-local KEYS_VERSION = 1
+-- 2: the keys a relay wrote with an empty realm (GK.NoEmptyRealm), 2026-11-20
+-- 3: the guild's store kept under "Guild-" while the client named no realm (Forever's 1.60.1.71037, 2026-11-20)
+-- 4: every player by name alone, "First Last" (GK.Lib, 2026-11-20)
 
 local function MaxInto(into, from)
     for who, n in pairs(from or {}) do
@@ -404,16 +516,219 @@ local function RekeyList(list, field)
     end
 end
 
---- Once, at login: every name Grudgekeeper keeps for another player, in GK.PlayerKey's spelling.
-function GK.RekeyStores()
-    if (GK.char.keys or 0) < KEYS_VERSION then
-        Rekey(GK.char.foes, MERGE.foes)
-        for key, f in pairs(GK.char.foes) do f.n = GK.Show(key) end
-        RekeyList(GK.char.log, "n")
-        RekeyList(GK.char.letters, "n")
-        GK.char.keys = KEYS_VERSION
+--- A guildie's key, or an order's ("<poster>#<id>"), written with an empty realm, made whole: our realm where
+--- none is left, as a guildie's always is (GK.LocalKey's note). Any other value as it is.
+local function Whole(k)
+    if type(k) ~= "string" then return k end
+    local nk = GK.NoEmptyRealm(k)
+    if nk == k then return k end
+    local name, rest = nk:match("^([^#]*)(.*)$")
+    if not name:find("-", 1, true) then name = LIB.FullName(name) or name end
+    return name .. rest
+end
+
+--- A table keyed by players or orders: a key with an empty realm (any number of dashes: each relay hop added
+--- one, "Lavish Bandito---Realm") moves onto fix(key), and where a record is there already it is the same one
+--- twice: merge(kept, old) when given, else the one there stays. Only such keys move. Returns the keys that went
+--- into a record that was there already, as a set.
+local function RekeyBroken(t, fix, merge)
+    local merged = {}
+    if type(t) ~= "table" then return merged end
+    local moves = {}
+    for k in pairs(t) do
+        if type(k) == "string" and GK.NoEmptyRealm(k) ~= k then moves[#moves + 1] = { k, fix(k) } end
     end
-    if (GK.db.keys or 0) < KEYS_VERSION then
+    table.sort(moves, function(a, b) return #a[1] < #b[1] end)      -- the fewest dashes first: the likeliest original
+    for _, m in ipairs(moves) do
+        local v = t[m[1]]
+        t[m[1]] = nil
+        if m[2] == nil then
+            -- no key to move it to: dropped
+        elseif t[m[2]] == nil then
+            t[m[2]] = v
+        else
+            merged[m[1]] = true
+            if merge then t[m[2]] = merge(t[m[2]], v) end
+        end
+    end
+    return merged
+end
+
+local function Larger(a, b)
+    if type(a) == "number" and type(b) == "number" then return math.max(a, b) end
+    return a
+end
+
+--- Every name in an order a relay may have written with an empty realm, made whole.
+local function MendOrder(o)
+    o.key, o.by, o.doneBy = Whole(o.key), Whole(o.by), Whole(o.doneBy)
+    if type(o.n) == "string" then o.n = GK.PlayerKey(o.n) end
+    if type(o.helpers) == "table" then
+        for i, k in ipairs(o.helpers) do o.helpers[i] = Whole(k) end
+    end
+    RekeyBroken(o.pot, Whole, Larger)
+    if type(o.seen) == "table" then o.seen.by = Whole(o.seen.by) end
+end
+
+--- Once, at login: every name Grudgekeeper keeps for another player, in GK.PlayerKey's spelling.
+--- v3: a guild's store kept under "Guild-" goes into the guild's own. Forever's build 1.60.1.71037 named no realm,
+--- and LibForever's guild key came out "YippYapp-": a new, empty store, so every order the guild passed on was
+--- fresh and a letter - 30 for the owner at one login (2026-11-20). An order its own store lacks moves there, with
+--- its letter; one it had already is a copy, and the copy's letter goes (the keys returned). Asked once the lib
+--- knows the realm again; with none known it waits for a login that does.
+local function MendEmptyRealmStores()
+    local realm = LIB.Realm()
+    if not realm then return nil end
+    local copies = {}
+    for key, g in pairs(GK.db.guilds) do
+        local guild = type(key) == "string" and key:match("^(.+)%-$")
+        if guild and type(g) == "table" then
+            local own = GK.db.guilds[guild .. "-" .. realm]
+            if own then
+                for k, o in pairs(g.orders or {}) do
+                    if own.orders[k] then
+                        copies[k] = true
+                    elseif type(k) == "string" and GK.NoEmptyRealm(k) == k and k:find("%-[^%-#]+#") then
+                        own.orders[k] = o
+                    end
+                end
+            end
+            GK.db.guilds[key] = nil
+        end
+    end
+    return copies
+end
+
+-- ---------------------------------------------------------------------------
+-- v4 (2026-11-20): every player by name alone (GK.Lib). The realm goes from the keys and the names in every place
+-- the saved data keeps them - found in the owner's files: the tables keyed by players, orders or guilds (KEYED),
+-- the fields of NAME_FIELDS and the lists of NAME_LISTS. Not the free text (notes, an order's note, a sound, a GUID)
+-- nor the screenshots' names (db.shots), which only look like names ("most-wanted"). Two keys that become one are
+-- one player kept under two realms, and the two are one record: our own foes' counts add up (each fight was kept
+-- once), the guild's tallies take the larger, a guildie's row and the rest the newer, an order kept twice the closed
+-- one, a guild's store the fuller; whatever the kept one lacks comes from the other.
+-- ---------------------------------------------------------------------------
+local KEYED = { looks = true, guilds = true, slain = true, wanted = true, victims = true, tormentors = true,
+    foes = true, orders = true, pot = true, board = true, people = true, notes = true, marks = true, tracked = true,
+    by = true }
+local NAME_FIELDS = { n = true, o = true, av = true, key = true, by = true, doneBy = true, who = true, nm = true }
+local NAME_LISTS = { helpers = true, recent = true, h = true }
+local NOT_NAMES = { shots = true }
+
+local function Stamp(r) return tonumber(r.t) or tonumber(r.last) or tonumber(r.doneAt) or 0 end
+local function Size(store)
+    local n = 0
+    for _ in pairs(type(store) == "table" and type(store.board) == "table" and store.board or {}) do n = n + 1 end
+    for _ in pairs(type(store) == "table" and type(store.orders) == "table" and store.orders or {}) do n = n + 1 end
+    return n
+end
+
+--- What kept lacks, from other; a table keyed by players in both, the two together.
+local function FillIn(kept, other)
+    for k, v in pairs(other) do
+        if kept[k] == nil then
+            kept[k] = v
+        elseif type(kept[k]) == "table" and type(v) == "table" and KEYED[k] then
+            FillIn(kept[k], v)
+        end
+    end
+end
+
+local function MergeRecords(field, kept, other)
+    if type(kept) == "number" and type(other) == "number" then return math.max(kept, other) end
+    if type(kept) ~= "table" or type(other) ~= "table" then return kept end
+    if MERGE[field] then
+        MERGE[field](kept, other)
+        return kept
+    end
+    if field == "orders" then
+        if kept.state == "o" and type(other.state) == "string" and other.state ~= "o" then kept, other = other, kept end
+    elseif field == "guilds" then
+        if Size(other) > Size(kept) then kept, other = other, kept end
+    elseif Stamp(other) > Stamp(kept) then
+        kept, other = other, kept
+    end
+    FillIn(kept, other)
+    return kept
+end
+
+--- An order's key or a guild's: the realm out, its "#id" kept. A player's: GK.PlayerKey.
+local function PlainKey(k) return Plain(GK.NoEmptyRealm(k)) end
+
+--- The keys of t, plain. A guild's store kept under "Guild-" (no realm, 2026-11-20) whose orders the guild's own
+--- had already: those order keys go into copies, for their letters to go.
+local function PlainKeys(t, field, copies)
+    local fix = (field == "orders" or field == "guilds") and PlainKey or GK.PlayerKey
+    local moves = {}
+    for k in pairs(t) do
+        if type(k) == "string" then
+            local nk = fix(k)
+            if nk and nk ~= k then moves[#moves + 1] = { k, nk } end
+        end
+    end
+    -- the same every time; a key with no realm ("Guild-", this evening's) last, so the store it meets is the real one
+    table.sort(moves, function(a, b)
+        local ea, eb = a[1]:sub(-1) == "-", b[1]:sub(-1) == "-"
+        if ea ~= eb then return eb end
+        return a[1] < b[1]
+    end)
+    for _, m in ipairs(moves) do
+        local v = t[m[1]]
+        t[m[1]] = nil
+        local there = t[m[2]]
+        if there == nil then
+            t[m[2]] = v
+        elseif field == "guilds" and m[1]:sub(-1) == "-" and type(there) == "table" and type(v) == "table" then
+            -- a store kept under "Guild-" is never the one kept, whatever its size: the guild's own takes in what
+            -- it lacks, and the orders both had are copies
+            local inThere = {}
+            for ok in pairs(there.orders or {}) do inThere[PlainKey(ok)] = true end
+            for ok in pairs(v.orders or {}) do
+                if copies and inThere[PlainKey(ok)] then copies[PlainKey(ok)] = true end
+            end
+            FillIn(there, v)
+        else
+            if field == "guilds" and copies and type(v) == "table" and type(there) == "table" then
+                -- one store's keys may be plain already and the other's not: compared plain
+                local inThere = {}
+                for ok in pairs(there.orders or {}) do inThere[PlainKey(ok)] = true end
+                for ok in pairs(v.orders or {}) do
+                    if inThere[PlainKey(ok)] then copies[PlainKey(ok)] = true end
+                end
+            end
+            t[m[2]] = MergeRecords(field, there, v)
+        end
+    end
+end
+
+local function PlainNames(t, field, depth, copies)
+    if depth > 8 then return end
+    if KEYED[field] then PlainKeys(t, field, copies) end
+    for k, v in pairs(t) do
+        if type(v) == "string" then
+            if NAME_FIELDS[k] then
+                local nv = (k == "o" or k == "key") and PlainKey(v) or GK.PlayerKey(v)
+                if nv and nv ~= v then t[k] = nv end
+            end
+        elseif type(v) == "table" and not (depth == 0 and NOT_NAMES[k]) then
+            if NAME_LISTS[k] then
+                for i, s in ipairs(v) do
+                    if type(s) == "string" then v[i] = GK.PlayerKey(s) or s end
+                end
+            else
+                PlainNames(v, type(k) == "string" and k or "", depth + 1, copies)
+            end
+        end
+    end
+end
+
+function GK.RekeyStores()
+    -- the guild's first (v2): the letters below need to know which orders were copies of another
+    local mergedOrders = {}
+    -- v3, before the rest: the orders a store under "Guild-" had again, whose letters go below
+    local copiedOrders
+    if (GK.db.keys or 0) < 3 then copiedOrders = MendEmptyRealmStores() end
+    if (GK.db.keys or 0) < 2 then
         for _, g in pairs(GK.db.guilds) do
             Rekey(g.wanted, MERGE.wanted)
             Rekey(g.slain, MERGE.slain)
@@ -425,8 +740,103 @@ function GK.RekeyStores()
                 if type(o.n) == "string" then o.n = GK.PlayerKey(o.n) end
             end
             RekeyList(g.feed, "n")
+            -- v2: what a relay wrote with an empty realm. An order kept under such a poster is the order kept
+            -- under the whole one, come again: each spelling was a fresh order and a new letter ("Lavish
+            -- Bandito-", "--", "---", one id three times in the owner's file, 2026-11-20). The one under the
+            -- whole key stays; a copy with nothing there moves onto it.
+            RekeyBroken(g.board, Whole)
+            for k in pairs(RekeyBroken(g.orders, Whole)) do mergedOrders[k] = true end
+            for _, o in pairs(g.orders or {}) do
+                if type(o) == "table" then MendOrder(o) end
+            end
+            RekeyBroken(g.tormentors, GK.PlayerKey, Larger)
+            for _, e in ipairs(type(g.feed) == "table" and g.feed or {}) do
+                if type(e) == "table" then
+                    e.who = Whole(e.who)
+                    if type(e.h) == "table" then
+                        for i, k in ipairs(e.h) do e.h[i] = Whole(k) end
+                    end
+                end
+            end
         end
-        GK.db.keys = KEYS_VERSION
+        GK.db.keys = 2
+    end
+    if (GK.char.keys or 0) < 2 then
+        Rekey(GK.char.foes, MERGE.foes)
+        for key, f in pairs(GK.char.foes) do f.n = GK.Show(key) end
+        RekeyList(GK.char.log, "n")
+        RekeyList(GK.char.letters, "n")
+        -- v2: a letter a copy of an order brought goes - the order had its letter when it first came - and so
+        -- does a second letter onto one order; the rest point at the order's whole key
+        local onto, keep = {}, {}
+        for _, L in ipairs(GK.char.letters) do
+            if type(L) == "table" and type(L.o) == "string" and Whole(L.o) == L.o then onto[(L.kind or "") .. L.o] = true end
+        end
+        for _, L in ipairs(GK.char.letters) do
+            if type(L) ~= "table" then
+                keep[#keep + 1] = L
+            else
+                L.by = Whole(L.by)
+                local whole = Whole(L.o)
+                if whole == L.o then
+                    keep[#keep + 1] = L
+                elseif not mergedOrders[L.o] and not onto[(L.kind or "") .. whole] then
+                    onto[(L.kind or "") .. whole] = true            -- a copy with no twin: its letter, once
+                    L.o = whole
+                    keep[#keep + 1] = L
+                end
+            end
+        end
+        wipe(GK.char.letters)
+        for i, L in ipairs(keep) do GK.char.letters[i] = L end
+        GK.char.keys = 2
+    end
+    -- v3: an unread letter for an order a store under "Guild-" had again goes - the order had its letter when it
+    -- first came to the guild's own store. Done once the store was mended; a login with no realm known waits.
+    if copiedOrders then
+        if (GK.char.keys or 0) < 3 then
+            for i = #GK.char.letters, 1, -1 do
+                local L = GK.char.letters[i]
+                if type(L) == "table" and L.kind == "order" and not L.read and type(L.o) == "string"
+                    and copiedOrders[L.o] then
+                    table.remove(GK.char.letters, i)
+                end
+            end
+            GK.char.keys = 3
+        end
+        GK.db.keys = 3
+    end
+    -- v4: every name by itself, the account's data and then this character's
+    local copies
+    if (GK.db.keys or 0) < 4 then
+        copies = {}
+        PlainNames(GK.db, "", 0, copies)
+        GK.db.keys = 4
+    end
+    if (GK.char.keys or 0) < 4 then
+        PlainNames(GK.char, "", 0)
+        if type(GK.char.guild) == "string" then GK.char.guild = PlainKey(GK.char.guild) end
+        -- an unread letter for an order a store under "Guild-" had again (v3's, where no realm was known then)
+        for i = #GK.char.letters, 1, -1 do
+            local L = GK.char.letters[i]
+            if copies and type(L) == "table" and L.kind == "order" and not L.read and type(L.o) == "string"
+                and copies[L.o] then
+                table.remove(GK.char.letters, i)
+            end
+        end
+        -- one order kept under two of its poster's realms had a letter for each: by name alone they are one
+        -- order, and it keeps its first letter
+        local had, keep = {}, {}
+        for _, L in ipairs(GK.char.letters) do
+            local one = type(L) == "table" and type(L.o) == "string" and ((L.kind or "") .. "\1" .. L.o)
+            if not (one and had[one]) then
+                if one then had[one] = true end
+                keep[#keep + 1] = L
+            end
+        end
+        wipe(GK.char.letters)
+        for i, L in ipairs(keep) do GK.char.letters[i] = L end
+        GK.char.keys = 4
     end
 end
 
@@ -745,7 +1155,11 @@ local MAX_FOES, MAX_LOG = 400, 200
 --- last one this character was in, so nothing lands in a store of its own for a minute.
 function GK.Store()
     local key = LIB.GuildKey()
-    if key then GK.char.guild = key elseif IsInGuild() then key = GK.char.guild end
+    -- "Guild-" is a guild key with no realm, from a lib or a session that had none (2026-11-20): never kept,
+    -- never used - it was a new empty store, and every order the guild passed on came again as a letter
+    if key and key:sub(-1) == "-" then key = nil end
+    if key then GK.char.guild = key
+    elseif IsInGuild() and type(GK.char.guild) == "string" and GK.char.guild:sub(-1) ~= "-" then key = GK.char.guild end
     key = key or "-"
     local g = GK.db.guilds[key]
     if not g then
@@ -933,7 +1347,7 @@ local function Help()
     print("  /grudge letters  - read your letters")
     print("  /grudge test  - five sample letters, to see what they look like")
     print("  /grudge arrange  - put the letter icon, the spree splash and its toasts where you want them")
-    print("  /grudge spree  - show a sample spree splash and toast (or: spree fulfilled, spree tormentor)")
+    print("  /grudge spree  - show a sample spree splash and toast (or: spree fulfilled, spree tormentor, spree revenge)")
     print("  /grudge rank  - show a sample new-title splash and toast (or: rank nemesis)")
     print("  /grudge options  - open the settings")
     print("  /grudge guild  - officers: put an enemy guild on watch by its name")
@@ -1268,18 +1682,100 @@ GK.OnLook(function()
 end)
 
 -- ---------------------------------------------------------------------------
+-- The notifications, one page since 2026-11-20 (Settings, Notifications)
+-- ---------------------------------------------------------------------------
+-- "gjør settings bedre, så alt av notifications osv kan stilles på ett sted ... tenk en 1000 people guild"
+-- (the owner, 2026-11-20). Yours and a guildie's became two settings each, and a guildie's side got a threshold
+-- and the Big moments by default. An older saved file is moved once, before the defaults fill it in: a new
+-- title was told by the sprees' settings, so it keeps what they said; your kill order came with a guildie's and
+-- Off turned both off; a spree ended and a tormentor were one setting for both, so a guildie's keeps an Off.
+-- Everything else of a guildie's starts at the Big moments.
+local function MoveNotifications(db)
+    if type(db) ~= "table" or db.notifyV2 then return end
+    if db.rankMine == nil then db.rankMine = db.spreeMine end
+    if db.rankGuild == nil then db.rankGuild = db.spreeGuild end
+    if db.orderMine == nil and db.orderDone == "off" then db.orderMine = "off" end
+    if db.spreeEndedGuild == nil and db.spreeEnded == "off" then db.spreeEndedGuild = "off" end
+    if db.spreeTormentorGuild == nil and db.spreeTormentor == "off" then db.spreeTormentorGuild = "off" end
+end
+GK.MoveNotifications = MoveNotifications     -- for tests/run.lua
+
+-- Revenge came on 2026-11-20 with a row of its own each side. A saved file from before it keeps the preset it
+-- matched (Options.lua): Quiet has your revenge as a toast and All of it a guildie's as one, where the defaults
+-- would have put a splash on a streamer's screen. A mix of its own: yours as your sprees are, a guildie's off.
+local function MoveRevenge(db)
+    if type(db) ~= "table" or db.revengeMine ~= nil then return end
+    for _, p in ipairs(GK.NOTIFY_PRESETS or {}) do
+        local same = true
+        for k, v in pairs(p.set) do
+            if k ~= "revengeMine" and k ~= "revengeGuild" and db[k] ~= v then same = false end
+        end
+        if same then
+            db.revengeMine, db.revengeGuild = p.set.revengeMine, p.set.revengeGuild
+            return
+        end
+    end
+    local s = db.spreeMine
+    db.revengeMine = (s == "splash" or s == "toast" or s == "off") and s or "splash"
+    db.revengeGuild = "off"
+end
+GK.MoveRevenge = MoveRevenge                 -- for tests/run.lua
+
+-- A warning's row: "screen" by the letter icon, "chat" one line, or "off". true and false are an older saved
+-- file's, from when each row was a box to tick: true is the row's own way, as it was then.
+local WARN_WAY = { alertNear = "screen", leadNear = "screen", noteAlerts = "screen", watchNearby = "chat", watchGroup = "screen",
+    kudosGroup = "chat" }
+
+--- How a warning is told now: "screen", "chat" or "off".
+function GK.WarnStyle(key)
+    local v = GK.db and GK.db[key]
+    if v == "screen" or v == "chat" or v == "off" then return v end
+    if v == true then return WARN_WAY[key] or "screen" end
+    return "off"
+end
+
+--- Tell a warning its row's way (GK.WarnStyle): on screen (GK.Warn, with the rest of its arguments), as a line
+--- in chat, or not at all. Returns whether it was told.
+function GK.WarnAs(key, text, urgent, ownSound, target, soundKey)
+    local how = GK.WarnStyle(key)
+    if how == "screen" then
+        GK.Warn(text, urgent, ownSound, target, soundKey)
+        return true
+    elseif how == "chat" then
+        print(TAG .. ": " .. text)
+        return true
+    end
+    return false
+end
+
+-- ---------------------------------------------------------------------------
 -- Startup
 -- ---------------------------------------------------------------------------
 LIB.On("PLAYER_LOGIN", function()
     local fresh = GrudgekeeperDB == nil             -- a first install: no "what's new" (GK.DeliverNews)
+    MoveNotifications(GrudgekeeperDB)
+    MoveRevenge(GrudgekeeperDB)
     GK.db = LIB.PrepareDB(GrudgekeeperDB, defaults, nil, 1)
+    GK.db.notifyV2 = true
     GrudgekeeperDB = GK.db
     GK.UseLook(GK.db.look)
     GK.char = LIB.PrepareDB(GrudgekeeperCharDB, charDefaults, nil, 1)
     GrudgekeeperCharDB = GK.char
+    -- Ours for LibForever to remember this character's realm in, and to find it in our own old keys where the
+    -- client names none (Forever's 1.60.1.71037, 2026-11-20: LIB.Realm). Before the store is first asked for.
+    if LIB.RegisterSavedTable then
+        LIB.RegisterSavedTable(GK.db)
+        LIB.RegisterSavedTable(GK.char)
+    end
     -- Retired 2026-11-07, when taking an order went: the orders you took, and the warning for every
     -- order beside the one for yours (every order warns now). Gone from the saved files too.
     GK.char.accepted, GK.db.alertAll = nil, nil
+    -- Reaper's splash is the scythe since 2026-11-20 ("reaper scythe er default eller? mye bedre enn reaper
+    -- smoke ... ja bytt til scythe", the owner). Every saved file already holds "smoke", the old default written
+    -- into it, and nothing tells that apart from a pick: each account is moved once, and keeps what it picks after.
+    if not GK.db.reaperScythe then
+        GK.db.reaperEffect, GK.db.reaperScythe = "scythe", true
+    end
     GK.ClaimPC(GK.char)
     GK.ForgetGoneSounds(GK.db)
     GK.RekeyStores()

@@ -6,7 +6,7 @@
 -- Anyone with an open kill order on them gets a skull over their nameplate, and lights up the notice
 -- scroll (Notice.lua) with a sound - never a popup. Nobody takes an order: every guildie is the hunter.
 local ADDON, GK = ...
-local LIB = LibStub("LibForever-1.0")
+local LIB = GK.Lib or LibStub("LibForever-1.0")      -- names by themselves (Core.lua, GK.Lib)
 local Secret = GK.Secret
 
 local SEEN_FOR = 15 * 60      -- what we saw of someone counts for this long
@@ -323,6 +323,22 @@ local function TrackedNear(key, e, s)
     GK.Warn(("Tracked: %s is near!"):format(GK.Show(key)), true, nil, key, key)
 end
 
+--- One who leads over you in sight (more of their kills on you than yours on them, Grudges' "owed"): a warning,
+--- at most one in ALERT_GAP, until you stand even - then they are nobody special (Settings, Warnings). Drawn
+--- first (art/mockups/grudges, 2026-11-20). Not for one with an order on them or one you track: theirs comes.
+local leadAt = {}                          -- [key] = GetTime() of the last "... is near - owed N"
+local function LeadsNear(key, f)
+    local owed = (f.d or 0) - (f.k or 0)
+    if owed <= 0 or GK.WarnStyle("leadNear") == "off" then return end
+    local now = GetTime()
+    if leadAt[key] and now - leadAt[key] < ALERT_GAP then return end
+    for k, at in pairs(leadAt) do
+        if now - at > ALERT_GAP then leadAt[k] = nil end
+    end
+    leadAt[key] = now
+    GK.WarnAs("leadNear", ("%s is near - owed %d"):format(GK.Show(key), owed), true, nil, key, key)
+end
+
 -- Every plate on screen looked at again - but only when an order or the Tracked changed, or the skulls
 -- were switched on or off. It used to run on every change of any kind, a guildie's score included.
 local marksVersion, marksSetting, marksTracked = -1, nil, -1
@@ -402,10 +418,10 @@ end
 -- it (the owner, 2026-11-07). Before, only orders you took or posted warned you.
 local function Spotted(order, s)
     local now = GetTime()
-    if GK.db.alertNear then
+    if GK.WarnStyle("alertNear") ~= "off" then
         if not alerted[order.key] or now - alerted[order.key] > ALERT_GAP then
             alerted[order.key] = now
-            GK.Warn(("%s is near!"):format(GK.Show(order.n)), true, nil, order.n, order.key)
+            GK.WarnAs("alertNear", ("%s is near!"):format(GK.Show(order.n)), true, nil, order.n, order.key)
         end
     end
     -- the order's "last seen", filled in where it is: this runs at every look at the target
@@ -524,7 +540,8 @@ function GK.See(unit)
             s.keptRf, s.keptSx = s.rf, s.sx
         end
     end
-    if order then Spotted(order, s) elseif tracked then TrackedNear(trackedKey, tracked, s) end
+    if order then Spotted(order, s) elseif tracked then TrackedNear(trackedKey, tracked, s)
+    elseif f then LeadsNear(key, f) end
 end
 
 function GK.StartSightings()

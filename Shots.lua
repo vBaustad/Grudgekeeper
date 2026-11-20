@@ -10,7 +10,7 @@
 -- faces kept, the skin, the ledger's fold and sorting, and the screenshot quality. A real kill or death
 -- while it is open is put back too, so it is not kept.
 local ADDON, GK = ...
-local LIB = LibStub("LibForever-1.0")
+local LIB = GK.Lib or LibStub("LibForever-1.0")      -- names by themselves (Core.lua, GK.Lib)
 
 local ME, GUILD, RIVALS = "Aldric Thorne", "The Iron Oath", "Crimson Fang"
 local MAX_SHOTS = 60      -- the list kept in GrudgekeeperDB.shots, the oldest dropped first
@@ -214,6 +214,12 @@ local function Fill()
         c.foes[p.key] = { n = p.name, c = p.c, r = p.r, l = p.l, k = f[2], d = f[3], last = at,
             lastKill = f[2] > 0 and at or nil, lastDeath = f[3] > 0 and at - 600 or nil, hits = {} }
     end
+    -- Two you track (Sightings.lua), first on Grudges with the eye on their face: one you have never fought, and
+    -- one who leads over you (Grudges as one list, 2026-11-20)
+    c.tracked = {}
+    for _, p in ipairs({ e.grimbold, e.vexmora }) do
+        c.tracked[p.key] = { t = now - 2 * DAY, c = p.c, r = p.r, l = p.l }
+    end
     local LOG = { { "K", e.bramm, 3 * H, 1 }, { "D", e.sable, 23 * H, 2 }, { "K", e.thazrak, 25 * H, 2 },
         { "D", e.mordrek, 26 * H, 1 }, { "K", e.nyx, 30 * H, 3 }, { "K", e.kethra, 2 * DAY, 4 },
         { "D", e.vexmora, 51 * H, 3 }, { "K", e.mordrek, 3 * DAY, 1 } }
@@ -368,6 +374,8 @@ local function ClearScreen()
     local win = _G.GrudgekeeperFrame
     if win and win:IsShown() then win:Hide() end
     GK.CloseLetters()
+    if _G.GrudgekeeperProfile then _G.GrudgekeeperProfile:Hide() end
+    if GK.HideAnnouncements then GK.HideAnnouncements() end      -- a splash's or a toast's picture is taken alone
     if GameTooltip then GameTooltip:Hide() end
 end
 
@@ -383,7 +391,8 @@ local SHOTS = {
     { "orders", "Kill orders", Ledger("Kill orders", { "o", "bounty" }, false) },
     { "leaderboard", "Leaderboard", Ledger("Leaderboard", { "b", "top" }, false, true) },
     { "most-wanted", "Most wanted", Ledger("Most wanted", { "w", "wanted" }, false) },
-    { "grudges", "Grudges", Ledger("Grudges", nil, false) },
+    -- the one you owe most on the card: Grudges is who you owe first since 2026-11-20
+    { "grudges", "Grudges", Ledger("Grudges", { "f", "wanted" }, false) },
     { "news", "News", Ledger("News", nil, false) },
     { "shame", "Shame", Ledger("Shame", { "p", "shame" }, false) },
     { "kudos", "Kudos", Ledger("Kudos", { "p", "kudos" }, false) },
@@ -402,6 +411,42 @@ local SHOTS = {
         return GK.LedgerFrames()
     end },
     { "you", "You", Ledger("You", nil, false) },
+    -- the settings: every splash and toast on one page, the warnings on a page of their own (2026-11-20)
+    { "settings-notifications", "Settings: Notifications", function()
+        GK.OpenOptions("Notifications")
+        return GK.LedgerFrames()
+    end },
+    { "settings-warnings", "Settings: Warnings", function()
+        GK.OpenOptions("Warnings")
+        return GK.LedgerFrames()
+    end },
+    -- a guildie's profile, in its own window (Profile.lua)
+    { "profile", "Profile window", function()
+        GK.ShowProfile({ kind = "record", key = cast.top })
+        return { _G.GrudgekeeperProfile }
+    end },
+    -- what shows on the screen, each once its effect has landed: a spree, the WANTED poster, a revenge
+    { "splash-spree", "Spree splash", function()
+        GK.AnnounceSample("grudgebound")
+        return { _G.GrudgekeeperSplash }
+    end, 2.2 },
+    { "splash-wanted", "WANTED splash", function()
+        GK.AnnounceSample("fulfilled")
+        return { _G.GrudgekeeperSplash }
+    end, 2.0 },
+    { "splash-revenge", "Revenge splash", function()
+        GK.AnnounceSample("revenge")
+        return { _G.GrudgekeeperSplash }
+    end, 1.6 },
+    -- a guildie's toasts, stacked under the letter icon: a spree, a new title, a revenge
+    { "toasts", "Toasts", function()
+        GK.AnnounceSample("butcher")
+        GK.RankSample("avenger")
+        GK.AnnounceSample("revenge")
+        local frames = GK.ToastFrames()
+        frames[#frames + 1] = GK.NoticeFrame()
+        return frames
+    end, 1.4 },
 }
 GK.shotList = SHOTS          -- for tools/smoke_grudgekeeper.py
 

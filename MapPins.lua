@@ -6,7 +6,7 @@
 -- calls CheckMouseButtonPassthrough on every pin, which uses a call that is protected for addons in
 -- Forever, so our pin has its own that does nothing. A closed map costs nothing.
 local ADDON, GK = ...
-local LIB = LibStub("LibForever-1.0")
+local LIB = GK.Lib or LibStub("LibForever-1.0")      -- names by themselves (Core.lua, GK.Lib)
 
 local TEMPLATE = "GrudgekeeperMapPinTemplate"
 local PIN_FOR = 15 * 60     -- a sighting older than this is no place to look any more
