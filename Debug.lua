@@ -271,11 +271,12 @@ local function Spree(mine, n, set)
     Announce(set, "GK_SPREE", mine and LIB.Me() or Guildie("Kari"), n, tier, mine, key)
 end
 
-local function OrderDone(mine)
-    -- the order's class goes with it, as Guild.lua's does: the poster's face falls back to their class crest
+local function OrderDone(mine, pot)
+    -- the order's class goes with it, as Guild.lua's does: the poster's face falls back to their class crest. Gold
+    -- in its pot brings the purse down on the poster, none the stamp (FxOrders.lua)
     local v = TheEnemy()
     Announce(mine and { orderMine = "splash" } or { orderDone = "toast" }, "GK_ORDER_DONE",
-        mine and LIB.Me() or Guildie("Kari"), {}, v.key, 50000, mine, v.c)
+        mine and LIB.Me() or Guildie("Kari"), {}, v.key, pot or 50000, mine, v.c)
 end
 
 local function Revenge(mine)
@@ -285,9 +286,9 @@ local function Revenge(mine)
         mine and LIB.Me() or Guildie("Kari"), GK.Show(v.key), mine and 3 or 1, mine and 5 or 2, mine, v.key, v.c)
 end
 
-local function NewTitle(mine)
+local function NewTitle(mine, title, points)
     Announce(mine and { rankMine = "splash" } or { rankGuild = "toast" }, "GK_RANKUP",
-        mine and LIB.Me() or Guildie("Kari"), "Avenger", 450, mine)
+        mine and LIB.Me() or Guildie("Kari"), title or "Avenger", points or 450, mine)
 end
 
 local function Ended(mine)
@@ -301,9 +302,9 @@ local function Tormentor(mine)
 end
 
 -- The rows of Settings, Notifications, in its order: yours as splashes, each with its effect - a spree ended and
--- a tormentor too, which come as toasts out of the box: their splashes are dakristia's shatter and PAID stamp,
--- and as toasts the panel showed neither ("hvorfor er det ikke den animasjonen som kom fra daniel hvor streaken
--- knuses?", the owner, 2026-11-20) - then a guildie's, Kari's, as toasts. Each tier of a spree has its own
+-- a tormentor too, which come as toasts out of the box: their splashes are dakristia's shatter and the grudge book
+-- slamming down (T4, 2026-11-21), and as toasts the panel showed neither ("hvorfor er det ikke den animasjonen som
+-- kom fra daniel hvor streaken knuses?", the owner, 2026-11-20) - then a guildie's, Kari's, as toasts. Each tier of a spree has its own
 -- effect and voice; Reaper's is the one Settings, Look picks. The smoke had a button of its own until the
 -- scythe became Reaper's (2026-11-20).
 -- { label } is a heading; { label, fn } a button.
@@ -319,6 +320,7 @@ local HEAR = {
     { "A new title", function() NewTitle(true) end },
     -- a kill order fulfilled: its target's WANTED poster (FxOrders.lua), their face if you have them targeted
     { "A kill order fulfilled", function() OrderDone(true) end },
+    { "Kill order, no gold", function() OrderDone(true, 0) end },
     -- their face struck in the ring (FxRevenge.lua), your target's if you have one
     { "Revenge", function() Revenge(true) end },
     { "A spree ended", function() Ended(true) end },
@@ -327,11 +329,64 @@ local HEAR = {
     { "Kari's kill spree", function() Spree(false, 10) end },
     { "Kari's new title", function() NewTitle(false) end },
     { "Kari's kill order", function() OrderDone(false) end },
+    { "Kari's order, no gold", function() OrderDone(false, 0) end },
     { "Kari's revenge", function() Revenge(false) end },
     { "Kari's spree ended", function() Ended(false) end },
     { "Kari's tormentor", function() Tormentor(false) end },
 }
 GK.debugHear = HEAR          -- for tools/smoke_grudgekeeper.py
+
+-- Every one, and every title (2026-11-21: "legg til muligheten for å teste alle ranks, alle splash, alle toasts.
+-- det trengs å testes in game", the owner). Yours queue as real splashes do, each when the one before it has had
+-- its time; Kari's toasts come TOAST_GAP apart, as only four show at once. Each title has a button of its own:
+-- yours as a splash and Kari's as a toast together, its emblem in both (FxTitles.lua).
+local TOAST_GAP = 2.5
+
+--- Every button under a heading of HEAR, in its order: at once (splashes queue), or toasts TOAST_GAP apart.
+local function Every(heading, toasts)
+    local fns, under = {}, false
+    for _, a in ipairs(HEAR) do
+        if not a[2] then under = a[1] == heading elseif under then fns[#fns + 1] = a[2] end
+    end
+    for i, fn in ipairs(fns) do
+        if toasts then C_Timer.After((i - 1) * TOAST_GAP, function() pcall(fn) end) else fn() end
+    end
+    return #fns
+end
+
+--- Every title past the first: yours as splashes, one after another, or Kari's as toasts TOAST_GAP apart.
+local function EveryTitle(mine)
+    local n = 0
+    for _, row in ipairs(GK.TITLES) do
+        if row[1] > 0 then
+            local title, points = row[2], row[1]
+            if mine then NewTitle(true, title, points)
+            else C_Timer.After(n * TOAST_GAP, function() pcall(NewTitle, false, title, points) end) end
+            n = n + 1
+        end
+    end
+    return n
+end
+
+local ALL = {
+    { "Every one" },
+    { "Every splash of yours", function() Every("Yours", false) end },
+    { "Every toast of Kari's", function() Every("Kari's", true) end },
+    { "Every title" },
+    { "Every title, yours", function() EveryTitle(true) end },
+    { "Every title, Kari's", function() EveryTitle(false) end },
+    { "Each title" },
+}
+for _, row in ipairs(GK.TITLES) do
+    if row[1] > 0 then
+        local title, points = row[2], row[1]
+        ALL[#ALL + 1] = { ("%s, %d"):format(title, points), function()
+            NewTitle(true, title, points)
+            NewTitle(false, title, points)
+        end }
+    end
+end
+GK.debugAll = ALL            -- for tools/smoke_grudgekeeper.py
 
 -- ---------------------------------------------------------------------------
 -- The panel
@@ -416,7 +471,29 @@ local function Build()
             sy = sy - HEAR_ROW
         end
     end
-    panel:SetSize(W + HEAR_W + 14, math.max(-y + 50, -sy + 14))
+    -- every one, and every title, in a third column (ALL above)
+    local ax, ay = W + HEAR_W + 12, -64
+    for _, a in ipairs(ALL) do
+        if not a[2] then
+            local h = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+            h:SetPoint("TOPLEFT", ax, ay - 6)
+            h:SetText(a[1])
+            ay = ay - 26
+        else
+            local b = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+            b:SetSize(HEAR_W, 20)
+            b:SetPoint("TOPLEFT", ax, ay)
+            b:SetText(a[1])
+            local fn = a[2]
+            b:SetScript("OnClick", function()
+                local ok, err = pcall(fn)
+                if not ok then Say("error: " .. tostring(err)) end
+            end)
+            panel.hearButtons[a[1]] = b
+            ay = ay - HEAR_ROW
+        end
+    end
+    panel:SetSize(ax + HEAR_W + 14, math.max(-y + 50, -sy + 14, -ay + 14))
     panel:Hide()
     if LIB.RegisterWindow then LIB.RegisterWindow(panel, GK.db, "debugPanel") end
     -- Closing it any way at all - the X, Escape, the big button - puts everything back.

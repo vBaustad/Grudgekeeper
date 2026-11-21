@@ -4,9 +4,12 @@
 -- "skal vi lage en revenge animation isteden for den kjedelige vi har nå med stempel? den trenger ikke være så
 -- stor, men både splash og toast kanskje? og ikke bare hvit text heller" (the owner, 2026-11-20). Their face in the
 -- bronze ring, a red cut across it (Merciless's slash), blood behind the ring (Butcher's splat), the face flashing
--- red, and REVENGE slammed in under it in blood red. Smaller than a spree's seal: the ring is 120 where the seal is
--- 170, and the line comes up under the word. Your own revenge is the splash (GK.FX), a guildie's the toast
+-- red, and REVENGE slammed in above it in blood red. Smaller than a spree's seal: the ring is 120 where the seal is
+-- 170, and the line comes up under the ring. Your own revenge is the splash (GK.FX), a guildie's the toast
 -- (GK.TOASTFX). The line's colours are Announce.lua's.
+-- REVENGE is the kit's headline (P.Headline, Effects.lua), where TORMENTOR SLAIN stands: H in the effect lab's round
+-- 5, the owner's pick (2026-11-21), after "jeg likte texten øverst, og kanskje revenge burde ha texten samme sted?".
+-- Until then it was under the ring, at 32.
 --
 -- The face is placed by hand (Place), as on the WANTED poster (FxOrders.lua): a race's face, or a class's crest,
 -- is a corner of one file, and P.Set gives a texture the whole file. It is cut round by the portrait mask, as in
@@ -18,8 +21,7 @@ GK.FX = GK.FX or {}
 GK.TOASTFX = GK.TOASTFX or {}
 
 local MASK = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
-local WORD_FONT = "Fonts\\MORPHEUS.ttf"
-local WORD_COLOUR = { 0.8, 0.12, 0.07 }
+local WORD_COLOUR, WORD_GLOW, WORD_FLASH = { 0.8, 0.12, 0.07 }, { 0.85, 0.1, 0.06 }, { 1, 0.45, 0.35 }
 local FACE_K = 0.92                    -- the face under the ring's band, as GK.MakePortrait has it
 
 --- A texture put where P.Set would put it, with its texture coordinates left alone (a crest's corner).
@@ -94,8 +96,7 @@ end
 -- The splash: your own revenge
 -- ---------------------------------------------------------------------------
 local CUT, HIT, WORD = 0.34, 0.43, 0.74
-local WORD_Y, WORD_SIZE = 76, 32       -- REVENGE's middle under the seal's centre, and its size
-local LINE_Y = 104                     -- the line's top: under the word, where a seal's would be lower
+local LINE_Y = 66                      -- the line's top: just under the ring, where a seal's would be lower
 
 local SPLASH = { ring = 120, ry = -10, inn = 0.26, fadeIn = 0.08, cut = CUT, hit = HIT, len = 240, r = 0.62,
     slashH = 60, splat = 240, splatX = 8, splatTime = 0.14, joltX = 6, joltY = 3,
@@ -107,18 +108,14 @@ local SPLASH = { ring = 120, ry = -10, inn = 0.26, fadeIn = 0.08, cut = CUT, hit
 
 GK.FX.revenge = {
     land = WORD,                       -- the line and the glow come with the word, and the hold counts from it
+    voice = HIT,                       -- its own call with the hit, one sound with it: it came as the splash showed (2026-11-21)
     cues = { { 0, "whoosh_50" }, { CUT - 0.02, "schwing" }, { HIT, "boom" }, { WORD - 0.1, "whoosh_50" },
         { WORD, "stamp" } },
     build = function(splash, P)
         local s = {}
         s.gloom = P.Tex(splash, "fx_gloom", "BACKGROUND", 2)
         BuildRing(splash, P, s)
-        s.word = splash:CreateFontString(nil, "OVERLAY")
-        s.word:SetFont(WORD_FONT, WORD_SIZE, "THICKOUTLINE")
-        s.word:SetTextColor(WORD_COLOUR[1], WORD_COLOUR[2], WORD_COLOUR[3])
-        s.word:SetText("REVENGE")
-        s.word:Hide()
-        splash.fxParts[#splash.fxParts + 1] = s.word       -- so the kit's HideAll hides it with the textures
+        s.head = P.Headline(splash, "REVENGE", WORD_COLOUR, WORD_GLOW, WORD_FLASH, P.HeadOver(SPLASH.ry - SPLASH.ring / 2))
         s.sparks = P.Burst(splash, 14, { t0 = HIT, cy = SPLASH.ry, speed = 260, life = 0.45, size = 9,
             angle = SPLASH.r, arc = 0.7, seed = 11, stretch = 2.5 })
         splash.revenge = s
@@ -129,21 +126,12 @@ GK.FX.revenge = {
     update = function(splash, age, P)
         local s = splash.revenge
         P.Set(splash, splash.seal, { a = 0 })            -- the ring is where the seal would be
-        P.Set(splash, s.gloom, { w = 300, h = 260, a = 0.65 * P.prog(age, 0, 0.2) })
+        -- the gloom reaches up behind the word as well as the ring
+        P.Set(splash, s.gloom, { y = -40, w = 420, h = 400, a = 0.65 * P.prog(age, 0, 0.2) })
         DrawRing(splash, P, s, age, SPLASH)
         s.sparks(age)
-        -- REVENGE slammed in under the ring: its text scale from 1.8 to 1, then a small settle
-        if age < WORD - 0.12 then
-            s.word:Hide()
-        else
-            local k = P.prog(age, WORD - 0.12, 0.12, P.E.inQ)
-            s.word:SetTextScale(age < WORD and P.lerp(1.8, 1, k) or 1 + 0.06 * math.exp(-(age - WORD) * 12))
-            s.word:SetAlpha(age < WORD and k or 1)
-            s.word:ClearAllPoints()
-            s.word:SetPoint("CENTER", splash, "TOP", 0, -P.SEAL / 2 - WORD_Y)
-            s.word:Show()
-        end
-        -- the line up under the word (Announce.lua puts it back for the next splash)
+        P.DrawHeadline(splash, s.head, age, WORD)        -- REVENGE above the ring
+        -- the line up under the ring (Announce.lua puts it back for the next splash)
         splash.line:ClearAllPoints()
         splash.line:SetPoint("TOP", splash, "TOP", 0, -P.SEAL / 2 - LINE_Y)
     end,
@@ -157,6 +145,7 @@ local TOAST = { ring = 58, ry = 0, inn = 0.2, fadeIn = 0.06, cut = 0.22, hit = 0
     slashA = function() return 0.9 end }
 
 GK.TOASTFX.revenge = {
+    voice = TOAST.hit,                 -- the call with the hit, as the splash's
     build = function(toast, P)
         toast.fxOrigin = { point = "TOPLEFT", x = 32, y = -32 }      -- the toast's seal's centre (FxToast.lua)
         local s = {}

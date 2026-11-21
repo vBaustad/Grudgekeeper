@@ -43,9 +43,11 @@ end
 
 GK.FX.reaper_scythe = {
     land = C,
-    -- RP1's sounds: a low whoosh under the draw-back, the fanfare, the steel schwing as the blade crosses the seal
+    -- RP1's sounds, the game's own (round 8, the owner's picks in the lab, 2026-11-21): a big whoosh under the
+    -- draw-back (FX_Whoosh_Large_Revamp_07), the tribal bell for the fanfare (BellTollTribal), and a Mortal Strike's
+    -- swing as the blade crosses the seal (Spell_WR_MortalStrike_Revamp_Cast_01)
     voice = C + 0.05,
-    cues = { { 0, "whoosh_50" }, { C - 0.1, "sting_reaper" }, { C - 0.03, "schwing" } },
+    cues = { { 0, 1305195 }, { C - 0.1, 566027 }, { C - 0.03, 1267929 } },
     build = function(splash, P)
         local fx = {}
         fx.gloom = Gloom(splash, P)
@@ -106,9 +108,10 @@ local PUFFS = 30
 
 GK.FX.reaper_smoke = {
     land = SC,
-    -- RP4's sounds: the shadow swell under the smoke, the fanfare as the seal sharpens
+    -- RP4's sounds: the shadow swell under the smoke, the tribal bell as the seal sharpens - Reaper's fanfare is the
+    -- bell since round 8 (2026-11-21), whichever of its two effects is picked
     voice = SC + 0.05,
-    cues = { { 0, "shadow" }, { SC - 0.1, "sting_reaper" } },
+    cues = { { 0, "shadow" }, { SC - 0.1, 566027 } },
     build = function(splash, P)
         local fx = { puffs = {} }
         fx.gloom = Gloom(splash, P)

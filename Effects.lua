@@ -1,7 +1,8 @@
 -- Grudgekeeper - the spree effects: how each splash arrives. Each tier has its own, picked by both of us
 -- on the Streak Lab's board (2026-11-15 and 17): Bloodied's slam and drops, Merciless's cross cut,
 -- Butcher's blood bloom, Reaper's scythe or smoke (a setting), Grudgebound's crown of chains, its number on
--- every 5 after 15, the hundred, a spree ended shattering and a tormentor's debt stamped paid. The card
+-- every 5 after 15, the hundred, a spree ended shattering and a tormentor's grudge book slamming down (its debt
+-- stamped paid before, T3, kept in FxEnded.lua). The card
 -- names in the files (BL2, C4, RP1, RP4, GB1, X1, M11, E1, T3, K6) are the Streak Lab's: the board where the
 -- guild picked each effect, so a reader can find the card an effect was ported from.
 --
@@ -91,6 +92,12 @@ end
 --- layer and sub as CreateTexture's; add: drawn additively, as a light.
 function P.Tex(splash, file, layer, sub, add)
     local t = splash:CreateTexture(nil, layer or "ARTWORK", nil, sub or 0)
+    -- placed to the fraction of a pixel, not each snapped to the screen's pixels on its own: the parts of one
+    -- thing that moves (a poster, its face and its ink, what lies on it) then move as one, where each snapped
+    -- alone they jittered a pixel apart as it jolted ("ser ut som de ikke henger fast på plakaten", the owner,
+    -- 2026-11-21). Blizzard's own unit frames do the same for their bars.
+    t:SetSnapToPixelGrid(false)
+    t:SetTexelSnappingBias(0)
     if file then t:SetTexture(MEDIA .. file) end
     if add then t:SetBlendMode("ADD") end
     t:Hide()
@@ -103,14 +110,16 @@ end
 --- the frame point the lab's (0,0) sits at, replaces the splash seal's centre), o.w by o.h times o.s (and o.sx,
 --- o.sy), turned o.r clockwise, at alpha o.a, brightness o.b (0..1), tinted o.cr, o.cg, o.cb. o.coord: the part
 --- of the texture to show, { left, right, top, bottom } (a cell of a sheet). An alpha of 0 hides it.
+--- A frame's fxShakeX, fxShakeY move everything placed on it (an effect shaking the splash, FxEnded.lua's T4);
+--- HideAll puts them back, so a new announcement starts still.
 function P.Set(splash, t, o)
     local a = o.a == nil and 1 or o.a
     if a <= 0.001 then t:Hide() return end
     local s = o.s or 1
     t:ClearAllPoints()
     local at = splash.fxOrigin
-    t:SetPoint("CENTER", splash, at and at.point or "TOP", (at and at.x or 0) + (o.x or 0),
-        (at and at.y or SEAL_Y) - (o.y or 0))
+    t:SetPoint("CENTER", splash, at and at.point or "TOP", (at and at.x or 0) + (o.x or 0) + (splash.fxShakeX or 0),
+        (at and at.y or SEAL_Y) - (o.y or 0) - (splash.fxShakeY or 0))
     t:SetSize(math.max(0.01, (o.w or SEAL) * s * (o.sx or 1)), math.max(0.01, (o.h or SEAL) * s * (o.sy or 1)))
     t:SetAlpha(math.min(1, a))
     local b = o.b or 1
@@ -223,16 +232,78 @@ function P.Number(splash, max)
     return num
 end
 
---- Hide every effect texture on the splash (a new announcement starts clean).
+-- ---------------------------------------------------------------------------
+-- The headline
+-- ---------------------------------------------------------------------------
+-- One rule for the big moments, so they belong together without being alike (the owner, 2026-11-21: "ting burde
+-- ikke være likt, men ikke all over the place heller"): the word stands above the picture, at the same height, in
+-- the same font and size, and slams down the same way - from 2.4 times its size down to it in 0.12 s, a settle, a
+-- flash behind it as it lands and a glow under it - each event in its own colours. Taken from TORMENTOR SLAIN
+-- (FxEnded.lua, T4); REVENGE stands there too (FxRevenge.lua, H in the effect lab's round 5).
+-- It stands the same distance above every picture, HEAD_GAP over its top edge (P.HeadOver), where it stood at one
+-- height for all: over the smaller pictures that left too much air ("texten over er litt høyt over, litt mye
+-- luft", the owner in game, 2026-11-21, of a title's emblem).
+P.HEAD_Y, P.HEAD_SIZE, P.HEAD_GAP = -150, 38, 36   -- its middle above the seal's centre if none is given, its size
+local HEAD_FONT = "Fonts\\MORPHEUS.ttf"
+
+--- The headline's middle over a picture whose top edge is top (y down from the seal's centre).
+function P.HeadOver(top)
+    return top - P.HEAD_GAP
+end
+
+--- A headline on a splash: text in colour { r, g, b }, the glow under it and the flash as it lands tinted glow and
+--- flash, its middle at y (P.HeadOver the picture; h.y may be moved later). P.DrawHeadline places it each frame.
+function P.Headline(splash, text, colour, glow, flash, y)
+    local h = { glow = P.Tex(splash, "spree_glow", "BACKGROUND", 4, true), flash = P.Tex(splash, "spree_glow", "OVERLAY", 2, true),
+        glowTint = glow, flashTint = flash, y = y or P.HEAD_Y }
+    h.word = splash:CreateFontString(nil, "OVERLAY")
+    h.word:SetFont(HEAD_FONT, P.HEAD_SIZE, "THICKOUTLINE")
+    h.word:SetTextColor(colour[1], colour[2], colour[3])
+    h.word:SetText(text)
+    h.word:Hide()
+    splash.fxParts[#splash.fxParts + 1] = h.word        -- so HideAll hides it with the textures
+    return h
+end
+
+--- The headline at the splash's age, landing at t0, shaken with the splash (fxShakeX, fxShakeY).
+function P.DrawHeadline(splash, h, age, t0)
+    if age < t0 - 0.12 then
+        h.word:Hide()
+        h.glow:Hide()
+        h.flash:Hide()
+        return
+    end
+    local kq = P.prog(age, t0 - 0.12, 0.12, P.E.inQ)
+    local wa = age < t0 and kq or 1
+    local ws = age < t0 and P.lerp(2.4, 1, kq) or 1 + 0.08 * math.exp(-(age - t0) * 10) * math.cos((age - t0) * 30)
+    local g, f, y = h.glowTint, h.flashTint, h.y or P.HEAD_Y
+    P.Set(splash, h.glow, { y = y, w = 480, h = 125, a = wa * (0.5 + 0.1 * math.sin(age * 4)), cr = g[1], cg = g[2],
+        cb = g[3] })
+    if age >= t0 then
+        P.Set(splash, h.flash, { y = y, w = 540, h = 160, a = 0.8 * math.exp(-(age - t0) * 8), cr = f[1], cg = f[2],
+            cb = f[3] })
+    else
+        h.flash:Hide()
+    end
+    h.word:SetTextScale(ws)
+    h.word:SetAlpha(wa)
+    h.word:ClearAllPoints()
+    h.word:SetPoint("CENTER", splash, "TOP", splash.fxShakeX or 0, SEAL_Y - y - (splash.fxShakeY or 0))
+    h.word:Show()
+end
+
+--- Hide every effect texture on the splash (a new announcement starts clean), and stop any shake.
 function P.HideAll(splash)
     for _, t in ipairs(splash.fxParts or {}) do t:Hide() end
+    splash.fxShakeX, splash.fxShakeY = nil, nil
 end
 
 -- ---------------------------------------------------------------------------
 -- Sounds
 -- ---------------------------------------------------------------------------
 -- An effect (or a toast's) may have cues = { { t, "name" }, ... }, sorted by t: t is the splash's age in seconds
--- and name a file in Media/sfx, without .mp3. They are the lab's sounds (its api.cue), each played once as the age
+-- and name a file in Media/sfx, without .mp3, or is a number: one of the game's own sounds by its FileDataID (the
+-- lab's round 8, 2026-11-21), played from the client's files, so none ships. They are the lab's sounds (its api.cue), each played once as the age
 -- passes it. An effect's voice = t is when the splash plays the tier's voice line (api.vo), Announce.lua's.
 -- A toast whose cues depend on what it shows (K6's number) sets frame.cueList in its start.
 
@@ -248,7 +319,10 @@ function P.Cues(frame, fx, age)
     local n = frame.cueN or 1
     while list[n] and age >= list[n][1] do
         -- not on a silent one: a guildie's with Sounds from guildies off, or a sample's second (Announce.lua)
-        if GK.db and GK.db.sound and not frame.silent then PlaySoundFile(MEDIA .. "sfx\\" .. list[n][2] .. ".mp3", "Master") end
+        if GK.db and GK.db.sound and not frame.silent then
+            local cue = list[n][2]
+            PlaySoundFile(type(cue) == "number" and cue or MEDIA .. "sfx\\" .. cue .. ".mp3", "Master")
+        end
         n = n + 1
     end
     frame.cueN = n

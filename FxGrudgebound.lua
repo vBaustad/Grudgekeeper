@@ -42,10 +42,11 @@ end
 -- ("fades to black on the edges ... we don't want", Daniel, 2026-11-17).
 GK.FX.grudgebound_crown = {
     land = 0.5,
-    -- GB1's sounds: a riser into the fanfare (its take starts with the build-up), a flare as the seal comes up, the
-    -- crown's whoosh and chains
+    -- GB1's sounds, the game's own (round 8, the owner's picks in the lab, 2026-11-21): the ground shaking
+    -- (EarthquakeCameraShake) under Echeyakee's horn (G_HornofEcheyakee), and a chain snapping as the crown lands
+    -- (FX_Chain_Break_Large_02). The riser and the fanfare were "litt for arcade-y"; the flare and the whoosh went.
     voice = 0.58,
-    cues = { { 0, "riser" }, { 0, "sting_grudgebound" }, { 0.5, "flare" }, { 0.8, "whoosh" }, { 1.05, "rattle" } },
+    cues = { { 0, 568874 }, { 0, 567084 }, { 1.05, 1036058 } },
     build = function(splash, P)
         local st = State(splash, "crown")
         local T = 0.5                    -- when the seal comes up
@@ -71,11 +72,12 @@ GK.FX.grudgebound_crown = {
 -- (multText's other modes are "times", a count of the 5s, and roman numerals).
 GK.FX.grudgebound_repeat = {
     land = 0,
-    -- X1's sounds: the crown's whoosh and chains, then the number's whoosh, the x-N fanfare, a boom and the iron.
-    -- The lab's climb (a higher pitch every 5 kills, a riser and a shimmer) is left out: it needs pitch.
+    -- X1's sounds, the game's own (the owner's picks in the effect lab's round 8, 2026-11-21): a big whoosh as the
+    -- crown comes down (FX_Whoosh_Large_Revamp_08), the chains' sigil as it lands (Spell_DH_Sigil_Chain_Cast), and as
+    -- the number slams in the boom with a heavy rock (FX_RockImpact_Heavy_Short_01) and the tribal bell. The old
+    -- fanfare, the iron's clang, the rattle and the number's whoosh went.
     voice = 0.08,
-    cues = { { 0.3, "whoosh" }, { 0.55, "rattle" }, { 0.82, "whoosh" }, { 1.0, "sting_repeat" }, { 1.0, "boom" },
-        { 1.0, "clang" } },
+    cues = { { 0.3, 1305196 }, { 0.55, 1362383 }, { 1.0, "boom" }, { 1.0, 1345549 }, { 1.0, 566027 } },
     build = function(splash, P)
         local st = State(splash, "repeat")
         local H = 0.55 + 0.45            -- when the number slams in, after the crown lands
@@ -116,10 +118,12 @@ HUNDRED.R = HUNDRED.Z + HUNDRED.F
 
 GK.FX.hundred = {
     land = 0,
-    -- M11's sounds: the reward swells through the freeze (it starts 0.4 s before R) and lands with a boom as time
-    -- snaps back, then the voice
+    -- M11's sounds, the game's own (the owner's picks in the lab's round 8, 2026-11-21): the ground shakes through the
+    -- beat (EarthquakeCameraShake), and as time snaps back the boom, the chains' sigil (Spell_DH_Sigil_Chain_Cast) and
+    -- the tribal bell, then the voice. The swelling fanfare went.
     voice = false,                      -- its own call instead of the tier's
-    cues = { { HUNDRED.R - 0.4, "sting_hundred" }, { HUNDRED.R, "boom" }, { HUNDRED.R + 0.5, "vo_one_hundred" } },
+    cues = { { 0, 568874 }, { HUNDRED.R, "boom" }, { HUNDRED.R, 1362383 }, { HUNDRED.R, 566027 },
+        { HUNDRED.R + 0.5, "vo_one_hundred" } },
     build = function(splash, P)
         local st, R = State(splash, "hundred"), HUNDRED.R
         st.wave = P.Tex(splash, "spree_glow", "ARTWORK", 1, true)

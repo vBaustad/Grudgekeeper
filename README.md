@@ -66,3 +66,5 @@ Uses LibForever-1.0 (fetched by the packager, see `.pkgmeta`). MIT licence.
 
 The Grudgekeeper's voice calling out each kill spree tier (`Media/voice_*.mp3`), and the sound effects and
 fanfares the spree effects play (`Media/sfx/*.mp3`), were made with [ElevenLabs](https://elevenlabs.io).
+The heavier sounds - bells, horns, rock, chains and blades - are the game's own, played from the client's files
+by their number, so none of them ships with the addon.

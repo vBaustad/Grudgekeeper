@@ -1010,6 +1010,13 @@ local SOUND_KITS = {
     { "UI_PVP_HONOR_PRESTIGE_RANK_UP", "Rank up" },
     { "IG_PLAYER_INVITE", "Group invite" },
 }
+-- The game's own sound files, by FileDataID (PlaySoundFile takes the number; the client plays its own file, so
+-- none ships): the heavy ones picked in the effect lab's round 8 (2026-11-21), where the owner wanted "bass og dunk"
+-- over the kits' chimes. Each is in Forever's live build 71037 (soundkitentry).
+local SOUND_GAME = {
+    { 566027, "Tribal bell" },             -- BellTollTribal: a kill order fulfilled's call
+    { 568959, "Horde horn" },              -- PVPFlagCapturedHorde
+}
 
 --- Whether a pick is one of ours that left the package: a file (the war horn, the God of War clips) or a
 --- kit taken off the list (HARDCORE_DUEL, which plays nothing on Forever). Only our own: another addon's
@@ -1017,8 +1024,9 @@ local SOUND_KITS = {
 local function Gone(pick)
     if type(pick) ~= "string" then return false end
     local kind, name = pick:match("^(%a+):(.+)$")
-    local list = (kind == "file" and SOUND_FILES) or (kind == "kit" and SOUND_KITS)
+    local list = (kind == "file" and SOUND_FILES) or (kind == "kit" and SOUND_KITS) or (kind == "game" and SOUND_GAME)
     if not list then return false end
+    if kind == "game" then name = tonumber(name) end
     for _, s in ipairs(list) do
         if s[1] == name then return false end
     end
@@ -1070,6 +1078,7 @@ function GK.SoundChoices(spree)
     for _, s in ipairs(SOUND_KITS) do
         if SOUNDKIT and SOUNDKIT[s[1]] then list[#list + 1] = { "kit:" .. s[1], s[2] } end
     end
+    for _, s in ipairs(SOUND_GAME) do list[#list + 1] = { "game:" .. s[1], s[2] } end
     local shared = SharedSounds()
     if shared then
         local names = {}
@@ -1096,6 +1105,10 @@ function GK.PlayChoice(key)
     elseif kind == "file" then
         for _, s in ipairs(SOUND_FILES) do
             if s[1] == name and Offered(s) then file = s[3] end
+        end
+    elseif kind == "game" then
+        for _, s in ipairs(SOUND_GAME) do
+            if s[1] == tonumber(name) then file = s[1] end
         end
     elseif kind == "lsm" then
         local shared = SharedSounds()
@@ -1348,7 +1361,7 @@ local function Help()
     print("  /grudge test  - five sample letters, to see what they look like")
     print("  /grudge arrange  - put the letter icon, the spree splash and its toasts where you want them")
     print("  /grudge spree  - show a sample spree splash and toast (or: spree fulfilled, spree tormentor, spree revenge)")
-    print("  /grudge rank  - show a sample new-title splash and toast (or: rank nemesis)")
+    print("  /grudge rank  - show a sample new-title splash and toast (or: rank nemesis, rank all)")
     print("  /grudge options  - open the settings")
     print("  /grudge guild  - officers: put an enemy guild on watch by its name")
 end

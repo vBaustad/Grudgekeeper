@@ -341,7 +341,7 @@ function GK.SettingsChapters()
           intro = "Skin, portraits and the Reaper splash.",
           rows = {
             -- the skin dresses the ledger, the notes and these pages (GK.SetLook); the letters and the
-            -- kill order's scroll are the Grudgekeeper's paper in both
+            -- kill order's poster are the Grudgekeeper's paper in both
             { kind = "choice", key = "look", label = "Skin",
               options = { { "parchment", "Parchment" }, { "classic", "Classic" } },
               get = function() return GK.db.look or "parchment" end,

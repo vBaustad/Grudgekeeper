@@ -3287,7 +3287,8 @@ local function bootAnnounce()
     -- these tests are about the queue and the lines: a guildie's every spree, and their spree ended, told as all
     -- were before the Notifications page (2026-11-20); its thresholds have tests of their own
     GK.db.spreeGuildFrom, GK.db.spreeEndedGuild = 3, "toast"
-    local A = { tex = {}, txt = {}, played = {}, frames = {}, combat = false, instance = false, lockdown = false }
+    -- A.txt the lines as read (their colours taken out: what they say), A.raw as set, colours and all
+    local A = { tex = {}, txt = {}, raw = {}, played = {}, frames = {}, combat = false, instance = false, lockdown = false }
     local object = {}
     object.__index = function(self, method)
         if method:find("^%l") then return nil end    -- a field of our own, never set: nil, as on a real frame
@@ -3313,7 +3314,12 @@ local function bootAnnounce()
                 table.insert(A.tex, tostring(path))
             end
         end
-        if method == "SetText" then return function(_, text) table.insert(A.txt, text) end end
+        if method == "SetText" then
+            return function(_, text)
+                table.insert(A.raw, text)
+                table.insert(A.txt, type(text) == "string" and (text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) or text)
+            end
+        end
         if method == "CreateMaskTexture" then return function() return setmetatable({ mask = true }, object) end end
         if method:find("^Create") then return function() return setmetatable({}, object) end end
         return function() end
@@ -3332,7 +3338,11 @@ local function bootAnnounce()
         RAID_WARNING_2 = 8, RAID_BOSS_EMOTE_WARNING = 9 }
     _G.PlaySound = function(id) table.insert(A.played, id) end
     -- a file is remembered by its name, voice_butcher for ...\\Media\\voice_butcher.mp3
-    _G.PlaySoundFile = function(path) table.insert(A.played, path:match("([%w_]+)%.mp3$") or path) return true end
+    -- (a game file is its FileDataID, a number, and is remembered as that number)
+    _G.PlaySoundFile = function(path)
+        table.insert(A.played, type(path) == "string" and path:match("([%w_]+)%.mp3$") or path)
+        return true
+    end
     LIB.fire("PLAYER_ENTERING_WORLD")
     assert(loadfile("Notice.lua"))("Grudgekeeper", GK)     -- the toasts ask it where the letter icon is
     for _, file in ipairs(EFFECT_FILES) do assert(loadfile(file))("Grudgekeeper", GK) end
@@ -3491,7 +3501,7 @@ test("announce: revenge, yours told and a guildie's off until asked for", functi
     end
     LIB.Fire("GK_REVENGE", ME, "Gankalot", 3, 5, true, "Gankalot-Realm", "ROGUE")
     eq(Lines()[1], "Gankalot \194\183 now 3 - 5", "yours, a splash: REVENGE is the effect's, the line where you stand")
-    if not A.txt[1]:find("|cffffd1003|r", 1, true) then error("your number in gold: " .. A.txt[1], 0) end
+    if not A.raw[1]:find("|cffffd1003|r", 1, true) then error("your number in gold: " .. A.raw[1], 0) end
     LIB.Fire("GK_REVENGE", KARI, "Gankalot", 1, 2, false, "Gankalot-Realm", "ROGUE")
     eq(#Lines(), 1, "a guildie's: off out of the box")
     GK.db.revengeGuild = "toast"
@@ -3578,13 +3588,21 @@ test("announce: the sound is the one picked, else the tier's own, and none when 
     eq(#A.played, 2, "None picked")
     GK.db.spreeSounds.butcher = nil
     LIB.Fire("GK_SPREE_ENDED", ME, 5, "Gankalot", true)
+    eq(#A.played, 2, "a spree ended calls with nothing out of the box: its pulse, shatter and bell are its sound")
     LIB.Fire("GK_TORMENTOR", ME, "Gankalot", 4, true)
-    eq(A.played[3], 6)
-    eq(A.played[4], 7)
+    -- a tormentor's own comes with the book's slam (2026-11-21), not as it shows: a second of every frame's clock
+    for _ = 1, 20 do
+        for _, f in ipairs(A.frames) do if f.OnUpdate then f.OnUpdate(f, 0.05) end end
+    end
+    local tormentor = false
+    for i = 4, #A.played do if A.played[i] == 7 then tormentor = true end end
+    eq(tormentor, true, "a tormentor's own, with its slam")
+    local heard = #A.played
     GK.db.sound = false
     LIB.Fire("GK_SPREE", ME, 7, "Butcher", true, "butcher") W.advance(4)
     LIB.Fire("GK_SPREE_ENDED", ME, 5, "Gankalot", true)
-    eq(#A.played, 4, "Sounds off mutes them")
+    W.advance(4)
+    eq(#A.played, heard, "Sounds off mutes them")
     eq(#A.txt, 7, "the announcement still comes")
 end)
 
@@ -3788,6 +3806,25 @@ test("announce: a name the game hides is a question mark in every line", functio
     eq(A.txt[3], "You put an end to ?, who had killed 4 of us")
 end)
 
+test("announce: every line in colours - what was won in gold, an enemy in red, the words between white", function()
+    local GK, LIB, A = bootAnnounce()
+    -- toasts, which show at once: the line as it is set
+    GK.db.spreeMine, GK.db.rankMine, GK.db.spreeEnded, GK.db.spreeTormentor, GK.db.orderMine =
+        "toast", "toast", "toast", "toast", "toast"
+    local function Last() return A.raw[#A.raw] end
+    LIB.Fire("GK_SPREE", ME, 7, "Butcher", true, "butcher")
+    eq(Last(), "|cffffd1007|r kills in a row", "a spree's kills")
+    LIB.Fire("GK_RANKUP", ME, "Avenger", 450, true)
+    eq(Last(), "You are now |cffffd100Avenger|r - |cffffd100450|r points", "a title and its points")
+    LIB.Fire("GK_SPREE_ENDED", ME, 5, "Gankalot", true)
+    eq(Last(), "Your 5-kill spree ended (|cffe84028Gankalot|r)", "who ended it in red; the number greys with the words")
+    LIB.Fire("GK_TORMENTOR", ME, "Gankalot", 4, true)
+    eq(Last(), "You put an end to |cffe84028Gankalot|r, who had killed |cffffd1004|r of us", "the tormentor, and their count")
+    LIB.Fire("GK_ORDER_DONE", ME, {}, GANK, 2000, true)
+    eq(Last(), "Kill order fulfilled: |cffe84028Gank Master|r, by |cffffd100you|r - |cffffd10020s|r",
+        "the target, you, and the gold")
+end)
+
 test("announce: a guildie's kill order fulfilled - the order's seal, who and how many with them, the bounty", function()
     local GK, LIB, A = bootAnnounce()
     LIB.Fire("GK_ORDER_DONE", KARI, nil, GANK, 2000)
@@ -3795,7 +3832,7 @@ test("announce: a guildie's kill order fulfilled - the order's seal, who and how
     eq(seal, MEDIA .. "seal_red", "the wax a kill order's letter is sealed with")
     eq(ribbon, "nil", "no ribbon")
     eq(line, "Kill order fulfilled: Gank Master, by Kari - 20s")
-    eq(A.played[1], 1, "its own sound: PvP update")
+    eq(A.played[1], 566027, "its own sound: the tribal bell, a game file by its number (2026-11-21)")
     LIB.Fire("GK_ORDER_DONE", KARI, { EDVARD, ME }, GANK, 0)
     eq(A.txt[2], "Kill order fulfilled: Gank Master, by Kari and 2 more", "for honour: no sum")
     -- a guildie's, so held by the guildies' rule, and it comes when the fight ends
@@ -4248,16 +4285,25 @@ test("effects: a toast's cues play by its age; the count's come only with the co
     eq(table.concat(A.played, " "), "voice_grudgebound whoosh_50 stamp whoosh_50 clang_60")
 end)
 
-test("effects: every cue and the voice time of every effect is in order and names a file in Media/sfx", function()
+test("effects: every cue and the voice time of every effect is in order and names a file in Media/sfx or the game's", function()
     local GK = bootAnnounce()
+    -- the game's own files a cue may name, by FileDataID: each read from Forever 71037's soundkitentry and played in
+    -- the effect lab (round 8, 2026-11-21). A number not here is a typo the client would play as silence.
+    local GAME = { [838830] = true, [930444] = true, [566027] = true, [568874] = true, [567084] = true,
+        [1036058] = true, [1305195] = true, [1267929] = true, [1345549] = true, [567556] = true,
+        [1305196] = true, [1362383] = true }
     local function check(name, fx)
         local last = 0
         for _, c in ipairs(fx.cues or {}) do
             assert(c[1] >= last, name .. ": cues are sorted by time")
             last = c[1]
-            local f = io.open("Media/sfx/" .. c[2] .. ".mp3", "rb")
-            assert(f, name .. ": no Media/sfx/" .. c[2] .. ".mp3")
-            f:close()
+            if type(c[2]) == "number" then
+                assert(GAME[c[2]], name .. ": " .. c[2] .. " is not one of the game's files the lab checked")
+            else
+                local f = io.open("Media/sfx/" .. c[2] .. ".mp3", "rb")
+                assert(f, name .. ": no Media/sfx/" .. c[2] .. ".mp3")
+                f:close()
+            end
         end
     end
     for name, fx in pairs(GK.FX) do check(name, fx) end
@@ -4274,7 +4320,8 @@ test("effects: a toast's own effects play from start to fade without an error, a
     local cases = {
         { "burn", "spree_burn", function() LIB.Fire("GK_SPREE", ME, 7, "Butcher", true, "butcher") end },
         { "burn with the count", "spree_burn", function() LIB.Fire("GK_SPREE", ME, 20, "Grudgebound", true, "grudgebound") end },
-        { "paid", "debt_paid", function() LIB.Fire("GK_TORMENTOR", ME, "Gankalot", 6, true) end },
+        -- a tormentor's toast is the grudge book now (FxEnded.lua's T4, 2026-11-21), found by its name first
+        { "the book", "tormentor", function() LIB.Fire("GK_TORMENTOR", ME, "Gankalot", 6, true) end },
         { "plain", nil, function() LIB.Fire("GK_SPREE", KARI, 7, "Butcher", false, "butcher") end },
     }
     for round = 1, 2 do

@@ -42,38 +42,6 @@ GK.LETTER_ICON = {
 }
 
 -- ---------------------------------------------------------------------------
--- The rolled ends of a scroll
--- ---------------------------------------------------------------------------
--- In three pieces, so any width keeps the curled ends round: the two ends at their own shape, the
--- middle stretched. roll.tga holds the roll across its full width in rows 16-112 of 128
--- (art/import_grudgekeeper.py puts it there). flip: the bottom roll.
-local ROLL_V0, ROLL_V1, ROLL_CAP = 16 / 128, 112 / 128, 0.08
-local CAP_ASPECT = 512 * ROLL_CAP / 96          -- an end's width over its height, in the texture
-
-function GK.MakeRoll(parent, height, flip)
-    local f = CreateFrame("Frame", nil, parent)
-    f:SetHeight(height)
-    local v0, v1 = ROLL_V0, ROLL_V1
-    if flip then v0, v1 = v1, v0 end
-    local function Piece(u0, u1)
-        local t = f:CreateTexture(nil, "ARTWORK")
-        t:SetTexture(MEDIA .. "roll")
-        t:SetTexCoord(u0, u1, v0, v1)
-        return t
-    end
-    local left, middle, right = Piece(0, ROLL_CAP), Piece(ROLL_CAP, 1 - ROLL_CAP), Piece(1 - ROLL_CAP, 1)
-    left:SetPoint("TOPLEFT")
-    left:SetPoint("BOTTOMLEFT")
-    left:SetWidth(height * CAP_ASPECT)
-    right:SetPoint("TOPRIGHT")
-    right:SetPoint("BOTTOMRIGHT")
-    right:SetWidth(height * CAP_ASPECT)
-    middle:SetPoint("TOPLEFT", left, "TOPRIGHT")
-    middle:SetPoint("BOTTOMRIGHT", right, "BOTTOMLEFT")
-    return f
-end
-
--- ---------------------------------------------------------------------------
 -- The pile
 -- ---------------------------------------------------------------------------
 -- A letter is news, and once read it goes: when the letters close, every letter read goes with them. They
@@ -1087,62 +1055,15 @@ function GK.CloseLedgerSheets()
     end
 end
 
---- A sheet of parchment between two rolls, w x h, with our cross at its top right. It can be dragged
---- anywhere, and Escape closes it before the window under it. Hidden: the caller writes on it first.
+--- A sheet's frame, w x h, for its maker to draw its paper on: it can be dragged anywhere (or moves the ledger it
+--- lies on), and Escape closes it before the window under it. Hidden: the caller writes on it first. The kill
+--- order's WANTED poster is drawn on one (Post.lua); it was a scroll between two rolls with our cross in its
+--- corner until 2026-11-21.
 function GK.MakeSheet(name, w, h)
     local f = SheetFrame(name, w, h)
-    local paper = f:CreateTexture(nil, "BACKGROUND")
-    paper:SetAllPoints()
-    paper:SetTexture(MEDIA .. "sheet")
-    local top = GK.MakeRoll(f, 30)
-    top:SetWidth(w + 16)
-    top:SetPoint("BOTTOM", f, "TOP", 0, -15)
-    local bottom = GK.MakeRoll(f, 30, true)
-    bottom:SetWidth(w + 16)
-    bottom:SetPoint("TOP", f, "BOTTOM", 0, 15)
-    local close = GK.MakeCloseButton(f, 20, function() f:Hide() end, 14)
-    close:SetPoint("TOPRIGHT", -12, -12)
-    close:SetFrameLevel(f:GetFrameLevel() + 12)
     f:Hide()
     if LIB.RegisterPopup then LIB.RegisterPopup(f) else tinsert(UISpecialFrames, name) end
     return f
-end
-
---- The head of a sheet: whom it is about. A face in the ring, a small caption over the name, and level,
---- race and class under it. head:Set(caption, t, red) with t = { key, c, r, rf, sx, l }; red: the
---- caption in blood (a kill order), else faded ink.
-function GK.SheetHead(f, w)
-    local width = w - 94 - 34                     -- from the face to the cross
-    local h = { face = GK.MakePortrait(f, 56) }
-    h.face.tex:SetPoint("CENTER", f, "TOPLEFT", 56, -54)
-    h.caption = f:CreateFontString(nil, "ARTWORK")
-    SheetInk(h.caption, FADED, TEXT_FONT, 10)
-    h.caption:SetPoint("TOPLEFT", 94, -31)
-    h.name = f:CreateFontString(nil, "ARTWORK")
-    SheetInk(h.name, INK, TITLE_FONT, 20)
-    h.name:SetPoint("TOPLEFT", h.caption, "BOTTOMLEFT", 0, -3)
-    h.name:SetWidth(width)
-    h.name:SetJustifyH("LEFT")
-    h.name:SetWordWrap(false)
-    h.info = f:CreateFontString(nil, "ARTWORK")
-    SheetInk(h.info, FADED, TEXT_FONT, 11)
-    h.info:SetPoint("TOPLEFT", h.name, "BOTTOMLEFT", 0, -3)
-    h.info:SetWidth(width)
-    h.info:SetJustifyH("LEFT")
-    h.info:SetWordWrap(false)
-    function h:Set(caption, t, red)
-        self.caption:SetText(caption)
-        SheetInk(self.caption, red and BLOOD or FADED, TEXT_FONT, 10)
-        -- a long name steps down a size or two before the game cuts it short
-        for _, size in ipairs({ 20, 17, 15 }) do
-            SheetInk(self.name, INK, TITLE_FONT, size)
-            self.name:SetText(GK.Show(t.key))
-            if (self.name:GetStringWidth() or 0) <= width then break end
-        end
-        self.info:SetText(GK.Describe(t.l, t.c, t.r))
-        self.face:Set(t)
-    end
-    return h
 end
 
 --- A part of a sheet: its name in small capitals at y down from the top, and a thin rule from there to
@@ -1265,25 +1186,10 @@ function GK.SheetSeal(f, onClick)
     return b
 end
 
---- Cancel, in faded ink at the sheet's foot on the left: the quiet way out. Hides the sheet.
-function GK.SheetCancel(f)
-    local b = CreateFrame("Button", nil, f)
-    b.text = b:CreateFontString(nil, "ARTWORK")
-    SheetInk(b.text, FADED, TEXT_FONT, 12)
-    b.text:SetPoint("LEFT")
-    b.text:SetText(CANCEL or "Cancel")
-    b:SetSize(math.ceil(b.text:GetStringWidth() or 50) + 4, 20)
-    b:SetPoint("BOTTOMLEFT", 30, 31)
-    b:SetScript("OnEnter", function(self) self.text:SetTextColor(INK[1], INK[2], INK[3]) end)
-    b:SetScript("OnLeave", function(self) self.text:SetTextColor(FADED[1], FADED[2], FADED[3]) end)
-    b:SetScript("OnClick", function() f:Hide() end)
-    return b
-end
-
 -- ---------------------------------------------------------------------------
 -- The notes' sheets in the game's own frame: Blizzard's window (SettingsFrameTemplate, which Forever
 -- draws in bronze, as our other addons' windows) on our plain parchment, with the game's own boxes,
--- radio buttons and buttons, and ink for the writing. The scroll suits a kill order; for the notes and
+-- radio buttons and buttons, and ink for the writing. A poster suits a kill order; for the notes and
 -- the who-picker the owner asked for "blizz bars rundt og ikke scroll ... litt mer clean", then "med
 -- parchment bakgrunn" (2026-11-06).
 -- ---------------------------------------------------------------------------
