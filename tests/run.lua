@@ -1827,6 +1827,11 @@ test("the tooltip: an enemy's Grudge line gets the notes, anyone else gets a lin
     W2.tipLine = nil
     eq(GK.TooltipLine(GANK, nil), "|cffc8281eGrudge|r  Shame, 2 notes")
     eq(GK.NoteTipLine(GANK), "|cffffcc00Shame|r  " .. GK.TagText("Ninja looter", 12) .. " - 2 notes")
+    -- every tag on the list, newest first, and a kudos preset left behind is not one of them
+    W.receive(GK, KARI, msg("N", 1, GANK, 3, B + 13, "", "Toxic", "", "", "", "z"))
+    W.receive(GK, KARI, msg("N", 1, GANK, 4, B + 14, "", "Helpful", "", "", "", "w"))
+    eq(GK.NoteTipLine(GANK), "|cffffcc00Shame|r  " .. GK.TagText("Toxic", 12) .. ", "
+        .. GK.TagText("Ninja looter", 12) .. " - 4 notes")
     W.receive(GK, EDVARD, msg("L", 1, NICE, "kudos", B))
     eq(GK.NoteTipLine(NICE), "|cff4dff66Kudos|r")
     eq(GK.NoteTipLine("Stranger-Realm"), nil)

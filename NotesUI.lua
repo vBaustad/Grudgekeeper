@@ -660,12 +660,14 @@ local function NoteBits(key)
     return WORD[s.primary] .. (s.count > 0 and (", " .. Plural(s.count, "note")) or "")
 end
 
---- The line for a player who is not an enemy: `Shame  Ninja looter - 2 notes`, the list in its colour.
+--- The line for a player who is not an enemy: `Shame  Toxic, Ninja looter - 2 notes`, the list in its
+--- colour and every tag on it, newest first.
 function GK.NoteTipLine(key)
     local s = key and Summary(key)
     if not s then return nil end
-    local bits = {}
-    if s.tags[s.primary] then bits[#bits + 1] = GK.TagText(s.tags[s.primary], 12) end
+    local bits, tags = {}, {}
+    for i, tag in ipairs(s.taglist[s.primary] or {}) do tags[i] = GK.TagText(tag, 12) end
+    if #tags > 0 then bits[#bits + 1] = table.concat(tags, ", ") end
     if s.count > 0 then bits[#bits + 1] = Plural(s.count, "note") end
     local head = ("|cff%s%s|r"):format(COLOUR[s.primary], WORD[s.primary])
     return #bits > 0 and (head .. "  " .. table.concat(bits, " - ")) or head
