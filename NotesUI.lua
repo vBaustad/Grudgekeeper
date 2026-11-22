@@ -697,7 +697,6 @@ end
 -- ---------------------------------------------------------------------------
 -- Nameplates, players nearby, players joining the group
 -- ---------------------------------------------------------------------------
-local WATCH_TEXTURE = "Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew"
 local plates = {}                                  -- nameplate units on screen
 local marks = setmetatable({}, { __mode = "k" })   -- plate -> our mark on it (made once per plate)
 local marked = {}                                  -- unit -> the plate its mark is on
@@ -716,19 +715,12 @@ local function Unmark(unit)
     marked[unit] = nil
 end
 
---- The small mark for Shame: the game's alert. Kudos has its medals (KudosRow).
-local function MarkArt(tex)
-    tex:SetTexCoord(0, 1, 0, 1)
-    tex:SetVertexColor(1, 1, 1)
-    tex:SetTexture(WATCH_TEXTURE)
-end
-
 local MEDAL, MEDAL_GAP = 22, 1
 local ROW_PLACE = { { 1 }, { 1, 2 }, { 2, 1, 3 } }   -- left to right; with three, the most given in the middle
 
---- One medal per kudos tag in a row over the name, and "+N" for the ones past three.
-local function KudosRow(f, s)
-    local row, more = GK.KudosRow(s.taglist.kudos or {}, s.tagcount.kudos or {})
+--- One medal per tag on the list in a row over the name, and "+N" for the ones past three.
+local function MedalRow(f, s, list)
+    local row, more = GK.MedalRow(s.taglist[list] or {}, s.tagcount[list] or {})
     if #row == 0 then row[1] = false end            -- no tag at all: the plain medal
     f.medals = f.medals or {}
     for i = 1, 3 do
@@ -742,7 +734,7 @@ local function KudosRow(f, s)
         if which then
             tex:ClearAllPoints()
             tex:SetPoint("LEFT", f, "LEFT", (i - 1) * (MEDAL + MEDAL_GAP), 0)
-            tex:SetTexture(GK.KudosMedal(row[which] or nil))
+            tex:SetTexture(GK.Medal(list, row[which] or nil))
             tex:Show()
         else
             tex:Hide()
@@ -757,9 +749,8 @@ local function KudosRow(f, s)
     f.more:SetShown(more > 0)
 end
 
---- A small dim mark on the plate, left of the kill order's seal (Sightings.lua: 26 wide, centred, 6 down
---- into the plate) so the two never cover each other. Kudos wears a row of medals in the seal's own
---- place: a player with an open order gets no note mark, so the two never meet.
+--- A row of medals over the name, one per tag on the list the player is shown under, in the kill order
+--- seal's own place: a player with an open order gets no note mark, so the two never meet.
 local function Mark(unit, list, s)
     Unmark(unit)
     local plate = PlateOf(unit)
@@ -768,33 +759,19 @@ local function Mark(unit, list, s)
     if not f then
         f = CreateFrame("Frame", nil, plate)
         f:EnableMouse(false)
-        f.tex = f:CreateTexture(nil, "OVERLAY")
-        f.tex:SetAllPoints()
         marks[plate] = f
     end
-    -- the plate's frame is reused for whoever comes up next, so size and place it every time
+    -- the plate's frame is reused for whoever comes up next, so place it every time
     f:ClearAllPoints()
-    if list == "kudos" then
-        -- Blizzard's friendly plate is tall with the name low in it, so its top floats far above the
-        -- name; sit on the name when it shows. Plate addons (ElvUI, Ellesmere) hide it and keep the plate tight.
-        local name = plate.UnitFrame and plate.UnitFrame.name
-        if name and name:IsVisible() then
-            f:SetPoint("BOTTOM", name, "TOP", 0, 2)
-        else
-            f:SetPoint("BOTTOM", plate, "TOP", 0, 2)
-        end
-        f:SetAlpha(1)
-        f.tex:Hide()
-        KudosRow(f, s)
+    -- Blizzard's friendly plate is tall with the name low in it, so its top floats far above the
+    -- name; sit on the name when it shows. Plate addons (ElvUI, Ellesmere) hide it and keep the plate tight.
+    local name = plate.UnitFrame and plate.UnitFrame.name
+    if name and name:IsVisible() then
+        f:SetPoint("BOTTOM", name, "TOP", 0, 2)
     else
-        f:SetSize(14, 14)
-        f:SetPoint("BOTTOMRIGHT", plate, "TOP", -15, -6)
-        f:SetAlpha(0.6)
-        for _, tex in ipairs(f.medals or {}) do tex:Hide() end
-        if f.more then f.more:Hide() end
-        MarkArt(f.tex)
-        f.tex:Show()
+        f:SetPoint("BOTTOM", plate, "TOP", 0, 2)
     end
+    MedalRow(f, s, list)
     f:SetFrameLevel((plate:GetFrameLevel() or 1) + 20)
     f:Show()
     marked[unit] = plate

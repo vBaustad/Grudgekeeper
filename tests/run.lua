@@ -272,25 +272,45 @@ test("a tag's icon and text: the preset's own, the note for a custom tag, nothin
     eq(GK.TagText(nil), "")
 end)
 
-test("a kudos medal: the tag's own for every preset, the plain one for a custom tag or none", function()
+test("a medal: the tag's own for every preset on its list, the list's plain one for a custom tag or none", function()
     local GK = boot()
     local M = "Interface\\AddOns\\Grudgekeeper\\Media\\"
-    eq(GK.KudosMedal("Kind"), M .. "kudos_kind")
-    eq(GK.KudosMedal("Fun to group with"), M .. "kudos_fun_to_group_with")
-    eq(GK.KudosMedal("Bad at tanks"), M .. "kudos_plain")
-    eq(GK.KudosMedal(nil), M .. "kudos_plain")
-    for _, tag in ipairs(GK.TAGS.kudos) do assert(GK.KudosMedal(tag) ~= M .. "kudos_plain", tag) end
+    eq(GK.Medal("kudos", "Kind"), M .. "kudos_kind")
+    eq(GK.Medal("kudos", "Fun to group with"), M .. "kudos_fun_to_group_with")
+    eq(GK.Medal("kudos", "Bad at tanks"), M .. "kudos_plain")
+    eq(GK.Medal("kudos", nil), M .. "kudos_plain")
+    eq(GK.Medal("watch", "Ninja looter"), M .. "shame_ninja_looter")
+    eq(GK.Medal("watch", "Stole my mount"), M .. "shame_plain")
+    eq(GK.Medal("watch", nil), M .. "shame_plain")
+    eq(GK.Medal("watch", "Kind"), M .. "shame_plain")
+    for list, tags in pairs(GK.TAGS) do
+        for _, tag in ipairs(tags) do assert(not GK.Medal(list, tag):find("_plain$"), tag) end
+    end
 end)
 
-test("the kudos row: most given first, newest first on a tie, three at most and a count of the rest", function()
+test("every medal the plates can ask for has its file in Media", function()
     local GK = boot()
-    local row, more = GK.KudosRow({ "Kind", "Helpful", "Skilled" }, { Kind = 1, Helpful = 2, Skilled = 1 })
+    local function has(path)
+        local file = "Media/" .. path:match("Media\\(.+)$") .. ".tga"
+        local f = io.open(file, "rb")
+        assert(f, "missing " .. file)
+        f:close()
+    end
+    for list, tags in pairs(GK.TAGS) do
+        for _, tag in ipairs(tags) do has(GK.Medal(list, tag)) end
+        has(GK.Medal(list, nil))
+    end
+end)
+
+test("the medal row: most given first, newest first on a tie, three at most and a count of the rest", function()
+    local GK = boot()
+    local row, more = GK.MedalRow({ "Kind", "Helpful", "Skilled" }, { Kind = 1, Helpful = 2, Skilled = 1 })
     eq(table.concat(row, ","), "Helpful,Kind,Skilled")
     eq(more, 0)
-    row, more = GK.KudosRow({ "A", "B", "C", "D", "E" }, {})
+    row, more = GK.MedalRow({ "A", "B", "C", "D", "E" }, {})
     eq(table.concat(row, ","), "A,B,C")
     eq(more, 2)
-    row, more = GK.KudosRow({}, {})
+    row, more = GK.MedalRow({}, {})
     eq(#row, 0)
     eq(more, 0)
 end)

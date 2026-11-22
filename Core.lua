@@ -135,7 +135,7 @@ local defaults = {
     shameSound = "auto",     -- and the sound it plays (GK.SoundChoices; "off" for none; "auto" until one is picked: GK.ShameSoundKey)
     nearSound = "kit:PVP_THROUGH_QUEUE", -- the sound of a target near, a Marked player or the watched guild (GK.NearSound)
     kudosGroup = "off",      -- a Kudos player joins your group (off: the owner doesn't read chat lines)
-    plateNotes = true,       -- a small dim mark on the nameplate of a player you have notes on
+    plateNotes = true,       -- a medal per tag over the nameplate of a player on Shame or Kudos
     guilds = {},             -- [guild key] = { board, orders, wanted, slain, feed, nextId } (Guild.lua)
     -- What is told on screen (Announce.lua; Settings, Notifications): "off", "toast" or "splash", yours and a
     -- guildie's each on its own. These are the Big moments (GK.NOTIFY_PRESETS, Options.lua), for a new install

@@ -72,19 +72,21 @@ function GK.TagIcon(tag)
     return "Interface\\Icons\\" .. (TAG_ICON[tag] or CUSTOM_ICON)
 end
 
---- The medal over a Kudos player's nameplate: one per preset tag (Media/kudos_<tag>), the plain tick for
---- a tag a player typed, or none.
-function GK.KudosMedal(tag)
+local MEDAL_ART = { kudos = "kudos_", watch = "shame_" }
+
+--- The medal for a tag over a nameplate: one per preset tag on the list (Media/kudos_<tag>, Media/shame_<tag>),
+--- the list's plain one for a tag a player typed, or none.
+function GK.Medal(list, tag)
     local name = "plain"
-    for _, preset in ipairs(GK.TAGS.kudos) do
+    for _, preset in ipairs(GK.TAGS[list]) do
         if tag == preset then name = tag:lower():gsub(" ", "_") end
     end
-    return "Interface\\AddOns\\Grudgekeeper\\Media\\kudos_" .. name
+    return "Interface\\AddOns\\Grudgekeeper\\Media\\" .. MEDAL_ART[list] .. name
 end
 
---- The medals over a Kudos player's plate: tags is every tag they got (newest first), counts = { [tag] = how
+--- The medals over a noted player's plate: tags is every tag they got (newest first), counts = { [tag] = how
 --- many gave it }. Most given first, newest first on a tie, three at most, and how many did not fit.
-function GK.KudosRow(tags, counts)
+function GK.MedalRow(tags, counts)
     local order = {}
     for i, tag in ipairs(tags) do order[i] = { tag = tag, n = counts[tag] or 1, i = i } end
     table.sort(order, function(a, b)

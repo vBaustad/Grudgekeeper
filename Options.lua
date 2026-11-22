@@ -319,7 +319,7 @@ function GK.SettingsChapters()
             Check("unitMenu", "In the right-click menu", "An enemy: profile, kill order, Track. A friend: Shame, Kudos."),
             Check("plateMarks", "A seal over a kill order target's nameplate",
                 "The eye over those you track, too. Needs enemy nameplates."),
-            Check("plateNotes", "Mark noted players' nameplates", "A medal for each tag over Kudos players, a small mark for Shame."),
+            Check("plateNotes", "Mark noted players' nameplates", "A medal for each tag over players on Shame or Kudos."),
             Check("mapPins", "Last seen on the map", "Where a guildie saw a target, for 15 minutes."),
             Check("inspectTab", "A tab on the Inspect window", "A guildie's record, right there."),
             { kind = "check", key = "guildButton", label = "A tab on the guild window",
