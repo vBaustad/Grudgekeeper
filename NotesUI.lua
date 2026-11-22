@@ -22,6 +22,7 @@ local ORDER = { "watch", "kudos" }
 local WORD = { watch = "Shame", kudos = "Kudos" }
 local CARD_TITLE = { watch = "SHAME", kudos = "KUDOS" }
 local COLOUR = { watch = "ffcc00", kudos = "4dff66" }
+local BLOCK_COLOUR = { watch = "b98ce6", kudos = "4dff66" }   -- a list's block on the card: purple, green
 local NEAR_GAP = 90                      -- the same player warns you at most this often
 local MAX_CARD_LINES = 9                 -- what the ledger's card has room for
 local CARD_NOTES = 5                     -- notes on a card before "and 3 more"
@@ -152,16 +153,45 @@ function GK.NoteCard(key, page)
     -- the notes, also on someone on no list: a note alone put them on Marked until 2026-11-22, and on none since
     local notes = s and s.notes or (GK.IsNoted(key) and GK.NotesOf(key)) or {}
     if s then
+        -- the shown list's block first, then the other's
+        local blocks = {}
         for _, list in ipairs(s.on) do
+            if list == shown then table.insert(blocks, 1, list) else blocks[#blocks + 1] = list end
+        end
+        local roomy = #blocks == 1
+        local onList = {}
+        for _, list in ipairs(blocks) do onList[list] = true end
+        for _, list in ipairs(blocks) do
+            local col = "|cff" .. BLOCK_COLOUR[list]
             local tags = {}
             for i, tag in ipairs(s.taglist[list]) do tags[i] = GK.TagText(tag, 12) end
-            lines[#lines + 1] = ("%s: %s%s"):format(WORD[list], NameList(s.lists[list]),
+            -- the colour starts after "Label: ": the card upper-cases and splits at the label
+            lines[#lines + 1] = ("%s: %s%s%s|r"):format(WORD[list], col, NameList(s.lists[list]),
                 #tags > 0 and (" - " .. table.concat(tags, ", ")) or "")
+            local mine = {}
+            for _, n in ipairs(notes) do
+                if n.list == list then mine[#mine + 1] = n end
+            end
+            -- one block has room for CARD_NOTES notes; two share the card, three lines of notes each
+            local room = roomy and CARD_NOTES or 3
+            local shownNotes = #mine > room and (roomy and room or room - 1) or #mine
+            for i = 1, shownNotes do lines[#lines + 1] = col .. NoteLine(mine[i]) .. "|r" end
+            if #mine > shownNotes then
+                local more = #mine - shownNotes
+                local line = ("and %d more note%s."):format(more, more == 1 and "" or "s")
+                lines[#lines + 1] = roomy and line or (col .. line .. "|r")
+            end
         end
-    end
-    for i = 1, math.min(CARD_NOTES, #notes) do lines[#lines + 1] = NoteLine(notes[i]) end
-    if #notes > CARD_NOTES then
-        lines[#lines + 1] = ("and %d more note%s."):format(#notes - CARD_NOTES, #notes - CARD_NOTES == 1 and "" or "s")
+        -- notes on no list (or on a list they are not on) come last, while there is room
+        for _, n in ipairs(notes) do
+            if #lines >= MAX_CARD_LINES then break end
+            if not onList[n.list] then lines[#lines + 1] = NoteLine(n) end
+        end
+    else
+        for i = 1, math.min(CARD_NOTES, #notes) do lines[#lines + 1] = NoteLine(notes[i]) end
+        if #notes > CARD_NOTES then
+            lines[#lines + 1] = ("and %d more note%s."):format(#notes - CARD_NOTES, #notes - CARD_NOTES == 1 and "" or "s")
+        end
     end
     if s or #notes > 0 then
         local score = 0
@@ -662,17 +692,32 @@ local function NoteBits(key)
     return WORD[s.primary] .. (s.count > 0 and (", " .. Plural(s.count, "note")) or "")
 end
 
---- The line for a player who is not an enemy: `Shame  Toxic, Ninja looter - 2 notes`, the list in its
---- colour and every tag on it, newest first.
-function GK.NoteTipLine(key)
+--- The line for one list: `Shame  Toxic, Ninja looter - 2 notes`, the list in its colour, every tag the
+--- notes for that list gave (newest first) and how many notes were written for it. No list: the player's
+--- main one.
+function GK.NoteTipLine(key, list)
     local s = key and Summary(key)
     if not s then return nil end
-    local bits, tags = {}, {}
-    for i, tag in ipairs(s.taglist[s.primary] or {}) do tags[i] = GK.TagText(tag, 12) end
+    list = list or s.primary
+    if not s.taglist[list] then return nil end
+    local bits, tags, count = {}, {}, 0
+    for i, tag in ipairs(s.taglist[list]) do tags[i] = GK.TagText(tag, 12) end
+    for _, n in ipairs(s.notes) do
+        if n.list == list then count = count + 1 end
+    end
     if #tags > 0 then bits[#bits + 1] = table.concat(tags, ", ") end
-    if s.count > 0 then bits[#bits + 1] = Plural(s.count, "note") end
-    local head = ("|cff%s%s|r"):format(COLOUR[s.primary], WORD[s.primary])
+    if count > 0 then bits[#bits + 1] = Plural(count, "note") end
+    local head = ("|cff%s%s|r"):format(COLOUR[list], WORD[list])
     return #bits > 0 and (head .. "  " .. table.concat(bits, " - ")) or head
+end
+
+--- One tooltip line per list the player is on, Shame first. nil for nobody noted.
+function GK.NoteTipLines(key)
+    local s = key and Summary(key)
+    if not s then return nil end
+    local out = {}
+    for _, list in ipairs(s.on) do out[#out + 1] = GK.NoteTipLine(key, list) end
+    return out
 end
 
 local tooltipLine = GK.TooltipLine
@@ -692,9 +737,9 @@ local function OnNoteTip(tooltip)
     if not ok or type(unit) ~= "string" or Secret(unit) then return end
     if GK.Hostile and GK.Hostile(unit) then return end       -- Social.lua has theirs
     local key = PlayerKey(unit)
-    local line = key and GK.NoteTipLine(key)
-    if not line then return end
-    tooltip:AddLine(line, 0.85, 0.75, 0.6)
+    local lines = key and GK.NoteTipLines(key)
+    if not lines then return end
+    for _, line in ipairs(lines) do tooltip:AddLine(line, 0.85, 0.75, 0.6) end
     tooltip:Show()
 end
 
@@ -722,7 +767,7 @@ end
 local MEDAL, MEDAL_GAP = 22, 1
 local ROW_PLACE = { { 1 }, { 1, 2 }, { 2, 1, 3 } }   -- left to right; with three, the most given in the middle
 
---- One medal per tag on the list in a row over the name, and "+N" for the ones past three.
+--- One medal per tag on the list in a row over the name, and "+N" for the ones past three. f is the row's frame.
 local function MedalRow(f, s, list)
     local row, more = GK.MedalRow(s.taglist[list] or {}, s.tagcount[list] or {})
     if #row == 0 then row[1] = false end            -- no tag at all: the plain medal
@@ -753,9 +798,9 @@ local function MedalRow(f, s, list)
     f.more:SetShown(more > 0)
 end
 
---- A row of medals over the name, one per tag on the list the player is shown under, in the kill order
---- seal's own place: a player with an open order gets no note mark, so the two never meet.
-local function Mark(unit, list, s)
+--- A row of medals over the name for each list the player is on, in the kill order seal's own place: a
+--- player with an open order gets no note mark, so the two never meet. Kudos sits on the name, Shame above it.
+local function Mark(unit, s)
     Unmark(unit)
     local plate = PlateOf(unit)
     if not plate then return end
@@ -763,6 +808,7 @@ local function Mark(unit, list, s)
     if not f then
         f = CreateFrame("Frame", nil, plate)
         f:EnableMouse(false)
+        f.rows = {}
         marks[plate] = f
     end
     -- the plate's frame is reused for whoever comes up next, so place it every time
@@ -770,13 +816,36 @@ local function Mark(unit, list, s)
     -- Blizzard's friendly plate is tall with the name low in it, so its top floats far above the
     -- name; sit on the name when it shows. Plate addons (ElvUI, Ellesmere) hide it and keep the plate tight.
     local name = plate.UnitFrame and plate.UnitFrame.name
-    if name and name:IsVisible() then
-        f:SetPoint("BOTTOM", name, "TOP", 0, 2)
-    else
-        f:SetPoint("BOTTOM", plate, "TOP", 0, 2)
+    local anchor = plate
+    if name and name:IsVisible() then anchor = name end
+    f:SetPoint("BOTTOM", anchor, "TOP", 0, 2)
+    f:SetSize(1, 1)
+    local level = (plate:GetFrameLevel() or 1) + 20
+    f:SetFrameLevel(level)
+    local below                                      -- the row under this one
+    for i = #ORDER, 1, -1 do
+        local list = ORDER[i]
+        local row = f.rows[list]
+        if not row then
+            row = CreateFrame("Frame", nil, f)
+            row:EnableMouse(false)
+            f.rows[list] = row
+        end
+        if OnList(s, list) then
+            row:ClearAllPoints()
+            if below then
+                row:SetPoint("BOTTOM", below, "TOP", 0, 2)
+            else
+                row:SetPoint("BOTTOM", f, "BOTTOM", 0, 0)
+            end
+            MedalRow(row, s, list)
+            row:SetFrameLevel(level)
+            row:Show()
+            below = row
+        else
+            row:Hide()
+        end
     end
-    MedalRow(f, s, list)
-    f:SetFrameLevel((plate:GetFrameLevel() or 1) + 20)
     f:Show()
     marked[unit] = plate
 end
@@ -815,7 +884,7 @@ local function Look(unit)
     local guid = UnitGUID(unit)
     local order = GK.OrderOn(key, (not Secret(guid) and type(guid) == "string") and guid or nil)
     if plates[unit] then
-        if order or not GK.db.plateNotes then Unmark(unit) else Mark(unit, s.primary, s) end
+        if order or not GK.db.plateNotes then Unmark(unit) else Mark(unit, s) end
     end
     if not order then Nearby(key, s) end
 end
