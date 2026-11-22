@@ -272,6 +272,29 @@ test("a tag's icon and text: the preset's own, the note for a custom tag, nothin
     eq(GK.TagText(nil), "")
 end)
 
+test("a kudos medal: the tag's own for every preset, the plain one for a custom tag or none", function()
+    local GK = boot()
+    local M = "Interface\\AddOns\\Grudgekeeper\\Media\\"
+    eq(GK.KudosMedal("Kind"), M .. "kudos_kind")
+    eq(GK.KudosMedal("Fun to group with"), M .. "kudos_fun_to_group_with")
+    eq(GK.KudosMedal("Bad at tanks"), M .. "kudos_plain")
+    eq(GK.KudosMedal(nil), M .. "kudos_plain")
+    for _, tag in ipairs(GK.TAGS.kudos) do assert(GK.KudosMedal(tag) ~= M .. "kudos_plain", tag) end
+end)
+
+test("the kudos row: most given first, newest first on a tie, three at most and a count of the rest", function()
+    local GK = boot()
+    local row, more = GK.KudosRow({ "Kind", "Helpful", "Skilled" }, { Kind = 1, Helpful = 2, Skilled = 1 })
+    eq(table.concat(row, ","), "Helpful,Kind,Skilled")
+    eq(more, 0)
+    row, more = GK.KudosRow({ "A", "B", "C", "D", "E" }, {})
+    eq(table.concat(row, ","), "A,B,C")
+    eq(more, 2)
+    row, more = GK.KudosRow({}, {})
+    eq(#row, 0)
+    eq(more, 0)
+end)
+
 test("known tags are the presets and then the custom ones in use on that list", function()
     local GK = boot()
     local tags = GK.KnownTags("watch")

@@ -65,22 +65,24 @@ end
 -- nobody wrote about are kept as false: most of the world.
 local cache, cacheVersion = {}, -1
 
+--- Every tag the authors gave, newest first, and how many notes gave each.
 local function Distinct(notes, authors)
-    local tags, seen = {}, {}
+    local tags, counts = {}, {}
     for _, n in ipairs(notes) do
-        if n.tag and authors[n.author] and not seen[n.tag] then
-            seen[n.tag] = true
-            tags[#tags + 1] = n.tag
+        if n.tag and authors[n.author] then
+            if not counts[n.tag] then tags[#tags + 1] = n.tag end
+            counts[n.tag] = (counts[n.tag] or 0) + 1
         end
     end
-    return tags
+    return tags, counts
 end
 
 --- { key, lists = GK.ListsOf, notes = GK.NotesOf (newest first), count, score, on = the lists they are on,
---- primary = the one to show, tags = [list] = the newest tag, taglist = [list] = every tag } or nil.
+--- primary = the one to show, tags = [list] = the newest tag, taglist = [list] = every tag,
+--- tagcount = [list] = { [tag] = notes that gave it } } or nil.
 local function BuildSummary(key)
     if not GK.IsNoted(key) then return nil end
-    local s = { key = key, lists = GK.ListsOf(key), notes = GK.NotesOf(key), on = {}, tags = {}, taglist = {}, score = 0 }
+    local s = { key = key, lists = GK.ListsOf(key), notes = GK.NotesOf(key), on = {}, tags = {}, taglist = {}, tagcount = {}, score = 0 }
     s.count = #s.notes
     for _, n in ipairs(s.notes) do s.score = s.score + n.score end
     for _, list in ipairs(ORDER) do
@@ -89,7 +91,7 @@ local function BuildSummary(key)
             s.on[#s.on + 1] = list
             local set = {}
             for _, a in ipairs(authors) do set[a] = true end
-            s.taglist[list] = Distinct(s.notes, set)
+            s.taglist[list], s.tagcount[list] = Distinct(s.notes, set)
             s.tags[list] = s.taglist[list][1]
         end
     end
@@ -714,35 +716,85 @@ local function Unmark(unit)
     marked[unit] = nil
 end
 
---- The picture for a list: the game's alert for Shame, a tick for Kudos.
-local function MarkArt(tex, list)
+--- The small mark for Shame: the game's alert. Kudos has its medals (KudosRow).
+local function MarkArt(tex)
     tex:SetTexCoord(0, 1, 0, 1)
     tex:SetVertexColor(1, 1, 1)
-    if list == "kudos" then
-        pcall(tex.SetAtlas, tex, "UI-LFG-ReadyMark")
-    else
-        tex:SetTexture(WATCH_TEXTURE)
+    tex:SetTexture(WATCH_TEXTURE)
+end
+
+local MEDAL, MEDAL_GAP = 22, 1
+local ROW_PLACE = { { 1 }, { 1, 2 }, { 2, 1, 3 } }   -- left to right; with three, the most given in the middle
+
+--- One medal per kudos tag in a row over the name, and "+N" for the ones past three.
+local function KudosRow(f, s)
+    local row, more = GK.KudosRow(s.taglist.kudos or {}, s.tagcount.kudos or {})
+    if #row == 0 then row[1] = false end            -- no tag at all: the plain medal
+    f.medals = f.medals or {}
+    for i = 1, 3 do
+        local tex = f.medals[i]
+        if not tex then
+            tex = f:CreateTexture(nil, "OVERLAY")
+            tex:SetSize(MEDAL, MEDAL)
+            f.medals[i] = tex
+        end
+        local which = ROW_PLACE[#row][i]
+        if which then
+            tex:ClearAllPoints()
+            tex:SetPoint("LEFT", f, "LEFT", (i - 1) * (MEDAL + MEDAL_GAP), 0)
+            tex:SetTexture(GK.KudosMedal(row[which] or nil))
+            tex:Show()
+        else
+            tex:Hide()
+        end
     end
+    f:SetSize(#row * MEDAL + (#row - 1) * MEDAL_GAP, MEDAL)
+    if not f.more then
+        f.more = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        f.more:SetPoint("LEFT", f, "RIGHT", 2, 0)
+    end
+    f.more:SetText(more > 0 and ("+" .. more) or "")
+    f.more:SetShown(more > 0)
 end
 
 --- A small dim mark on the plate, left of the kill order's seal (Sightings.lua: 26 wide, centred, 6 down
---- into the plate) so the two never cover each other.
-local function Mark(unit, list)
+--- into the plate) so the two never cover each other. Kudos wears a row of medals in the seal's own
+--- place: a player with an open order gets no note mark, so the two never meet.
+local function Mark(unit, list, s)
     Unmark(unit)
     local plate = PlateOf(unit)
     if not plate then return end
     local f = marks[plate]
     if not f then
         f = CreateFrame("Frame", nil, plate)
-        f:SetSize(14, 14)
         f:EnableMouse(false)
-        f:SetPoint("BOTTOMRIGHT", plate, "TOP", -15, -6)
         f.tex = f:CreateTexture(nil, "OVERLAY")
         f.tex:SetAllPoints()
-        f:SetAlpha(0.6)
         marks[plate] = f
     end
-    MarkArt(f.tex, list)
+    -- the plate's frame is reused for whoever comes up next, so size and place it every time
+    f:ClearAllPoints()
+    if list == "kudos" then
+        -- Blizzard's friendly plate is tall with the name low in it, so its top floats far above the
+        -- name; sit on the name when it shows. Plate addons (ElvUI, Ellesmere) hide it and keep the plate tight.
+        local name = plate.UnitFrame and plate.UnitFrame.name
+        if name and name:IsVisible() then
+            f:SetPoint("BOTTOM", name, "TOP", 0, 2)
+        else
+            f:SetPoint("BOTTOM", plate, "TOP", 0, 2)
+        end
+        f:SetAlpha(1)
+        f.tex:Hide()
+        KudosRow(f, s)
+    else
+        f:SetSize(14, 14)
+        f:SetPoint("BOTTOMRIGHT", plate, "TOP", -15, -6)
+        f:SetAlpha(0.6)
+        for _, tex in ipairs(f.medals or {}) do tex:Hide() end
+        if f.more then f.more:Hide() end
+        MarkArt(f.tex)
+        f.tex:Show()
+    end
     f:SetFrameLevel((plate:GetFrameLevel() or 1) + 20)
     f:Show()
     marked[unit] = plate
@@ -782,7 +834,7 @@ local function Look(unit)
     local guid = UnitGUID(unit)
     local order = GK.OrderOn(key, (not Secret(guid) and type(guid) == "string") and guid or nil)
     if plates[unit] then
-        if order or not GK.db.plateNotes then Unmark(unit) else Mark(unit, s.primary) end
+        if order or not GK.db.plateNotes then Unmark(unit) else Mark(unit, s.primary, s) end
     end
     if not order then Nearby(key, s) end
 end
