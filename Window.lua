@@ -1097,6 +1097,8 @@ end
 
 --- "All time: 31 kills, 12 deaths." reads as a two-column row: a short label, then the rest.
 local function Split(line)
+    local head = line:match("^([^:,]+):$")              -- a heading over the lines under it: "Shame:"
+    if head and #head <= 14 then return head, "" end
     local label, value = line:match("^([^:,]+): (.+)$")
     if label and #label <= 14 then return label, value end
     return nil, line
@@ -1921,11 +1923,16 @@ local function BuildDetail(page, L)
     page.rule:SetHeight(1)
     page.rule:SetPoint("TOPLEFT", L.padX, -L.ruleY)
     page.rule:SetPoint("TOPRIGHT", -L.padX, -L.ruleY)
+    -- between two parts of a card: a line that is "-" (a note card's Shame and its "Also has Kudos")
+    page.divider = page:CreateTexture(nil, "BORDER")
+    Paint(page.divider, "rule", 0.6)
+    page.divider:SetHeight(1)
     page.labels, page.values = {}, {}
     for i = 1, 9 do
         local l = page:CreateFontString(nil, "ARTWORK")
         Ink(l, FADED, TEXT_FONT, 10)
         l:SetJustifyH("LEFT")
+        l:SetWidth(L.valueX - L.padX - 4)          -- a long one ("Also has Kudos") goes on to a second line
         local v = page:CreateFontString(nil, "ARTWORK")
         Ink(v, INK, TEXT_FONT, 12)
         v:SetJustifyH("LEFT")
@@ -1966,6 +1973,7 @@ local function FillDetail(page, d, anyRows)
         page.blood:Hide()
         for i = 1, #page.labels do page.labels[i]:SetText("") page.values[i]:SetText("") end
         for _, b in ipairs(page.buttons) do b:Hide() end
+        page.divider:Hide()
         return
     end
     page.face:SetShown(true)
@@ -2012,12 +2020,28 @@ local function FillDetail(page, d, anyRows)
     -- a card without a rich form, as lines: a short "Label: value" as two columns, anything else as a
     -- paragraph
     local lines = rich and {} or d.lines
+    -- d.buttonsTop: the buttons go over the lines (a note card, whose lines run to two parts)
+    local first = page.buttons[1]
+    if d.buttonsTop then
+        first:ClearAllPoints()
+        first:SetPoint("TOPLEFT", L.padX, -y)
+        y = y + 32
+    end
+    page.divider:Hide()
     for i = 1, rich and 0 or #page.labels do
         local l, v = page.labels[i], page.values[i]
         local line = lines[i]
         l:ClearAllPoints()
         v:ClearAllPoints()
-        if line then
+        if line == "-" then
+            l:SetText("")
+            v:SetText("")
+            page.divider:ClearAllPoints()
+            page.divider:SetPoint("TOPLEFT", L.padX, -(y + 4))
+            page.divider:SetPoint("TOPRIGHT", -L.padX, -(y + 4))
+            page.divider:Show()
+            y = y + 12
+        elseif line then
             local label, value = Split(line)
             if label then
                 l:SetPoint("TOPLEFT", L.padX, -(y + 2))
@@ -2030,7 +2054,7 @@ local function FillDetail(page, d, anyRows)
                 v:SetWidth(L.w - 2 * L.padX)
             end
             v:SetText(value)
-            y = y + math.max(18, (v:GetStringHeight() or 14) + 6)
+            y = y + math.max(18, (v:GetStringHeight() or 14) + 6, label and (l:GetStringHeight() or 0) + 6 or 0)
         else
             l:SetText("")
             v:SetText("")
@@ -2038,8 +2062,7 @@ local function FillDetail(page, d, anyRows)
     end
     -- the buttons right under the lines, where the eye already is (at the foot of the page they sat
     -- under a hand's width of nothing) - but never down into the signature
-    if L.h then
-        local first = page.buttons[1]
+    if L.h and not d.buttonsTop then
         first:ClearAllPoints()
         first:SetPoint("TOPLEFT", L.padX, -math.min(y + 10, L.h - L.signY - 48))
     end

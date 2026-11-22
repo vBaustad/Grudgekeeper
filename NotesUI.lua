@@ -25,7 +25,7 @@ local COLOUR = { watch = "ffcc00", kudos = "4dff66" }
 local BLOCK_COLOUR = { watch = "b98ce6", kudos = "4dff66" }   -- a list's block on the card: purple, green
 local NEAR_GAP = 90                      -- the same player warns you at most this often
 local MAX_CARD_LINES = 9                 -- what the ledger's card has room for
-local CARD_NOTES = 5                     -- notes on a card before "and 3 more"
+local CARD_NOTES = 5                     -- note lines on a card before "and 3 more"
 local MENU_NOTES = 10                    -- notes a menu lists at once to vote on or delete; more go in submenus of this many
 
 local function Plural(n, word) return ("%d %s%s"):format(n, word, n == 1 and "" or "s") end
@@ -129,11 +129,41 @@ local function OpenMenu(fill)
     MenuUtil.CreateContextMenu(UIParent, function(_, root) fill(root) end)
 end
 
---- A note as a card line: "text" - Author, 3 days ago (+2). A colon-and-space in the text would make the
---- ledger read the start of the line as a label, so the space after it is a no-break one.
+--- What a note says: its "text", else its [tag]. A colon-and-space in the text would make the ledger read
+--- the start of the line as a label, so the space after it is a no-break one.
+local function NoteText(n)
+    return n.text and ('"' .. n.text:gsub(": ", ":\194\160") .. '"') or ("[" .. (n.tag and GK.TagText(n.tag, 12) or "?") .. "]")
+end
+
+--- A note as a line: "text" - Author, 3 days ago (+2).
 local function NoteLine(n)
-    local text = n.text and ('"' .. n.text:gsub(": ", ":\194\160") .. '"') or ("[" .. (n.tag and GK.TagText(n.tag, 12) or "?") .. "]")
-    return ("%s - %s, %s%s"):format(text, Who(n.author), GK.Ago(n.ts), n.score ~= 0 and (" (" .. ScoreText(n.score) .. ")") or "")
+    return ("%s - %s, %s%s"):format(NoteText(n), Who(n.author), GK.Ago(n.ts), n.score ~= 0 and (" (" .. ScoreText(n.score) .. ")") or "")
+end
+
+--- The card's lines for notes, one per tag or text with everyone who wrote it: `[Leaver] - you, Kari (+2)`.
+--- I come first, then the others newest first; the votes are the sum of theirs. No dates: the owner
+--- wanted who says it, not when (2026-11-22).
+local function CardLines(notes)
+    local out, at = {}, {}
+    for _, n in ipairs(notes) do
+        local text = NoteText(n)
+        local g = at[text]
+        if not g then
+            g = { text = text, who = {}, seen = {}, score = 0 }
+            at[text] = g
+            out[#out + 1] = g
+        end
+        if not g.seen[n.author] then
+            g.seen[n.author] = true
+            local who = Who(n.author)
+            if who == "you" then table.insert(g.who, 1, who) else g.who[#g.who + 1] = who end
+        end
+        g.score = g.score + n.score
+    end
+    for i, g in ipairs(out) do
+        out[i] = ("%s - %s%s"):format(g.text, table.concat(g.who, ", "), g.score ~= 0 and (" (" .. ScoreText(g.score) .. ")") or "")
+    end
+    return out
 end
 
 --- The player's card: who put them on which list, the newest notes, the votes. Nil for nobody we keep a
@@ -153,46 +183,47 @@ function GK.NoteCard(key, page)
     local lines = d.lines
     -- the notes, also on someone on no list: a note alone put them on Marked until 2026-11-22, and on none since
     local notes = s and s.notes or (GK.IsNoted(key) and GK.NotesOf(key)) or {}
+    -- the lines run long for someone on both lists, so the buttons go over them
+    d.buttonsTop = true
     if s then
-        -- the shown list's block first, then the other's
+        -- the shown list's block first, under its own name; the other's under "Also has Kudos", a rule between
         local blocks = {}
         for _, list in ipairs(s.on) do
             if list == shown then table.insert(blocks, 1, list) else blocks[#blocks + 1] = list end
         end
-        local roomy = #blocks == 1
         local onList = {}
         for _, list in ipairs(blocks) do onList[list] = true end
-        for _, list in ipairs(blocks) do
+        for b, list in ipairs(blocks) do
             local col = "|cff" .. BLOCK_COLOUR[list]
-            local tags = {}
-            for i, tag in ipairs(s.taglist[list]) do tags[i] = GK.TagText(tag, 12) end
-            -- the colour starts after "Label: ": the card upper-cases and splits at the label
-            lines[#lines + 1] = ("%s: %s%s%s|r"):format(WORD[list], col, NameList(s.lists[list]),
-                #tags > 0 and (" - " .. table.concat(tags, ", ")) or "")
+            if b > 1 then lines[#lines + 1] = "-" end
+            lines[#lines + 1] = (b == 1 and WORD[list] or ("Also has " .. WORD[list])) .. ":"
             local mine = {}
             for _, n in ipairs(notes) do
                 if n.list == list then mine[#mine + 1] = n end
             end
-            -- one block has room for CARD_NOTES notes; two share the card, three lines of notes each
-            local room = roomy and CARD_NOTES or 3
-            local shownNotes = #mine > room and (roomy and room or room - 1) or #mine
-            for i = 1, shownNotes do lines[#lines + 1] = col .. NoteLine(mine[i]) .. "|r" end
-            if #mine > shownNotes then
-                local more = #mine - shownNotes
-                local line = ("and %d more note%s."):format(more, more == 1 and "" or "s")
-                lines[#lines + 1] = roomy and line or (col .. line .. "|r")
+            local said = CardLines(mine)
+            -- one block has room for CARD_NOTES lines; two share the card, three lines each
+            local room = #blocks == 1 and CARD_NOTES or 3
+            local shownLines = #said > room and room - 1 or #said
+            for i = 1, shownLines do lines[#lines + 1] = col .. said[i] .. "|r" end
+            if #said > shownLines then
+                local more = #said - shownLines
+                lines[#lines + 1] = col .. ("and %d more."):format(more) .. "|r"
             end
         end
         -- notes on no list (or on a list they are not on) come last, while there is room
+        local rest = {}
         for _, n in ipairs(notes) do
+            if not onList[n.list] then rest[#rest + 1] = n end
+        end
+        for _, line in ipairs(CardLines(rest)) do
             if #lines >= MAX_CARD_LINES then break end
-            if not onList[n.list] then lines[#lines + 1] = NoteLine(n) end
+            lines[#lines + 1] = line
         end
     else
-        for i = 1, math.min(CARD_NOTES, #notes) do lines[#lines + 1] = NoteLine(notes[i]) end
-        if #notes > CARD_NOTES then
-            lines[#lines + 1] = ("and %d more note%s."):format(#notes - CARD_NOTES, #notes - CARD_NOTES == 1 and "" or "s")
-        end
+        local said = CardLines(notes)
+        for i = 1, math.min(CARD_NOTES, #said) do lines[#lines + 1] = said[i] end
+        if #said > CARD_NOTES then lines[#lines + 1] = ("and %d more."):format(#said - CARD_NOTES) end
     end
     if s or #notes > 0 then
         local score = 0
