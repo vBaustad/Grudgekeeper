@@ -118,18 +118,18 @@ local PRESETS = {
       set = { spreeMine = "splash", rankMine = "splash", orderMine = "splash", spreeEnded = "toast",
           spreeTormentor = "toast", spreeGuild = "toast", spreeGuildFrom = 3, rankGuild = "toast", rankGuildFrom = 0,
           orderDone = "toast", spreeEndedGuild = "toast", spreeTormentorGuild = "toast", guildSounds = true,
-          revengeMine = "splash", revengeGuild = "toast" } },
+          revengeMine = "splash", revengeGuild = "toast", grudgeMine = "toast" } },
     { key = "big", name = "Big moments",
       hint = "All of your own, and only the biggest sprees and titles from guildies.",
       set = { spreeMine = "splash", rankMine = "splash", orderMine = "splash", spreeEnded = "toast",
           spreeTormentor = "toast", spreeGuild = "toast", spreeGuildFrom = 10, rankGuild = "toast",
           rankGuildFrom = 450, orderDone = "toast", spreeEndedGuild = "off", spreeTormentorGuild = "toast",
-          guildSounds = true, revengeMine = "splash", revengeGuild = "off" } },
+          guildSounds = true, revengeMine = "splash", revengeGuild = "off", grudgeMine = "toast" } },
     { key = "quiet", name = "Quiet", hint = "Your own as small toasts, and nothing from guildies. Good for streaming.",
       set = { spreeMine = "toast", rankMine = "toast", orderMine = "toast", spreeEnded = "toast",
           spreeTormentor = "toast", spreeGuild = "off", rankGuild = "off", orderDone = "off",
           spreeEndedGuild = "off", spreeTormentorGuild = "off", guildSounds = false,
-          revengeMine = "toast", revengeGuild = "off" } },
+          revengeMine = "toast", revengeGuild = "off", grudgeMine = "toast" } },
 }
 GK.NOTIFY_PRESETS = PRESETS
 local CUSTOM_HINT = "Your own mix. Pick one of the others to start over from it."
@@ -270,6 +270,8 @@ function GK.SettingsChapters()
             Pair("A new title", StyleCell("rankMine"), ComboCell("rankGuild", "rankGuildFrom", GUILD_TITLES)),
             Pair("A kill order fulfilled", StyleCell("orderMine"), StyleCell("orderDone")),
             Pair("Revenge", StyleCell("revengeMine"), StyleCell("revengeGuild")),
+            -- yours alone: a guildie's score with an enemy is theirs (Announce.lua, GK_GRUDGE)
+            Pair("A grudge evened up", StyleCell("grudgeMine")),
             Pair("A spree ended", StyleCell("spreeEnded"), StyleCell("spreeEndedGuild")),
             Pair("A tormentor put down", StyleCell("spreeTormentor"), StyleCell("spreeTormentorGuild")),
             zoneOnly,
@@ -285,8 +287,6 @@ function GK.SettingsChapters()
         { name = "Warnings", intro = "Who is near, or joins your group.",
           rows = {
             Warning("alertNear", "A kill order target is near"),
-            Warning("leadNear", "Someone who leads over me is near"),
-            Warning("noteAlerts", "A Marked player is near"),
             Warning("watchNearby", "A Shame player is near"),
             Warning("watchGroup", "A Shame player joins my group"),
             Warning("kudosGroup", "A Kudos player joins my group"),
@@ -319,7 +319,7 @@ function GK.SettingsChapters()
             Check("unitMenu", "In the right-click menu", "An enemy: profile, kill order, Track. A friend: Shame, Kudos."),
             Check("plateMarks", "A seal over a kill order target's nameplate",
                 "The eye over those you track, too. Needs enemy nameplates."),
-            Check("plateNotes", "Mark noted players' nameplates", "A small mark for anyone you have notes on."),
+            Check("plateNotes", "Mark noted players' nameplates", "A small mark for anyone on Shame or Kudos."),
             Check("mapPins", "Last seen on the map", "Where a guildie saw a target, for 15 minutes."),
             Check("inspectTab", "A tab on the Inspect window", "A guildie's record, right there."),
             { kind = "check", key = "guildButton", label = "A tab on the guild window",
@@ -771,11 +771,14 @@ local function PairRow(parent, y, r)
     f.label:SetText(r.label)
     f.mine = CellButton(f, r.mine)
     f.mine:SetPoint("LEFT", COL_MINE, 0)
-    f.guild = CellButton(f, r.guild)
-    f.guild:SetPoint("LEFT", COL_GUILD, 0)
+    -- a row of yours alone has no guildie's cell (A grudge evened up)
+    if r.guild then
+        f.guild = CellButton(f, r.guild)
+        f.guild:SetPoint("LEFT", COL_GUILD, 0)
+    end
     function f:Refresh()
         self.mine:Refresh()
-        self.guild:Refresh()
+        if self.guild then self.guild:Refresh() end
     end
     return f, height
 end

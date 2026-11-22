@@ -103,6 +103,7 @@ function GK.RecordKill(v)
     -- Revenge: they killed you since you last got them. Avenged: they killed a guildie a moment ago, before
     -- this fight began.
     local revenge = Revenge(f)
+    local ledOver = (f.d or 0) > (f.k or 0)          -- they led over you before this kill (Grudges' "owed")
     local avenged = GK.Avenged(v.key, now, v.fight or fightStart)
     local c = GK.char
     local titleBefore = GK.Title(c.points)
@@ -139,7 +140,11 @@ function GK.RecordKill(v)
         GK.SpreeNews("M", LIB.Me(), v, zone, tormented)
     end
     -- Revenge, told (Announce.lua): the kill that earns the revenge point, with where you stand now
-    if revenge then LIB.Fire("GK_REVENGE", LIB.Me(), GK.Show(v.key), f.k, f.d or 0, true, v.key, v.c) end
+    if revenge then LIB.Fire("GK_REVENGE", LIB.Me(), GK.Show(v.key), f.k, f.d or 0, true, v.key, v.c)
+    -- One who still led over you, got again with no revenge in it (you got them last as well): where you stand
+    -- now, or even - "en sånn notification om du dreper noen du har grudge mot? jevner ut score" (the owner,
+    -- 2026-11-22). Revenge's splash already says where you stand, so never both.
+    elseif ledOver then LIB.Fire("GK_GRUDGE", GK.Show(v.key), f.k, f.d or 0, v.key, v.c) end
     GK.SendBoard()
     -- A new title, told on screen as a spree is (GK_RANKUP, Announce.lua): the letter below waits for the
     -- fight to end, and says where you stand

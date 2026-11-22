@@ -1,13 +1,13 @@
 -- Grudgekeeper - the notes, as the ledger shows them (the data is Notes.lua). What you see of them:
---   the list pages      two tabs in the ledger, Shame and Kudos, over the right page; Marked is a section
---                       of the kill orders page (Window.lua)
+--   the list pages      two tabs in the ledger, Shame and Kudos, over the right page. Marked, the guild's
+--                       kill-on-sight list, went on 2026-11-22 (Notes.lua): kill orders and Track do its work
 --   cards               a noted player's card, on the ledger's right page, and a line or two on the
 --                       wanted poster and the record when there are notes on that player
 --   the note sheet      in the game's own frame: whom, the list, a tag, a few words, Save
 --   the right-click menu   Put on Shame and Give kudos on a friendly player, with their tags
 --   quiet marks         a line on the tooltip, a dim mark on the nameplate. They never open anything
---   warnings            only when asked: a Marked player near (off by default), a Shame player
---                       near (off), a Shame player joining your group (on), a Kudos one (a chat line, off)
+--   warnings            only when asked: a Shame player near (off), a Shame player joining your group
+--                       (on), a Kudos one (a chat line, off)
 -- It also wraps a few functions of the other files (docs/guild-grudge-merge.md, H7): the poster and
 -- record cards, the tooltip line and /grudge. Each wrapper calls the
 -- original, and changes nothing unless its own setting or a notes command asks.
@@ -18,10 +18,10 @@ local Secret = GK.Secret
 local MEDIA = "Interface\\AddOns\\Grudgekeeper\\Media\\"
 local COL_RIGHT = 332                    -- Window.lua's right-hand column: the page's width less 36
 
-local ORDER = { "kos", "watch", "kudos" }
-local WORD = { kos = "Marked", watch = "Shame", kudos = "Kudos" }
-local CARD_TITLE = { kos = "MARKED", watch = "SHAME", kudos = "KUDOS" }
-local COLOUR = { kos = "c8281e", watch = "ffcc00", kudos = "4dff66" }
+local ORDER = { "watch", "kudos" }
+local WORD = { watch = "Shame", kudos = "Kudos" }
+local CARD_TITLE = { watch = "SHAME", kudos = "KUDOS" }
+local COLOUR = { watch = "ffcc00", kudos = "4dff66" }
 local NEAR_GAP = 90                      -- the same player warns you at most this often
 local MAX_CARD_LINES = 9                 -- what the ledger's card has room for
 local CARD_NOTES = 5                     -- notes on a card before "and 3 more"
@@ -93,7 +93,7 @@ local function BuildSummary(key)
             s.tags[list] = s.taglist[list][1]
         end
     end
-    -- the list I put them on, else the first of the three that has them
+    -- the list I put them on, else the first of the two that has them
     local mine = GK.MyMark(key)
     s.primary = (mine and #s.lists[mine] > 0) and mine or s.on[1]
     return s.primary and s or nil
@@ -147,6 +147,8 @@ function GK.NoteCard(key, page)
     local d = { key = key, c = p.c, rf = p.rf, sx = p.sx, title = shown and CARD_TITLE[shown] or "NOTES",
         name = GK.Show(key), info = GK.Describe(p.l, p.c, p.r), lines = {}, buttons = {} }
     local lines = d.lines
+    -- the notes, also on someone on no list: a note alone put them on Marked until 2026-11-22, and on none since
+    local notes = s and s.notes or (GK.IsNoted(key) and GK.NotesOf(key)) or {}
     if s then
         for _, list in ipairs(s.on) do
             local tags = {}
@@ -154,15 +156,19 @@ function GK.NoteCard(key, page)
             lines[#lines + 1] = ("%s: %s%s"):format(WORD[list], NameList(s.lists[list]),
                 #tags > 0 and (" - " .. table.concat(tags, ", ")) or "")
         end
-        for i = 1, math.min(CARD_NOTES, s.count) do lines[#lines + 1] = NoteLine(s.notes[i]) end
-        if s.count > CARD_NOTES then
-            lines[#lines + 1] = ("and %d more note%s."):format(s.count - CARD_NOTES, s.count - CARD_NOTES == 1 and "" or "s")
-        end
-        d.big, d.caption = ScoreText(s.score), "votes"
+    end
+    for i = 1, math.min(CARD_NOTES, #notes) do lines[#lines + 1] = NoteLine(notes[i]) end
+    if #notes > CARD_NOTES then
+        lines[#lines + 1] = ("and %d more note%s."):format(#notes - CARD_NOTES, #notes - CARD_NOTES == 1 and "" or "s")
+    end
+    if s or #notes > 0 then
+        local score = 0
+        for _, n in ipairs(notes) do score = score + n.score end
+        d.big, d.caption = ScoreText(score), "votes"
     else
         lines[1] = "Nothing is written down about them."
     end
-    d.buttons[1] = { "Add a note", function() GK.OpenNoteSheet(t, GK.MyMark(key) or shown or "kos") end }
+    d.buttons[1] = { "Add a note", function() GK.OpenNoteSheet(t, GK.MyMark(key) or shown) end }
     d.buttons[2] = { "More...", function() OpenMenu(function(root) GK.NoteMenu(root, key) end) end }
     return d
 end
@@ -225,11 +231,9 @@ end
 -- ---------------------------------------------------------------------------
 -- A page each, because the list is the tab: Shame and Kudos are the friendly ones, over the right page
 -- (side = "right") - a blacklist and praise, two lists, not one ("vil ikke slå sammen shame og kudos for
--- shame er blacklist og kudos er ros til spillere vi møter", the owner, 2026-11-16). Marked is on the kill
--- orders page (Window.lua).
-local PAGE_WORD = { kos = "Marked", watch = "Shame", kudos = "Kudos" }
+-- shame er blacklist og kudos er ros til spillere vi møter", the owner, 2026-11-16).
+local PAGE_WORD = { watch = "Shame", kudos = "Kudos" }
 local EMPTY = {
-    kos = "Nobody is marked. Use Mark someone, at the top of this page, to mark an enemy.",
     watch = "Nobody is on your Shame list. It is for players to be careful with - a ninja looter, a scammer. "
         .. "Use Put someone on Shame, at the top of this page - someone who just left your group is on its list.",
     kudos = "Nobody has kudos yet. Use Give someone kudos, at the top of this page, or right-click a good "
@@ -249,7 +253,7 @@ local function VotedOn(p)
     return false
 end
 
---- The rows of one list, and the text for when there are none. list: kos, watch or kudos.
+--- The rows of one list, and the text for when there are none. list: watch or kudos.
 function GK.NotesItems(list)
     local items = {}
     for _, e in ipairs(GK.PeopleOn(list)) do
@@ -278,7 +282,7 @@ function GK.NotesItems(list)
 end
 
 -- ---------------------------------------------------------------------------
--- The watched guild (Notes.lua), as a section of the kill orders page under Marked, and its card
+-- The watched guild (Notes.lua): its card
 -- ---------------------------------------------------------------------------
 --- The card for the watched guild: who put it on watch and when, who of theirs we saw lately, and for an
 --- officer the way to take it off. nil when it is not the watched guild (any more).
@@ -289,9 +293,14 @@ function GK.GuildCard(guild)
     local d = { title = "WATCHED GUILD", name = "<" .. guild .. ">", info = "Anyone of theirs near warns you.",
         lines = {}, buttons = {}, seal = "mark" }
     d.lines[1] = ("Put on watch by %s, %s."):format(by and Who(by) or "an officer", GK.Ago(ts))
+    -- the score against them (Guild.lua, 2026-11-22), as Most wanted's view of them has it
+    if GK.GuildScore then
+        local us, them = GK.GuildScore(guild)
+        d.lines[2] = ("Score: we killed them %d, they killed us %d."):format(us, them)
+    end
     local seenNow = GK.GuildSeen and GK.GuildSeen(guild, 5) or {}
     if #seenNow == 0 then
-        d.lines[2] = "Nobody of theirs seen in the last 15 minutes."
+        d.lines[#d.lines + 1] = "Nobody of theirs seen in the last 15 minutes."
     else
         for _, s in ipairs(seenNow) do
             d.lines[#d.lines + 1] = ("Seen: %s%s"):format(GK.Show(s.key), s.z and (", " .. s.z) or "")
@@ -303,8 +312,7 @@ function GK.GuildCard(guild)
     return d
 end
 
--- The friendly lists have pages of their own, at the right. Marked has none: it is Most wanted's second
--- view (Window.lua, since 2026-11-18; a section of the kill orders page from 2026-11-07).
+-- The friendly lists have pages of their own, at the right.
 for _, list in ipairs({ "watch", "kudos" }) do
     GK.AddLedgerPage({
         name = PAGE_WORD[list], list = list, sortable = true, side = "right", add = { text = ADD[list], kind = list },
@@ -323,11 +331,8 @@ for _, list in ipairs({ "watch", "kudos" }) do
     })
 end
 
---- Open the ledger at the page of a list: "watch" or "kudos"; Marked, and anything else, is on the kill
---- orders page, the first.
+--- Open the ledger at the page of a list: "watch" or "kudos"; anything else at the first page.
 function GK.OpenNotes(list)
-    -- Marked is Most wanted's second view (Window.lua)
-    if list == "kos" and GK.OpenLedgerView then return GK.OpenLedgerView("Most wanted", "marked") end
     for i, def in ipairs(GK.LedgerPages) do
         if def.list == list then return GK.OpenWindow(i) end
     end
@@ -338,9 +343,15 @@ end
 -- Notes on the poster and the record
 -- ---------------------------------------------------------------------------
 --- Up to two lines for a card: how many notes and on which list, and the newest. nil for nobody noted.
+--- Notes on nobody's list - an enemy noted while a note alone meant Marked, before 2026-11-22 - still show,
+--- with no list: what the guild wrote about them stays on their poster and Grudge file.
 function GK.NoteLines(key)
     local s = key and Summary(key)
-    if not s then return nil end
+    if not s then
+        local notes = key and GK.IsNoted(key) and GK.NotesOf(key) or {}
+        if #notes == 0 then return nil end
+        return { ("Notes: %d"):format(#notes), "Newest: " .. NoteLine(notes[1]) }
+    end
     local where = {}
     for _, list in ipairs(s.on) do
         where[#where + 1] = WORD[list] .. ((list == s.primary and s.tags[list]) and (" (" .. GK.TagText(s.tags[list], 12) .. ")") or "")
@@ -409,9 +420,9 @@ local draft                -- { t, list, tag }: what the sheet is about
 local SHEET_W = 340
 local LIST_Y, TAG_Y, TAGS_Y, TAG_GAP, TAG_COL = 96, 144, 162, 20, 148
 local MAX_TAGS = 10                      -- two columns of five
--- Each list's seal beside its name: the black skull for Marked, the red one for Shame, and for Kudos
--- the gold laurel the leaderboard's first place wears.
-local SEAL = { kos = "seal_black", watch = "seal_red", kudos = "rank_1" }
+-- Each list's seal beside its name: the red skull for Shame, and for Kudos the gold laurel the leaderboard's
+-- first place wears.
+local SEAL = { watch = "seal_red", kudos = "rank_1" }
 local HINT = "Up to 200 letters. A tag or a list is enough on its own."
 -- in the skin's colours (Core.lua), as the sheet is in the game's frame: parchment ink, or classic white
 -- and gold - and drawn again when the skin is switched
@@ -534,14 +545,14 @@ local function BuildSheet()
     cancel:SetPoint("RIGHT", f.save, "LEFT", -6, 0)
 end
 
---- Open the note sheet for a player: t = { key, c, r, rf, sx, l, unit }, list = "kos", "watch" or "kudos"
---- (kos when it is anything else).
+--- Open the note sheet for a player: t = { key, c, r, rf, sx, l, unit }, list = "watch" or "kudos"
+--- (none chosen when it is anything else: a note alone must never put anyone on Shame by itself).
 function GK.OpenNoteSheet(t, list)
     if not (t and t.key) then return end
     if not sheet then BuildSheet() end
     local known = false
     for _, l in ipairs(ORDER) do known = known or l == list end
-    draft = { t = t, list = known and list or "kos" }
+    draft = { t = t, list = known and list or nil }
     sheet.head:Set(t)
     sheet.custom:SetText("")
     sheet.note:SetText("")
@@ -612,9 +623,9 @@ end
 -- The two lists you keep of the players you meet, each with its tags, are a friendly player's: the words are
 -- the ledger's own actions (Put someone on Shame, Give someone kudos). An enemy gets none of them: what is
 -- done about an enemy is Track (yours) and a kill order (the guild's), the lines Profile.lua puts on its
--- menu, and Marked is a kill order's work ("jeg tenker bare en KoS for deg selv(tracker) og Hitlist for
--- guilden? og friendly har shame og kudos i guess?", the owner, 2026-11-20). A note in words is written in
--- the ledger: each list page's action at its top, or Add a note on their notes' card.
+-- menu ("jeg tenker bare en KoS for deg selv(tracker) og Hitlist for guilden? og friendly har shame og kudos i
+-- guess?", the owner, 2026-11-20); Marked went altogether on 2026-11-22. A note in words is written in the
+-- ledger: each list page's action at its top, or Add a note on their notes' card.
 local MENU_LIST = { watch = "Put on Shame", kudos = "Give kudos" }
 
 local function OnFriendlyNotesMenu(_, root, ctx)
@@ -703,17 +714,14 @@ local function Unmark(unit)
     marked[unit] = nil
 end
 
---- The picture for a list: red-ish for Marked, the game's alert for Shame, a tick for Kudos.
+--- The picture for a list: the game's alert for Shame, a tick for Kudos.
 local function MarkArt(tex, list)
     tex:SetTexCoord(0, 1, 0, 1)
     tex:SetVertexColor(1, 1, 1)
-    if list == "watch" then
-        tex:SetTexture(WATCH_TEXTURE)
-    elseif list == "kudos" then
+    if list == "kudos" then
         pcall(tex.SetAtlas, tex, "UI-LFG-ReadyMark")
     else
-        pcall(tex.SetAtlas, tex, "UI-LFG-DeclineMark")
-        tex:SetVertexColor(1, 0.35, 0.3)
+        tex:SetTexture(WATCH_TEXTURE)
     end
 end
 
@@ -748,25 +756,16 @@ local function PruneNear(now)
     end
 end
 
---- A noted player is in sight: Marked warns (when asked), Shame says one line (when asked). Never
---- twice within NEAR_GAP, and Kudos is never announced.
+--- A noted player is in sight: Shame says one line, told its row's way (GK.WarnAs: on screen, a chat line, or
+--- not at all). Never twice within NEAR_GAP, and Kudos is never announced. (Marked warned too, until it went
+--- on 2026-11-22.)
 local function Nearby(key, s)
-    local kos, watch = #s.lists.kos > 0, #s.lists.watch > 0
-    local warn = kos and GK.WarnStyle("noteAlerts") ~= "off"
-    -- the Shame one stands in only when the Marked one will not come (a player can be on both lists); each
-    -- told its row's way (GK.WarnAs: on screen, a chat line, or not at all)
-    local line = not warn and watch and GK.WarnStyle("watchNearby") ~= "off"
-    if not (warn or line) then return end
+    if #s.lists.watch == 0 or GK.WarnStyle("watchNearby") == "off" then return end
     local now = GetTime()
     if nearAt[key] and now - nearAt[key] < NEAR_GAP then return end
     PruneNear(now)
     nearAt[key] = now
-    local name = GK.Show(key)
-    if warn then
-        GK.WarnAs("noteAlerts", ("Marked: %s is near!%s"):format(name, TagSuffix(s.tags.kos)), true, nil, key, key)
-    else
-        GK.WarnAs("watchNearby", ("%s from your Shame list is near%s"):format(name, TagSuffix(s.tags.watch)), false)
-    end
+    GK.WarnAs("watchNearby", ("%s from your Shame list is near%s"):format(GK.Show(key), TagSuffix(s.tags.watch)), false)
 end
 
 --- Look at a unit (a nameplate, the target, the mouse): learn a noted player's face, mark their plate,
@@ -852,7 +851,7 @@ end
 -- ---------------------------------------------------------------------------
 -- Settings
 -- ---------------------------------------------------------------------------
--- The notes' settings - the warnings for Marked, Shame and Kudos, and the sound a Shame player joining plays -
+-- The notes' settings - the warnings for Shame and Kudos, and the sound a Shame player joining plays -
 -- are a chapter of the settings' own pages (Options.lua, GK.SettingsChapters).
 
 -- ---------------------------------------------------------------------------
@@ -862,9 +861,9 @@ local USAGE = {
     note = "Usage: /grudge note [first surname] <text> - with no name, a note on your target.",
     watch = "Usage: /grudge shame <first> <surname> [text] - or just a note, for your target.",
     kudos = "Usage: /grudge kudos <first> <surname> [text] - or just a note, for your target.",
-    move = "Usage: /grudge move <first> <surname> marked|shame|kudos|none - or without a name, your target.",
+    move = "Usage: /grudge move <first> <surname> shame|kudos|none - or without a name, your target.",
 }
-local MOVES = { kos = "kos", marked = "kos", watch = "watch", shame = "watch", kudos = "kudos", none = false, off = false, remove = false }
+local MOVES = { watch = "watch", shame = "watch", kudos = "kudos", none = false, off = false, remove = false }
 
 local function Words(s)
     local words = {}
@@ -922,7 +921,7 @@ end
 function GK.RunNotesCommand(cmd, rest)
     if cmd == "shame" then cmd = "watch" end
     if cmd == "notes" then
-        GK.OpenNotes("kos")
+        GK.OpenNotes("watch")               -- Shame: Marked, which it opened, went on 2026-11-22
         return true
     elseif (cmd == "watch" or cmd == "kudos") and strtrim(rest or "") == "" then
         GK.OpenNotes(cmd)                   -- with a name they keep adding (below)
@@ -967,8 +966,8 @@ local function PrintHelp()
     print("  /grudge note [first surname] <text>  - write a note on a player (no name: your target)")
     print("  /grudge shame <first> <surname> [text]  - put a player on your Shame list")
     print("  /grudge kudos <first> <surname> [text]  - put a player on your Kudos list")
-    print("  /grudge move <first> <surname> marked|shame|kudos|none  - move your mark on a player")
-    print("  /grudge notes  - open the kill orders page, where Marked is (/grudge shame and kudos open theirs)")
+    print("  /grudge move <first> <surname> shame|kudos|none  - move your mark on a player")
+    print("  /grudge notes  - open the Shame page (/grudge kudos opens Kudos)")
     print("  /grudge import  - take over Guild Grudge's notes (import force: again)")
 end
 

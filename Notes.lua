@@ -1,5 +1,5 @@
 -- Grudgekeeper - notes on players: what the guild writes down about the people it meets. A free-text
--- note with a tag, a mark that puts a player on one of three lists (Marked, Shame, Kudos), votes on
+-- note with a tag, a mark that puts a player on one of two lists (Shame, Kudos), votes on
 -- notes, and the enemy guild on watch. This file is the data and the
 -- wire only; it makes no frames. The pages, menus and tooltip lines that show it are elsewhere.
 -- (Guild Grudge's list of funny character names came with the merge and was left out, 2026-11-05: it
@@ -43,11 +43,14 @@ local MAX_REPLY = 150                       -- records one client answers a Q wi
 local MAX_PENDING = 200                     -- votes held for a player who hasn't arrived
 local PENDING_FOR = 10 * 60                 -- seconds a held vote waits
 local KEEP_TOMBSTONE = 30 * GK.DAY
-local LISTS = { kos = true, watch = true, kudos = true }
+-- Marked (kos), the guild's kill-on-sight list, went on 2026-11-22: "marked fjerner vi. featuren kan vel fjernes
+-- helt. vi har kill orders, og personal track og guild track" (the owner). A kos mark off the wire is refused, one
+-- already kept means nothing (AuthorList, MyMark) and goes at the next prune, and a note alone puts nobody on a list.
+local LISTS = { watch = true, kudos = true }
 local NONE = {}                             -- the usual answer, shared: callers only ever read it
 
 GK.MAX_TAG = 24
--- Suggested tags per list; a player can type their own. Marked has none: its notes say why.
+-- Suggested tags per list; a player can type their own.
 GK.TAGS = {
     watch = { "Ninja looter", "Scammer", "Toxic", "Griefer", "Leaver" },
     kudos = { "Helpful", "Kind", "Skilled", "Great healer", "Great tank", "Fair looter", "Fun to group with" },
@@ -149,7 +152,7 @@ end
 
 local function HasLive(p)
     for _, m in pairs(p.marks) do
-        if not m.del then return true end
+        if not m.del and LISTS[m.list] then return true end
     end
     for _, byId in pairs(p.notes) do
         if LiveCount(byId) > 0 then return true end
@@ -516,7 +519,7 @@ function Put.Note(key, author, id, rec)
     return true
 end
 
---- rec = { list, ts, del }: list is one of kos, watch, kudos, and nil in a removed mark.
+--- rec = { list, ts, del }: list is watch or kudos, and nil in a removed mark.
 function Put.Mark(key, author, rec)
     local p = GK.Person(key, true)
     if not p then return false end
@@ -548,19 +551,17 @@ end
 -- ---------------------------------------------------------------------------
 -- Tags, marks, lists
 -- ---------------------------------------------------------------------------
---- The list this author's records put the player on: their live mark, else kos when they have a live
---- note and never made a mark. nil when neither. (A mark they removed stays removed.)
+--- The list this author's mark puts the player on, or nil. A note alone put them on Marked until 2026-11-22;
+--- now it puts them on none, and a Marked mark kept from before means nothing.
 local function AuthorList(p, author)
     local m = p.marks[author]
-    if m then return (not m.del) and m.list or nil end
-    local byId = p.notes[author]
-    if byId and LiveCount(byId) > 0 then return "kos" end
+    if m and not m.del and LISTS[m.list] then return m.list end
     return nil
 end
 
---- Who has put this player on which list: { kos = { authors }, watch = {...}, kudos = {...} }.
+--- Who has put this player on which list: { watch = { authors }, kudos = {...} }.
 function GK.ListsOf(key)
-    local lists = { kos = {}, watch = {}, kudos = {} }
+    local lists = { watch = {}, kudos = {} }
     local p = GK.Person(key, false)
     if not p then return lists end
     for author in pairs(p.marks) do
@@ -613,7 +614,7 @@ end
 function GK.MyMark(key)
     local p, me = GK.Person(key, false), LIB.Me()
     local m = p and me and p.marks[me]
-    return m and not m.del and m.list or nil
+    return m and not m.del and LISTS[m.list] and m.list or nil
 end
 
 --- Put the player on a list, or take them off mine (list nil). Only my own mark moves (D5).
@@ -925,6 +926,8 @@ local function OnMark(sender, f)
     local key, ts = GK.PlayerKey(GK.LocalKey(ValidKey(f[3]))), Ts(f[5])
     local del = f[6] == "1"
     local list = LISTS[f[4]] and f[4] or nil
+    -- an older client's move to Marked, which is gone: their mark comes off the list it was on. It makes no player.
+    if key and f[4] == "kos" and GK.Person(key, false) then del = true end
     if not (key and ts) or (not del and not list) then return false end
     if not Put.Mark(key, sender, { list = list, ts = ts, del = del }) then return false end
     LearnWire(key, f[7], f[8], f[9])
@@ -1070,9 +1073,12 @@ function GK.PruneNotes()
             if next(byId) == nil then p.notes[author] = nil end
         end
         for author, m in pairs(p.marks) do
-            -- A removed mark is what keeps the player off Marked while its author still has a live note
-            -- on them (AuthorList), so it stays as long as one does.
-            if m.del and m.ts < cutoff and LiveCount(p.notes[author] or NONE) == 0 then
+            -- A Marked mark kept from before 2026-11-22 goes: it puts nobody on a list now (AuthorList). A removed
+            -- mark stays as long as its author has a live note on them, as it did when a note alone meant Marked.
+            if not m.del and not LISTS[m.list] then
+                p.marks[author] = nil
+                gone = gone + 1
+            elseif m.del and m.ts < cutoff and LiveCount(p.notes[author] or NONE) == 0 then
                 p.marks[author] = nil
                 gone = gone + 1
             end

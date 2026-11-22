@@ -123,8 +123,7 @@ end
 
 -- A warning as its row on Settings, Warnings would tell it, with the words the game uses (Sightings.lua,
 -- NotesUI.lua): for that moment the row is its own way, so it comes whatever yours says.
-local WARN_WAY = { alertNear = "screen", leadNear = "screen", noteAlerts = "screen", watchGroup = "screen",
-    kudosGroup = "chat" }
+local WARN_WAY = { alertNear = "screen", watchGroup = "screen", kudosGroup = "chat" }
 local function Warning(key, text, urgent, ownSound, target)
     local was = GK.db[key]
     GK.db[key] = WARN_WAY[key]
@@ -219,17 +218,9 @@ local ACTIONS = {
         local v = TheEnemy()
         Warning("alertNear", ("%s is near!"):format(GK.Show(v.key)), true, nil, v.key)
     end },
-    { "One who leads over me", function()
-        local v = TheEnemy()
-        Warning("leadNear", ("%s is near - owed %d"):format(GK.Show(v.key), 2), true, nil, v.key)
-    end },
     { "Tracked enemy near", function()
         local v = TheEnemy()
         GK.Warn(("Tracked: %s is near!"):format(GK.Show(v.key)), true, nil, v.key, v.key)
-    end },
-    { "Marked player near", function()
-        local v = TheEnemy()
-        Warning("noteAlerts", ("Marked: %s is near!"):format(GK.Show(v.key)), true, nil, v.key)
     end },
     { "Shame player joins", function()
         Warning("watchGroup", ("Shame list: %s joined your group"):format("Edvard"), true, true)
@@ -251,7 +242,7 @@ GK.debugActions = ACTIONS    -- for tools/smoke_grudgekeeper.py, which presses e
 -- Notifications page, 2026-11-20). A sound picked in place of a tier's voice is what plays; with Sound off, nothing.
 local HELD = { "spreeMine", "spreeGuild", "spreeGuildFrom", "rankMine", "rankGuild", "rankGuildFrom", "orderMine",
     "orderDone", "spreeEnded", "spreeEndedGuild", "spreeTormentor", "spreeTormentorGuild", "guildZoneOnly",
-    "guildSounds", "announceWhenMine", "announceWhenGuild", "reaperEffect", "revengeMine", "revengeGuild" }
+    "guildSounds", "announceWhenMine", "announceWhenGuild", "reaperEffect", "revengeMine", "revengeGuild", "grudgeMine" }
 
 local function Announce(set, event, ...)
     local was = {}
@@ -284,6 +275,12 @@ local function Revenge(mine)
     local v = TheEnemy()
     Announce(mine and { revengeMine = "splash" } or { revengeGuild = "toast" }, "GK_REVENGE",
         mine and LIB.Me() or Guildie("Kari"), GK.Show(v.key), mine and 3 or 1, mine and 5 or 2, mine, v.key, v.c)
+end
+
+--- A grudge evened up (Kills.lua): your target still leads 3 to 2, or you are even, 3 - 3.
+local function Grudge(even)
+    local v = TheEnemy()
+    Announce({ grudgeMine = "toast" }, "GK_GRUDGE", GK.Show(v.key), even and 3 or 2, 3, v.key, v.c)
 end
 
 local function NewTitle(mine, title, points)
@@ -323,6 +320,9 @@ local HEAR = {
     { "Kill order, no gold", function() OrderDone(true, 0) end },
     -- their face struck in the ring (FxRevenge.lua), your target's if you have one
     { "Revenge", function() Revenge(true) end },
+    -- one who still led over you, got again: where you stand, or even (Announce.lua, GK_GRUDGE)
+    { "A grudge, still owed", function() Grudge(false) end },
+    { "A grudge evened up", function() Grudge(true) end },
     { "A spree ended", function() Ended(true) end },
     { "A tormentor put down", function() Tormentor(true) end },
     { "Kari's" },

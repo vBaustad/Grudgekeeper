@@ -205,12 +205,10 @@ test("two authors put a player on different lists, and each moves only their own
     local lists = GK.ListsOf(GANK)
     eq(#lists.watch, 1)
     eq(lists.watch[1], KARI)
-    eq(#lists.kos, 1)
-    eq(lists.kos[1], EDVARD, "a note without a mark counts as kos for its author")
+    eq(lists.kos, nil, "no Marked since 2026-11-22: Edvard's note without a mark puts Gank on no list")
     eq(#lists.kudos, 0)
     W.receive(GK, EDVARD, msg("L", 1, GANK, "kudos", B + 3))
     lists = GK.ListsOf(GANK)
-    eq(#lists.kos, 0)
     eq(lists.kudos[1], EDVARD)
     eq(lists.watch[1], KARI, "Kari's mark didn't move")
     -- my own
@@ -222,6 +220,7 @@ test("two authors put a player on different lists, and each moves only their own
     eq(GK.MyMark(GANK), nil)
     eq(#GK.ListsOf(GANK).watch, 1)
     eq(GK.SetMark(GANK, "enemies"), false, "no such list")
+    eq(GK.SetMark(GANK, "kos"), false, "nor Marked, since 2026-11-22")
 end)
 
 test("a removed mark stays removed against a late older one", function()
@@ -230,7 +229,7 @@ test("a removed mark stays removed against a late older one", function()
     W.receive(GK, KARI, msg("L", 1, GANK, "", B + 20, 1))
     W.receive(GK, KARI, msg("L", 1, GANK, "kudos", B + 15))
     local lists = GK.ListsOf(GANK)
-    eq(#lists.watch + #lists.kudos + #lists.kos, 0)
+    eq(#lists.watch + #lists.kudos, 0)
 end)
 
 test("PeopleOn gathers a list with the latest time, the score, the tags and whether it is mine", function()
@@ -641,7 +640,7 @@ test("import: notes, tags, lists and votes land under their authors; the nice na
     eq(p.sx, 2)
     eq(p.l, 60)
     local lists = GK.ListsOf(key)
-    eq(#lists.kos, 2, "both note authors, as kos")
+    eq(lists.kos, nil, "Guild Grudge's kill-on-sight list: notes on no list since Marked went (2026-11-22)")
     eq(#lists.watch + #lists.kudos, 0)
     -- Nina: kudos, under the author of the note
     lists = GK.ListsOf("Nina Nice-Realm")
@@ -1142,15 +1141,43 @@ test("a removed mark outlives its 30 days while its author still has a live note
     W.receive(GK, KARI, msg("N", 1, GANK, 1, B, "", "", "", "", "", "ninja"))
     W.receive(GK, KARI, msg("L", 1, GANK, "kudos", B + 1))
     W.receive(GK, KARI, msg("L", 1, GANK, "", B + 2, 1))
-    eq(#GK.ListsOf(GANK).kos, 0, "the removed mark keeps them off Marked")
+    eq(#GK.ListsOf(GANK).kudos, 0, "the removed mark: off Kudos")
     W.advance(month)
     GK.PruneNotes()
-    eq(#GK.ListsOf(GANK).kos, 0, "still off Marked a month on")
+    eq(#GK.ListsOf(GANK).kudos, 0, "still off Kudos a month on")
     assert(GK.Person(GANK).marks[KARI], "the tombstone was kept")
     W.receive(GK, KARI, msg("N", 1, GANK, 1, B + month, 1))
     W.advance(month)
     GK.PruneNotes()
     eq(GK.Person(GANK), nil, "with no note left it goes, mark and all")
+end)
+
+test("a Marked mark kept from before 2026-11-22 means nothing and goes at the next prune", function()
+    local GK = boot()
+    GK.NotesPut.Mark(GANK, KARI, { list = "kos", ts = B })
+    eq(GK.IsNoted(GANK), false, "on no list: nothing written down")
+    eq(GK.ListsOf(GANK).kos, nil)
+    GK.PruneNotes()
+    local p = GK.Person(GANK)
+    eq(p and p.marks[KARI] or nil, nil, "gone, and the player with it: nothing else was written")
+end)
+
+test("an older client moving a player from Shame to Marked takes that mark off Shame", function()
+    local GK = boot()
+    W.receive(GK, KARI, msg("L", 1, GANK, "watch", B + 1))
+    W.receive(GK, KARI, msg("L", 1, GANK, "kos", B + 2))
+    eq(#GK.ListsOf(GANK).watch, 0, "off Shame, and on nothing")
+    W.receive(GK, KARI, msg("L", 1, NICE, "kos", B + 2))
+    eq(GK.Person(NICE), nil, "a Marked mark alone makes no player")
+end)
+
+test("Add a note on someone on no list picks no list for them", function()
+    local GK = boot({ ui = true })
+    W.receive(GK, KARI, msg("N", 1, GANK, 1, B, "", "", "", "", "", "a note alone"))
+    local picked = "not opened"
+    GK.OpenNoteSheet = function(_, list) picked = list end
+    GK.NoteCard(GANK).buttons[1][2]()
+    eq(picked, nil, "never Shame by itself: the guild would read it as one")
 end)
 
 test("votes that beat their note wait for it, a few and for ten minutes", function()
@@ -1334,8 +1361,7 @@ local function labels(node)
     return table.concat(out, "|")
 end
 
--- Marked has no page since 2026-11-07: it is a section of the kill orders page (Window.lua), as kill orders
--- and Most wanted say the rest ("most wanted og kill orders holder kanskje?", the owner).
+-- Marked had no page from 2026-11-07, and went altogether on 2026-11-22.
 test("the list pages: Shame and Kudos on the right, none with links; Marked has none", function()
     local GK = bootUI()
     eq(#GK.LedgerPages, 8)
@@ -1360,7 +1386,7 @@ test("GK.OpenNotes opens the page of the list", function()
     local GK = bootUI()
     local W2 = require("wow_mock")
     GK.OpenNotes("kos")
-    eq(W2.opened, "Most wanted:marked", "Marked: Most wanted's second view")
+    eq(W2.opened, 1, "Marked went on 2026-11-22: the kill orders page, as for any unknown list")
     GK.OpenNotes("watch")
     eq(W2.opened, 7)
     GK.OpenNotes("kudos")
@@ -1371,11 +1397,11 @@ test("GK.OpenNotes opens the page of the list", function()
     eq(W2.opened, 1, "an unknown list: the kill orders page")
 end)
 
-test("/grudge move accepts marked next to kos and shame next to watch", function()
+test("/grudge move accepts shame next to watch; marked and kos are gone", function()
     local GK = bootUI()
     local known = function() return true end
-    eq(GK.ParseNotesCommand("move", "Gank Master marked", nil, known).list, "kos")
-    eq(GK.ParseNotesCommand("move", "Gank Master kos", nil, known).list, "kos")
+    eq(GK.ParseNotesCommand("move", "Gank Master marked", nil, known), nil, "Marked went on 2026-11-22")
+    eq(GK.ParseNotesCommand("move", "Gank Master kos", nil, known), nil)
     eq(GK.ParseNotesCommand("move", "Gank Master shame", nil, known).list, "watch")
 end)
 
@@ -1396,14 +1422,9 @@ test("the page's rows: newest first, with tags, the newest note, the score and m
     W.receive(GK, KARI, msg("L", 1, GANK, "watch", B + 11))
     W.receive(GK, EDVARD, msg("V", 1, GANK, KARI, 1, 1, B + 12))
     W.receive(GK, KARI, msg("N", 1, "Older Foe-Realm", 1, B + 5, "", "", "", "", "", "ganked me"))
-    local items, empty = GK.NotesItems("kos")
-    eq(#items, 1, "Gank is on Shame, not on kos")
-    eq(items[1].name, "Older Foe")
-    eq(items[1].sub, '"ganked me"')
-    eq(items[1].right, "")
-    eq(items[1].own, nil)
-    assert(empty:find("Nobody is marked"), empty)
-    items, empty = GK.NotesItems("watch")
+    -- Older Foe's note alone puts him on no list since Marked went (2026-11-22)
+    eq(#GK.NotesItems("kos"), 0, "no Marked to list him on")
+    local items = GK.NotesItems("watch")
     eq(#items, 1)
     local it = items[1]
     eq(it.key, "p:" .. GANK)
@@ -1435,24 +1456,23 @@ test("a noted player's card: title, who put them where, the notes with their vot
     W.receive(GK, EDVARD, msg("N", 1, GANK, 1, B + 20, "", "", "", "", "", "agreed"))
     W.receive(GK, EDVARD, msg("V", 1, GANK, KARI, 1, 1, B + 21))
     local d = GK.NoteCard(GANK)
-    eq(d.title, "MARKED", "Edvard's note without a mark counts as kos, and no list of mine is chosen")
+    eq(d.title, "SHAME", "Kari's Shame: Edvard's note without a mark puts Gank on no list since Marked went")
     eq(d.name, "Gank Master")
     eq(d.info, "Level 60 Orc")
     eq(d.big, "+1")
     eq(d.caption, "votes")
     eq(d.c, "ROGUE")
-    eq(d.lines[1], "Marked: Edvard")
-    eq(d.lines[2], "Shame: Kari - " .. GK.TagText("Ninja looter", 12))
-    eq(#d.lines, 4)
-    eq(d.lines[3], '"agreed" - Edvard, 3 days ago')
-    assert(d.lines[4]:find('^"took the chest:\194\160twice" %- Kari, 3 days ago %(%+1%)$'), d.lines[4])
-    assert(not d.lines[4]:find("^[^:,]+: "), "the ledger would read that as a label")
+    eq(d.lines[1], "Shame: Kari - " .. GK.TagText("Ninja looter", 12))
+    eq(#d.lines, 3)
+    eq(d.lines[2], '"agreed" - Edvard, 3 days ago')
+    assert(d.lines[3]:find('^"took the chest:\194\160twice" %- Kari, 3 days ago %(%+1%)$'), d.lines[3])
+    assert(not d.lines[3]:find("^[^:,]+: "), "the ledger would read that as a label")
     -- the page's list wins when they are on it; my own mark wins over that
     eq(GK.NoteCard(GANK, "watch").title, "SHAME")
-    eq(GK.NoteCard(GANK, "kudos").title, "MARKED", "not on that list")
+    eq(GK.NoteCard(GANK, "kudos").title, "SHAME", "not on that list: the one they are on")
     GK.SetMark(GANK, "kudos")
     eq(GK.NoteCard(GANK, "watch").title, "KUDOS")
-    eq(GK.NoteCard(GANK).lines[3], "Kudos: you")
+    eq(GK.NoteCard(GANK).lines[2], "Kudos: you")
     -- buttons
     local t
     GK.OpenNoteSheet = function(arg, list) t = { arg = arg, list = list } end
@@ -1469,9 +1489,10 @@ test("a card gives five notes and then says how many more", function()
     local GK = bootUI()
     for i = 1, 8 do W.receive(GK, KARI, msg("N", 1, GANK, i, B + i, "", "", "", "", "", "note " .. i)) end
     local d = GK.NoteCard(GANK)
-    eq(#d.lines, 7, "one list, five notes, the rest counted")
-    eq(d.lines[2], '"note 8" - Kari, 3 days ago')
-    eq(d.lines[7], "and 3 more notes.")
+    eq(#d.lines, 6, "on no list since Marked went: five notes, the rest counted")
+    eq(d.lines[1], '"note 8" - Kari, 3 days ago')
+    eq(d.lines[6], "and 3 more notes.")
+    eq(d.title, "NOTES", "on no list: plain notes")
     GK.Person("Empty-Realm", true)
     local e = GK.NoteCard("Empty-Realm")
     eq(e.title, "NOTES")
@@ -1487,7 +1508,7 @@ test("the More menu: move or remove my mark, vote on others' notes, delete mine,
     GK.NoteMenu(root, GANK)
     eq(labels(root), "Move my mark to|Remove my mark|Vote on a note|Delete my note|Open their poster",
         "we have seen them as an enemy")
-    eq(labels(kid(root, "Move my mark to")), "Marked|Kudos", "not the list I am on")
+    eq(labels(kid(root, "Move my mark to")), "Kudos", "not the list I am on")
     kid(kid(root, "Move my mark to"), "Kudos").fn()
     eq(GK.MyMark(GANK), "kudos")
     local vote = kid(root, "Vote on a note")
@@ -1552,12 +1573,13 @@ end)
 test("Mine only keeps a row I voted on, and a vote taken back lets it go", function()
     local GK = bootUI()
     W.receive(GK, KARI, msg("N", 1, GANK, 1, B + 10, "", "", "ROGUE", "Orc", 60, "hers"))
-    eq(GK.NotesItems("kos")[1].own, nil)
+    W.receive(GK, KARI, msg("L", 1, GANK, "watch", B + 11))
+    eq(GK.NotesItems("watch")[1].own, nil)
     GK.VoteNote(GANK, KARI, 1, 1)
-    eq(GK.NotesItems("kos")[1].own, true, "voted on the note")
-    eq(GK.NotesItems("kos")[1].mine, nil, "the tint is for what I wrote")
+    eq(GK.NotesItems("watch")[1].own, true, "voted on the note")
+    eq(GK.NotesItems("watch")[1].mine, nil, "the tint is for what I wrote")
     GK.VoteNote(GANK, KARI, 1, 0)
-    eq(GK.NotesItems("kos")[1].own, nil)
+    eq(GK.NotesItems("watch")[1].own, nil)
 end)
 
 test("the note sheet and the small letter have frames of their own names", function()
@@ -1600,8 +1622,9 @@ end)
 test("writing a note: a few words, a tag or a list is enough; nothing at all is not", function()
     local GK = bootUI()
     local t = { key = GANK, c = "ROGUE", r = "Orc", l = 60 }
-    eq(select(1, GK.WriteNote(t, "kos", "  ", " ")), true, "a list alone sets my mark")
-    eq(GK.MyMark(GANK), "kos")
+    eq(select(1, GK.WriteNote(t, "kos", "  ", " ")), nil, "Marked went on 2026-11-22: no such list")
+    eq(select(1, GK.WriteNote(t, "kudos", "  ", " ")), true, "a list alone sets my mark")
+    eq(GK.MyMark(GANK), "kudos")
     eq(GK.Person(GANK).c, "ROGUE", "and what we know of them goes with it")
     eq(#GK.NotesOf(GANK), 0)
     local ok, why = GK.WriteNote(t, nil, "", "")
@@ -1687,7 +1710,7 @@ test("/grudge: our subcommands act, everything else is Core's, and the help grow
     eq(GK.MyMark(NICE), nil)
     W.units.target = nil
     slash("notes")
-    eq(W2.opened, "Most wanted:marked", "Most wanted's Marked view")
+    eq(W2.opened, 7, "the Shame page: Marked, which it opened, went on 2026-11-22")
     slash("watch")
     eq(W2.opened, 7)
     slash("kudos")
@@ -1739,83 +1762,73 @@ test("the tooltip: an enemy's Grudge line gets the notes, anyone else gets a lin
     eq(GK.NoteTipLine(NICE), "|cff4dff66Kudos|r")
     eq(GK.NoteTipLine("Stranger-Realm"), nil)
     -- the answer follows the data
-    GK.SetMark(NICE, "kos")
+    GK.SetMark(NICE, "watch")
     W.receive(GK, EDVARD, msg("L", 1, NICE, "", B + 1, 1))
-    eq(GK.NoteTipLine(NICE), "|cffc8281eMarked|r")
+    eq(GK.NoteTipLine(NICE), "|cffffcc00Shame|r")
 end)
 
-test("a noted player in sight: Marked warns when asked, Shame says a line, both at most every 90 seconds", function()
+test("a noted player in sight: Shame says a line, at most every 90 seconds; a note alone warns of nothing", function()
     local GK, LIB = bootUI()
     local W2 = require("wow_mock")
     W.receive(GK, KARI, msg("N", 1, GANK, 1, B, "", "", "ROGUE", "Orc", 60, "x"))
     W.receive(GK, KARI, msg("N", 1, NICE, 1, B, "", "Ninja looter", "", "", "", "y"))
     W.receive(GK, KARI, msg("L", 1, NICE, "watch", B))
+    -- a note alone puts nobody on a list since Marked went (2026-11-22): no warning, whatever an older file says
     W.units.mouseover = GANK
-    LIB.fire("UPDATE_MOUSEOVER_UNIT")
-    eq(#W2.warned, 0, "off by default")
     GK.db.noteAlerts = true
     LIB.fire("UPDATE_MOUSEOVER_UNIT")
-    eq(#W2.warned, 1)
-    eq(W2.warned[1].text, "Marked: Gank Master is near!")
-    eq(W2.warned[1].urgent, true)
-    LIB.fire("UPDATE_MOUSEOVER_UNIT")
-    eq(#W2.warned, 1, "within 90 seconds")
-    W.advance(91)
-    LIB.fire("UPDATE_MOUSEOVER_UNIT")
-    eq(#W2.warned, 2)
-    -- an open kill order says it already
-    W.advance(91)
-    W2.order = { key = "o1" }
-    LIB.fire("UPDATE_MOUSEOVER_UNIT")
-    eq(#W2.warned, 2, "Sightings.lua warns about that one")
-    W2.order = nil
-    -- Shame: a line in chat
+    eq(#W2.warned, 0, "a note alone: no warning")
+    -- Shame: a line in chat, when asked for
     W.units.mouseover = NICE
+    local lines = #W.printed
     LIB.fire("UPDATE_MOUSEOVER_UNIT")
-    eq(#W2.warned, 2)
+    eq(#W.printed, lines, "the Shame line is off unless asked for")
     GK.db.watchNearby = true
     LIB.fire("UPDATE_MOUSEOVER_UNIT")
     assert(W.printed[#W.printed]:find("Nina Nice from your Shame list is near [" .. GK.TagText("Ninja looter") .. "]", 1, true), W.printed[#W.printed])
-    eq(#W2.warned, 2, "a line, not a warning")
-    local lines = #W.printed
+    eq(#W2.warned, 0, "a line, not a warning")
+    lines = #W.printed
     LIB.fire("UPDATE_MOUSEOVER_UNIT")
     eq(#W.printed, lines, "within 90 seconds")
-    -- kudos is never announced; a mob and myself are not players of the book
+    W.advance(91)
+    LIB.fire("UPDATE_MOUSEOVER_UNIT")
+    eq(#W.printed, lines + 1, "90 seconds on: again")
+    -- an open kill order says it already
+    W.advance(91)
+    W2.order = { key = "o1" }
+    lines = #W.printed
+    LIB.fire("UPDATE_MOUSEOVER_UNIT")
+    eq(#W.printed, lines, "Sightings.lua warns about that one")
+    W2.order = nil
+    -- kudos is never announced; a mob is not a player of the book
     W.receive(GK, EDVARD, msg("L", 1, "Pal Human-Realm", "kudos", B))
     W.units.mouseover = "Pal Human-Realm"
     LIB.fire("UPDATE_MOUSEOVER_UNIT")
     eq(#W.printed, lines)
     W.mobs.mouseover = true
-    W.units.mouseover = GANK
+    W.units.mouseover = NICE
     W.advance(91)
     LIB.fire("UPDATE_MOUSEOVER_UNIT")
-    eq(#W2.warned, 2, "a mob")
+    eq(#W.printed, lines, "a mob")
     -- what we saw of a noted player is kept
     W.mobs.mouseover = nil
-    GK.db.noteAlerts = false
-    LIB.fire("UPDATE_MOUSEOVER_UNIT")
+    GK.db.noteAlerts = nil
     eq(GK.Person(GANK).l, 60)
 end)
 
-test("a player on both Marked and Shame: the Shame line is not lost when the Marked warning is off", function()
+test("a note alone beside a Shame mark: the Shame line, whatever an older file's Marked warning said", function()
     local GK, LIB = bootUI()
     local W2 = require("wow_mock")
     W.receive(GK, KARI, msg("N", 1, GANK, 1, B, "", "", "ROGUE", "Orc", 60, "x"))
     W.receive(GK, EDVARD, msg("L", 1, GANK, "watch", B))
     W.units.mouseover = GANK
-    GK.db.noteAlerts = false
+    GK.db.noteAlerts = true
     GK.db.watchNearby = true
     local lines = #W.printed
     LIB.fire("UPDATE_MOUSEOVER_UNIT")
-    eq(#W2.warned, 0)
-    eq(#W.printed, lines + 1, "the Shame line, as the Marked warning does not run")
+    eq(#W2.warned, 0, "no Marked warning: Marked went on 2026-11-22")
+    eq(#W.printed, lines + 1, "the Shame line")
     assert(W.printed[#W.printed]:find("from your Shame list is near", 1, true))
-    -- with the Marked warning on, it is that one alone
-    W.advance(91)
-    GK.db.noteAlerts = true
-    LIB.fire("UPDATE_MOUSEOVER_UNIT")
-    eq(#W2.warned, 1)
-    eq(#W.printed, lines + 1, "no second line")
 end)
 
 test("joining the group: Shame warns with the tag, Kudos says one green line, each once", function()
@@ -1935,7 +1948,9 @@ end)
 
 test("the settings: defaults for every new setting", function()
     local GK = bootUI()
-    eq(GK.db.noteAlerts, "off")
+    eq(GK.db.noteAlerts, nil, "Marked's warning went with it (2026-11-22)")
+    eq(GK.db.leadNear, nil, "...and the one when one who leads over you is near")
+    eq(GK.db.grudgeMine, "toast", "a grudge evened up: a toast of yours")
     eq(GK.db.watchNearby, "off")
     eq(GK.db.watchGroup, "screen")
     eq(GK.db.kudosGroup, "off")
@@ -3048,6 +3063,25 @@ test("tormentor: kept per guild, at most 200, the smallest count dropped first",
     eq(GK.Store().tormentors["Next-Realm"], 1)
 end)
 
+test("the score against the guild on watch outlasts a crowd of others: its players are the last to go", function()
+    local GK = bootGuild()
+    GK.Store().watch = { name = "Bloodfang", by = KARI, ts = B }
+    GK.NoteEnemyGuild(GANK, "Bloodfang")
+    GK.NoteSlain(KARI, GANK, "ROGUE", "Orc", 60, 3)
+    GK.NoteWanted(KARI, GANK, "ROGUE", "Orc", 60, 2)
+    W.advance(10)
+    for i = 1, 450 do
+        local key = "Stranger" .. i
+        GK.NoteEnemyGuild(key, "Others")
+        GK.NoteSlain(KARI, key, "MAGE", "Troll", 30, 1)
+        GK.NoteWanted(KARI, key, "MAGE", "Troll", 30, 1)
+    end
+    local us, them = GK.GuildScore("Bloodfang")
+    eq(us .. " - " .. them, "3 - 2", "still the score")
+    local s = GK.Store()
+    eq(count(s.enemyGuilds) .. "/" .. count(s.slain) .. "/" .. count(s.wanted), "400/200/200", "and the caps hold")
+end)
+
 test("K on the wire: field 13 is the spree after the kill, the fields before it are where they were", function()
     local GK = bootGuild()
     W.takeSent()
@@ -3061,7 +3095,8 @@ test("K on the wire: field 13 is the spree after the kill, the fields before it 
     eq(f[13], "5", "the spree")
     eq(f[14], "0", "not a revenge")
     eq(f[15], "", "and no deaths said")
-    eq(#f, 15)
+    eq(f[16], "", "and no guild known (2026-11-22)")
+    eq(#f, 16)
     assert(#text < 600)
     -- a revenge (2026-11-20): field 14 says so, 15 how often they had killed us
     GK.SendKill({ key = GANK, c = "ROGUE", r = "Orc", l = 65, rf = "Orc", sx = 2 }, "Hillsbrad", 4, nil, 3, 5, true, 5)
@@ -3901,8 +3936,8 @@ test("settings: seven chapters, Notifications first, and every saved setting has
         spreeEnded = "Notifications", spreeEndedGuild = "Notifications", spreeTormentor = "Notifications",
         spreeTormentorGuild = "Notifications", guildZoneOnly = "Notifications", announceWhenMine = "Notifications",
         announceWhenGuild = "Notifications", announceTime = "Notifications", revengeMine = "Notifications",
-        revengeGuild = "Notifications", alertNear = "Warnings", leadNear = "Warnings",
-        noteAlerts = "Warnings", watchNearby = "Warnings", watchGroup = "Warnings", revenge = "Sounds",
+        revengeGuild = "Notifications", grudgeMine = "Notifications", alertNear = "Warnings",
+        watchNearby = "Warnings", watchGroup = "Warnings", revenge = "Sounds",
         kudosGroup = "Warnings", sound = "Sounds", guildSounds = "Sounds", near = "Sounds", shame = "Sounds",
         anyLetters = "Letters", letters = "Letters", myLetters = "Letters", keepLetters = "Letters", share = "Guild",
         shareOutside = "Guild",
@@ -4030,8 +4065,7 @@ end)
 
 test("settings: each warning on screen, a chat line or off; an older file's true is the row's own way", function()
     local GK, _, Find = bootSettings()
-    for key, own in pairs({ alertNear = "screen", leadNear = "screen", noteAlerts = "screen", watchNearby = "chat",
-            watchGroup = "screen", kudosGroup = "chat" }) do
+    for key, own in pairs({ alertNear = "screen", watchNearby = "chat", watchGroup = "screen", kudosGroup = "chat" }) do
         local row, ch = Find(key)
         eq(ch.name, "Warnings", key)
         eq(row.kind, "pick", key)
@@ -4081,6 +4115,16 @@ test("settings: an older file gets Revenge as the preset it matched has it, else
         end
         GK.MoveRevenge(db)
         eq(db.revengeMine .. "/" .. db.revengeGuild, p.set.revengeMine .. "/" .. p.set.revengeGuild, p.key)
+    end
+    -- a file from before Revenge is from before the grudge toast as well, and has no such key
+    for _, p in ipairs(GK.NOTIFY_PRESETS) do
+        local db = {}
+        for k, v in pairs(p.set) do
+            if k ~= "revengeMine" and k ~= "revengeGuild" and k ~= "grudgeMine" then db[k] = v end
+        end
+        GK.MoveRevenge(db)
+        eq(db.revengeMine .. "/" .. db.revengeGuild, p.set.revengeMine .. "/" .. p.set.revengeGuild,
+            p.key .. ", from before the grudge toast")
     end
     local mix = { spreeMine = "off", spreeGuild = "toast", spreeGuildFrom = 7 }
     GK.MoveRevenge(mix)

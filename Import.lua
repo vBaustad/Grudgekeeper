@@ -6,8 +6,9 @@
 -- and are never sent by us (the wire only sends records whose author is me, Notes.lua); only my own
 -- notes, marks and votes go on to the guild, and only as other clients ask (a Q). Guild Grudge
 -- gave a player one shared list, not one per author, so the list becomes a mark for each author of a
--- live note on them, and for me when there is none. Marked (stored as kos) is what a note alone already means,
--- so only Shame (stored as watch) and Kudos make marks.
+-- live note on them, and for me when there is none. Only Shame (stored as watch) and Kudos make marks: Guild
+-- Grudge's kill-on-sight list makes none (Marked, which it meant here, went on 2026-11-22): its notes come over
+-- on no list, on the poster and the Grudge file, and one on it with no note does not come over.
 -- A note's id here is its time times 100 plus its place among that author's notes of the same second on
 -- that player, the notes put in order by text, tag and Guild Grudge's own id (a string, which we can't
 -- use): the same data gives the same ids whatever order it is walked in. A vote on someone else's

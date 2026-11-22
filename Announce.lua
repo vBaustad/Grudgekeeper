@@ -56,6 +56,7 @@ local DEFAULT_SOUNDS = {
     order = "game:566027",
     rank = "kit:UI_PVP_HONOR_PRESTIGE_RANK_UP",  -- a new title: the game's own rank-up, no row either
     revenge = "kit:UI_BATTLEGROUND_COUNTDOWN_FINISHED",
+    grudge = "game:566027",                      -- a grudge evened up: the tribal bell, no row either (2026-11-22)
 }
 GK.SPREE_DEFAULT_SOUNDS = DEFAULT_SOUNDS     -- for the settings page, which shows these until one is picked
 
@@ -763,6 +764,27 @@ LIB.Listen("GK_REVENGE", function(who, enemyName, you, they, mine, enemyKey, ene
     if item then Add(setting, mine, item) end
 end)
 
+-- A grudge evened up (Kills.lua): you got one who still led over you, and it was no revenge - you got them last
+-- as well - so Revenge's splash said nothing. Where you stand now, or even. It replaced the warning that one who
+-- led over you was near: "leads over me kanskje ikke ha alert? men heller en sånn notification om du dreper noen
+-- du har grudge mot? jevner ut score" (the owner, 2026-11-22). Yours alone: a guildie's score with an enemy is
+-- theirs. No effect of its own, so a splash is the seal and the line.
+
+--- A grudge's line: "Grudge: X · now 2 - 3", or "Even with X · now 3 - 3".
+local function GrudgeLine(enemy, you, they)
+    local score = ("now %s - %s"):format(Coloured(you, GOLD), Coloured(they, GREY))
+    if you >= they then return ("%s %s \194\183 %s"):format(Coloured("Even with", GOLD), enemy, score) end
+    return ("%s %s \194\183 %s"):format(Coloured("Grudge:", RED), enemy, score)
+end
+
+LIB.Listen("GK_GRUDGE", function(enemyName, you, they, enemyKey, enemyClass)
+    you, they = tonumber(you) or 0, tonumber(they) or 0
+    local class = GK.ValidClass and GK.ValidClass(enemyClass) or nil
+    Add("grudgeMine", true, { seal = MEDIA .. "seal_red", sound = "grudge",
+        line = GrudgeLine(InClassColour(Hide(enemyName), class), you, they),
+        targetKey = type(enemyKey) == "string" and enemyKey or nil, targetClass = class })
+end)
+
 -- A guildie got the target of a kill order (Guild.lua, the F we heard): told as it happens, to everyone -
 -- also who has a letter coming for it, the poster and who put gold in. Without it nobody who was not
 -- there knew, unless the hunter told guild chat ("noen drepte en på kill order nå. men det er ikke
@@ -800,7 +822,7 @@ local SAMPLE_KILLS = { bloodied = 3, merciless = 5, butcher = 7, reaper = 10, sc
 --- what: a tier's key, "scythe" or "smoke" (Reaper's two), a spree's kills ("20", "100"), "ended" or
 --- "tormentor"; none: Butcher, as before. A tier's toast is as your own spree's, with its effect; a spree
 --- ended's toast shatters as its splash does. "fulfilled": a kill order fulfilled, yours as a splash and a
---- guildie's toast. "revenge": yours as a splash and a guildie's toast.
+--- guildie's toast. "revenge": yours as a splash and a guildie's toast. "grudge": a grudge evened up, two toasts.
 function GK.AnnounceSample(what)
     what = what and what:lower() or "butcher"
     if what == "fulfilled" then
@@ -833,6 +855,16 @@ function GK.AnnounceSample(what)
         theirs.line = RevengeLine(false, false, InClassColour("Kari", "MAGE"), enemy, 1, 2)
         Show(mine)
         Show(theirs)
+        return
+    end
+    -- a grudge evened up: two toasts, one still owed and one even, as your own are told (yours alone)
+    if what == "grudge" then
+        local enemy = InClassColour("Glue Enjoyer", "WARRIOR")
+        local item = { style = "toast", mine = true, seal = MEDIA .. "seal_red", sound = "grudge",
+            face = { rf = "Orc", sx = 2, c = "WARRIOR" }, line = GrudgeLine(enemy, 2, 3) }
+        Show(item)
+        Show({ style = "toast", mine = true, silent = true, seal = item.seal, sound = "grudge", face = item.face,
+            line = GrudgeLine(enemy, 3, 3) })
         return
     end
     if what == "ended" or what == "tormentor" then

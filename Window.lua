@@ -1,8 +1,7 @@
 -- Grudgekeeper - the window (/grudge, the minimap button): the Grudgekeeper's ledger, a sheet of parchment
 -- in the game's own frame (SettingsFrameTemplate, which Forever draws in bronze), as Guildhall's window is.
 --   The game's tabs under the frame, one per page of GK.LedgerPages: Kill orders, Leaderboard, Most wanted,
---   Grudges, News and You, then a step apart Shame and Kudos (NotesUI.lua adds those two lists; Marked is
---   a section of the kill orders page).
+--   Grudges, News and You, then a step apart Shame and Kudos (NotesUI.lua adds those two lists).
 --   On the left that page's table; on the right the row you clicked - an enemy's wanted poster, a
 --   guildie's record (Profile.lua writes both, for here and the Inspect tab). Whatever opens a player's
 --   card from outside the book opens it here (GK.ShowInLedger).
@@ -82,6 +81,7 @@ local HEADS = 6
 -- How far a list runs: its first LIST_MAX rows, about three pages. A list ran to every row the store holds - 200 on Most wanted, 500 on the
 -- leaderboard: "vi kan ikke ha evig pages heller. på most wanted og alt mulig" (the owner, 2026-11-10).
 -- Only the pages stop: the store keeps what it kept, and posters, tooltips and warnings know everyone.
+-- The kill orders page is the one list that runs to its end (OrderItems).
 local LIST_MAX = 25
 GK.LIST_MAX = LIST_MAX       -- for the pages other files add (NotesUI.lua)
 local TAB_GAP, GROUP_GAP = 3, 16                     -- between two tabs; and before the friendly pages, or Friends
@@ -246,17 +246,20 @@ local function Short(l, c, r)
 end
 
 -- The views of the two pages that have two (the owner's pick from the mockup, 2026-11-18): Most wanted's
--- "Killed us most" and "Marked", the News's "All" and "Kill orders". As chosen, until the next login.
+-- "Killed us most" and the guild on watch (Marked until 2026-11-22), the News's "All" and "Kill orders". As
+-- chosen, until the next login.
 local wantedView, newsView = "killed", "all"
 
---- The open orders the page lists: the biggest bounty first (GK.OpenOrders), LIST_MAX of them and any of
---- yours past those - an order you posted or put gold in never drops off.
-local function ListedOrders(me)
-    local open = {}
-    for n, o in ipairs(GK.OpenOrders()) do
-        if n <= LIST_MAX or (me and (o.by == me or (o.pot and o.pot[me]))) then open[#open + 1] = o end
-    end
-    return open
+--- Is Most wanted showing the guild on watch? Only while there is one: with none it shows who killed us most.
+local function GuildView()
+    local guild = GK.WatchedGuild and GK.WatchedGuild()
+    return wantedView == "guild" and guild ~= nil, guild
+end
+
+--- The score against the guild on watch, short: "us 12 - 8 them".
+local function ScoreText(guild)
+    local us, them = GK.GuildScore(guild)
+    return ("us %d - %d them"):format(us, them)
 end
 
 --- One order's row on the page, open or closed.
@@ -302,11 +305,14 @@ end
 --- guild - and a heading could stand at the foot of one turn of the page with its rows on the next ("de
 --- sidene der funker ikke så bra, for det blir rotete"). What a guildie got lately is the News's "Kill
 --- orders" view now, Marked is Most wanted's second view, the watched guild a line under the title, and a
---- closed order is in the News and on its own card ("closed ones, no need").
+--- closed order is in the News and on its own card ("closed ones, no need"). Every open order, not LIST_MAX:
+--- the minimap counted 46 and the page showed 25 ("minimap sier 46 stk på kill order men ser bare første 25",
+--- the owner, 2026-11-21). An open order is live, someone paid for it and it runs out by itself (a week, two
+--- at most off the wire: Guild.lua ORDER_DAYS); ten each a poster at most (MAX_OPEN_PER_POSTER), and the pages turn.
 local function OrderItems()
     local items, me = {}, LIB.Me()
     local gold, free = {}, {}
-    for _, o in ipairs(ListedOrders(me)) do
+    for _, o in ipairs(GK.OpenOrders()) do
         local list = (GK.Pot(o)) > 0 and gold or free
         list[#list + 1] = o
     end
@@ -331,7 +337,8 @@ local function WatchLinks()
     local out = {}
     local name = GK.WatchedGuild and GK.WatchedGuild()
     if name then
-        out[#out + 1] = { text = ("Watching <%s>"):format(name), plain = true,
+        -- and the score against them, as Most wanted's view of them has it (2026-11-22)
+        out[#out + 1] = { text = ("Watching <%s>, %s"):format(name, ScoreText(name)), plain = true,
             click = function() GK.ShowInLedger({ kind = "card", make = function() return GK.GuildCard(name) end }) end }
     end
     if GK.CanWatchGuild and GK.CanWatchGuild() then
@@ -428,6 +435,24 @@ local function WantedItems()
     end
     return items, "Nobody has killed the guild yet - not that the Grudgekeeper heard of."
 end
+
+--- Most wanted's other view: the guild on watch, and the score against it (Guild.lua, GK.GuildScore) - "vi må ha
+--- en VS på guilden i vi tracker. hvor mange ganger har vi drept dem, hvor mange ganger har de drept oss" (the
+--- owner, 2026-11-22). It took Marked's place, which went the same day. A row for each of theirs who fought us,
+--- how often we killed them and how often they killed us, the most fought first.
+local function GuildItems(guild)
+    local items = {}
+    local _, _, rows = GK.GuildScore(guild)
+    for _, e in ipairs(rows) do
+        items[#items + 1] = { key = "g:" .. e.key, name = GK.Show(e.key), desc = Short(e.l, e.c, e.r),
+            class = e.c, face = { key = e.key, c = e.c },
+            c1 = tostring(e.k), right = tostring(e.d), them = e.k, killed = e.d,
+            select = PosterSpec(e.key, e), ts = e.last, own = e.own }
+    end
+    return items, ("Nobody of <%s> has fought us yet. A kill or a death counts once we know they are theirs: seen "
+        .. "while the guild is on watch, or named so by a guildie."):format(guild)
+end
+
 
 -- Grudges is one list since 2026-11-20, in a fixed order: who you track first, an eye on their face, even at
 -- 0 - 0; then who leads over you, the most owed first; then, under a faint line, who stands even, and who you
@@ -842,29 +867,46 @@ GK.LedgerPages = {
                    { text = "All time", on = not weekly, click = function() weekly = false end } }
       end,
       linksTail = ResetText },                    -- the first row chosen by itself: the week's leader, as any page's top
-    -- The guild's enemies, two ways: who killed us most, and whom the guild marked to kill on sight (Guild
-    -- Grudge's list, a section of the kill orders page until 2026-11-18). Each view its own headings and action.
+    -- The guild's enemies, two ways: who killed us most, and the guild on watch with the score against it (Marked,
+    -- the guild's kill-on-sight list, until 2026-11-22). Each view its own headings; the second only while a guild
+    -- is on watch, and with none the page has no tabs.
     { name = "Most wanted", sortable = true, max = LIST_MAX,
       icon = ICONS .. "Ability_Hunter_SniperShot",          -- the hunter's mark: marked to be hunted
       items = function()
-          if wantedView == "marked" then return GK.NotesItems and GK.NotesItems("kos") or {}, "" end
+          local on, guild = GuildView()
+          if on then return GuildItems(guild) end
           return WantedItems()
       end,
       headings = function()
-          if wantedView == "marked" then
-              return { { "Name", 48, nil, "name", "name, A to Z" }, { "Votes", COL_RIGHT, "RIGHT", "votes", "votes" } }
+          if GuildView() then
+              return { { "Name", 48, nil, "name", "name, A to Z" },
+                  { "We killed", COL1, "CENTER", "them", "how often we killed them" },
+                  { "Killed us", COL_RIGHT, "RIGHT", "killed", "how often they killed us" } }
           end
           return { { "Name", 48, nil, "name", "name, A to Z" },
               { "Killed us", COL1, "CENTER", "killed", "how often they killed us" },
               { "Kill order", COL_RIGHT, "RIGHT", "bounty", "kill order, the most gold first" } }
       end,
-      add = function()
-          if wantedView == "marked" then return { text = "Mark someone", kind = "kos" } end
-          return { text = "Post a kill order", kind = "order" }
-      end,
+      add = { text = "Post a kill order", kind = "order" },
       links = function()
-          return { { text = "Killed us most", on = wantedView ~= "marked", click = function() wantedView = "killed" end },
-                   { text = "Marked", on = wantedView == "marked", click = function() wantedView = "marked" end } }
+          local guild = GK.WatchedGuild and GK.WatchedGuild()
+          if not guild then return {} end
+          local on = wantedView == "guild"
+          -- the guild's own name for its tab, cut short where a long one would run into the score
+          local label = guild
+          if #guild > 16 then
+              -- between two letters: a byte from 128 to 191 is the inside of one ("ø" is two bytes)
+              local cut = 14
+              while cut > 0 and guild:byte(cut + 1) >= 128 and guild:byte(cut + 1) < 192 do cut = cut - 1 end
+              label = guild:sub(1, cut) .. "..."
+          end
+          return { { text = "Killed us most", on = not on, click = function() wantedView = "killed" end },
+                   { text = label, on = on, click = function() wantedView = "guild" end } }
+      end,
+      -- the score at the tabs' right end, in the guild's view
+      linksTail = function()
+          local on, guild = GuildView()
+          return on and ScoreText(guild) or ""
       end },
     -- no heading row: each grudge says its own score, in an order of its own (GrudgeItems)
     { name = "Grudges", items = GrudgeItems, headings = {}, icon = ICONS .. "Ability_DualWield",
@@ -1381,7 +1423,7 @@ local function BuildList(page)
     page.sub:SetJustifyH("LEFT")
     page.sub:SetWordWrap(false)
     -- A choice of what the page shows - the leaderboard's This week and All time, Most wanted's Killed us
-    -- most and Marked, the News's All and Kill orders: an ink tab on the paper, in capitals, the chosen one
+    -- most and the guild on watch, the News's All and Kill orders: an ink tab on the paper, in capitals, the chosen one
     -- in blood with a thick line under it, and a rule under the row of them (tabRule). The owner's pick from
     -- the mockup (2026-11-18), over a bronze switch and leather bookmarks; it took the place of the game's
     -- radio buttons ("liker ikke de stygge radiobuttonsa"). Ink links with a thin underline, before those,
@@ -2889,10 +2931,10 @@ function GK.ShowLedgerSettings()
     Refresh()
 end
 
---- The ledger at a page found by its name, in one of its views: Most wanted's "killed" or "marked", the
---- News's "all" or "orders". The notes' Marked (GK.OpenNotes) opens here.
+--- The ledger at a page found by its name, in one of its views: Most wanted's "killed" or "guild", the
+--- News's "all" or "orders".
 function GK.OpenLedgerView(name, view)
-    if name == "Most wanted" then wantedView = view == "marked" and "marked" or "killed" end
+    if name == "Most wanted" then wantedView = view == "guild" and "guild" or "killed" end
     if name == "News" then newsView = view == "orders" and "orders" or "all" end
     GK.OpenLedgerPage(name)
 end
@@ -2901,7 +2943,7 @@ end
 -- enemy on your Grudges, then Most wanted (an open order on them goes first of all, GK.ShowInLedger); a
 -- guildie or you on the You page (yours) and the leaderboard; a note's card on the lists it is from.
 local HOMES = { poster = { "Grudges", "Most wanted" }, record = { "You", "Leaderboard" },
-    card = { "Shame", "Kudos", "Most wanted" } }       -- Most wanted: in its Marked view, for a Marked note
+    card = { "Shame", "Kudos" } }
 
 --- Is this row about whom the spec is: the same kind of card, on the same player (GK.SameName: another
 --- realm spelling, a surname one side left off). A card made by a function says whose it is with key.
@@ -2949,11 +2991,8 @@ function GK.ShowInLedger(spec)
     for _, name in ipairs(not at and HOMES[spec.kind] or {}) do
         for i, def in ipairs(GK.LedgerPages) do
             if def.name == name then
-                -- a note's card is in Most wanted's Marked view, not the one it shows by itself
-                local was = wantedView
-                if name == "Most wanted" and spec.kind == "card" then wantedView = "marked" end
                 n, key = RowAbout(i, spec)
-                if n then at = i else wantedView = was end
+                if n then at = i end
                 break
             end
         end

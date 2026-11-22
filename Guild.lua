@@ -964,13 +964,7 @@ function GK.NoteSlain(killer, key, c, r, l, times)
     local slain = GK.Store().slain
     local e = slain[key]
     if not e then
-        if Count(slain) >= MAX_SLAIN then
-            local oldest, oldKey
-            for k, v in pairs(slain) do
-                if not oldest or (v.last or 0) < oldest then oldest, oldKey = v.last or 0, k end
-            end
-            if oldKey then slain[oldKey] = nil end
-        end
+        if Count(slain) >= MAX_SLAIN then GK.MakeRoom(slain, "last") end
         e = { by = {} }
         slain[key] = e
     end
@@ -979,9 +973,93 @@ function GK.NoteSlain(killer, key, c, r, l, times)
     if e.by[killer] or Count(e.by) < MAX_SLAYERS then e.by[killer] = times end
 end
 
+-- ---------------------------------------------------------------------------
+-- An enemy's guild, and the score against the guild on watch
+-- ---------------------------------------------------------------------------
+-- "vi må ha en VS på guilden i vi tracker. hvor mange ganger har vi drept dem, hvor mange ganger har de drept
+-- oss" (the owner, 2026-11-22). Nothing kept an enemy's guild before: the game names it from a nameplate or a
+-- target, and Sightings.lua read it only for the moment, only while a guild is on watch. Now what it reads is
+-- kept, per enemy, the latest word winning (a player can change guilds), and a K or a D carries the enemy's
+-- guild when its sender knows it. The score is the guild's own tally of each of them - every guildie's kills
+-- of them (slain) and deaths to them (wanted), each as its own client last counted it - so it reaches back as
+-- far as those do, from whenever we first learn which guild they are in. As Most wanted, it is what this client
+-- heard: a guildie offline when a kill was made has it from their next one.
+local MAX_ENEMY_GUILDS = 400
+
+--- Room in a full table of enemies (enemyGuilds, slain, wanted): the one heard of longest ago goes (stamp, its
+--- time's field) - first one we have no kill or death with, and one of the guild on watch only when there is no
+--- other. Every stranger's nameplate lands in enemyGuilds, and 400 of those took the watched guild's players out,
+--- and the score with them.
+function GK.MakeRoom(map, stamp)
+    local s = GK.Store()
+    local guilds = s.enemyGuilds or {}
+    local watched = GK.WatchedGuild and GK.WatchedGuild()
+    local out, outRank, outAt
+    for k, v in pairs(map) do
+        local e, rank, at = guilds[k], 0, v[stamp] or 0
+        if watched and e and GK.SameGuild(e.g, watched) then
+            rank = 2
+        elseif s.slain[k] or s.wanted[k] then
+            rank = 1
+        end
+        if not out or rank < outRank or (rank == outRank and at < outAt) then out, outRank, outAt = k, rank, at end
+    end
+    if out then map[out] = nil end
+end
+
+--- Keep the guild an enemy player is in: from what we see (Sightings.lua) or a guildie's K or D. When the table
+--- is full, GK.MakeRoom says who goes.
+function GK.NoteEnemyGuild(key, guild)
+    guild = GK.ValidGuildName and GK.ValidGuildName(guild)
+    if type(key) ~= "string" or not guild then return end
+    local map, now = GK.Store().enemyGuilds, time()
+    local e = map[key]
+    if e then
+        e.g, e.t = guild, now
+        return
+    end
+    if Count(map) >= MAX_ENEMY_GUILDS then GK.MakeRoom(map, "t") end
+    map[key] = { g = guild, t = now }
+end
+
+--- The guild we last knew this enemy in, or nil.
+function GK.EnemyGuild(key)
+    local e = type(key) == "string" and GK.Store().enemyGuilds[key]
+    return e and e.g or nil
+end
+
+--- The score against a guild: how often we killed its players, how often they killed us, and a row for each
+--- of them with a kill either way: { key, c, r, l, last, k, d, own }, the most fought first (own: you killed
+--- them or died to them, for the ledger's Only mine).
+function GK.GuildScore(guild)
+    local s, us, them, rows, me = GK.Store(), 0, 0, {}, LIB.Me()
+    if not guild then return 0, 0, rows end
+    for key, e in pairs(s.enemyGuilds) do
+        if GK.SameGuild(e.g, guild) then
+            local slain, wanted, k, d = s.slain[key], s.wanted[key], 0, 0
+            for _, n in pairs(slain and slain.by or {}) do k = k + (tonumber(n) or 0) end
+            for _, n in pairs(wanted and wanted.victims or {}) do d = d + (tonumber(n) or 0) end
+            if k > 0 or d > 0 then
+                local w = wanted or {}
+                local sl = slain or {}
+                rows[#rows + 1] = { key = key, c = w.c or sl.c, r = w.r or sl.r, l = w.l or sl.l, k = k, d = d,
+                    last = math.max(w.last or 0, sl.last or 0),
+                    own = me and ((sl.by and sl.by[me]) or (w.victims and w.victims[me])) and true or nil }
+                us, them = us + k, them + d
+            end
+        end
+    end
+    table.sort(rows, function(a, b)
+        if a.k + a.d ~= b.k + b.d then return a.k + a.d > b.k + b.d end
+        return a.key < b.key
+    end)
+    return us, them, rows
+end
+
 --- Our kill, to the guild. revenge: they had killed us since we last got them (Kills.lua), and deaths how
 --- often they have killed us: fields 14 and 15 since 2026-11-20, for a guildie's Revenge (GK_REVENGE). An
---- older client sends neither, and then there is no Revenge to tell.
+--- older client sends neither, and then there is no Revenge to tell. Field 16 since 2026-11-22: their guild,
+--- when we know it (GK.EnemyGuild), for the score against the guild on watch.
 function GK.SendKill(v, zone, points, avenged, times, spree, revenge, deaths)
     local me = LIB.Me()
     AddFeed({ t = time(), who = me, kind = "K", n = v.key, c = v.c, l = v.l, p = points, z = zone, av = avenged })
@@ -989,7 +1067,7 @@ function GK.SendKill(v, zone, points, avenged, times, spree, revenge, deaths)
     if not GK.db.share then return end
     local rf, sx = LookOf(v.key, v.rf, v.sx)
     Send(Msg("K", PROTO, v.key, v.c, v.r, v.l, zone, points, avenged, times, rf, sx, spree,
-        revenge and 1 or 0, deaths))
+        revenge and 1 or 0, deaths, GK.EnemyGuild(v.key)))
 end
 
 --- Our assist: the news only. The guild's tally of who killed whom stays with the killer's K.
@@ -1031,7 +1109,8 @@ function GK.SendDeath(v, zone, times)
     GK.OrderLevel(v.key, v.guid, v.l)              -- and we saw their level
     if not GK.db.share then return end
     local rf, sx = LookOf(v.key, v.rf, v.sx)
-    Send(Msg("D", PROTO, v.key, v.c, v.r, v.l, zone, times, rf, sx))
+    -- field 11 since 2026-11-22: their guild, when we know it (GK.EnemyGuild)
+    Send(Msg("D", PROTO, v.key, v.c, v.r, v.l, zone, times, rf, sx, GK.EnemyGuild(v.key)))
 end
 
 -- ---------------------------------------------------------------------------
@@ -1105,14 +1184,7 @@ function GK.NoteWanted(victim, key, c, r, l, times)
     local wanted = GK.Store().wanted
     local w = wanted[key]
     if not w then
-        if Count(wanted) >= MAX_WANTED then
-            -- make room: the one heard of longest ago
-            local oldest, oldKey
-            for k, v in pairs(wanted) do
-                if not oldest or (v.last or 0) < oldest then oldest, oldKey = v.last or 0, k end
-            end
-            if oldKey then wanted[oldKey] = nil end
-        end
+        if Count(wanted) >= MAX_WANTED then GK.MakeRoom(wanted, "last") end
         w = { victims = {} }
         wanted[key] = w
     end
@@ -1389,6 +1461,7 @@ local function OnKill(sender, f)
         z = zone, p = Int(f[8], 0, 100), av = GK.LocalKey(GK.Clean(f[9], 64)) })
     GK.NoteSlain(sender, name, c, r, l, Int(f[10], 1, 1e6))
     KeepLook(name, f[11], f[12])
+    GK.NoteEnemyGuild(name, f[16])                -- their guild, from a client that knew it (2026-11-22)
     local spree = Int(f[13], 0, 1e5)
     if spree and (lastSpree[sender] or Count(lastSpree) < MAX_SPREES) then
         local before = lastSpree[sender] or 0
@@ -1432,6 +1505,7 @@ local function OnDeath(sender, f)
     GK.OrderLevel(name, nil, l)                    -- a guildie who died to them saw their level
     AddFeed({ t = time(), who = sender, kind = "D", n = name, c = c, l = l, z = zone })
     KeepLook(name, f[9], f[10])
+    GK.NoteEnemyGuild(name, f[11])                -- their guild, from a client that knew it (2026-11-22)
     GK.TormentorGrew(name)
     local spree = lastSpree[sender]
     if spree then

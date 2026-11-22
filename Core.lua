@@ -110,7 +110,6 @@ local defaults = {
     -- The warnings (Settings, Notifications, Warnings): "screen" by the letter icon, "chat" one line, or "off".
     -- An older saved file holds true or false here: GK.WarnStyle reads true as the row's own way.
     alertNear = "screen",    -- the target of any open kill order is near, or a guildie sees them
-    leadNear = "screen",     -- an enemy who leads over you is near (Sightings.lua), until you stand even
     plateMarks = true,       -- a skull over anyone with an open order on them
     -- a screenshot when you fulfil an order: off to begin with, "ikke la screenshots være på ved default"
     -- (the owner, 2026-11-08). Defaults are written into the saved table, so an account that had it on
@@ -131,7 +130,6 @@ local defaults = {
     inspectTab = true,       -- a tab of ours on the game's Inspect window: a guildie's record, an enemy's poster
     sortBy = {},             -- [ledger page name] = the column heading its rows are sorted by (none: the page's own order)
     mineOnly = false,        -- whether the ledger's sortable pages list only the rows that are yours
-    noteAlerts = "off",      -- a player on your Marked list is near
     watchNearby = "off",     -- a player on your Shame list is near
     watchGroup = "screen",   -- a Shame list player joins your group
     shameSound = "auto",     -- and the sound it plays (GK.SoundChoices; "off" for none; "auto" until one is picked: GK.ShameSoundKey)
@@ -156,6 +154,7 @@ local defaults = {
     spreeTormentorGuild = "toast", -- a guildie put an end to one
     revengeMine = "splash",  -- your revenge: you got one who had killed you since you last got them
     revengeGuild = "off",    -- a guildie's: in a big guild somebody always has one
+    grudgeMine = "toast",    -- you got one who led over you, no revenge: where you stand now (Announce.lua, GK_GRUDGE)
     guildZoneOnly = false,   -- a guildie's only when they are in your zone
     guildSounds = true,      -- a guildie's play their sound
     reaperEffect = "scythe", -- Reaper's splash: "scythe" or "smoke" (Effects.lua); the scythe since 2026-11-20
@@ -1176,11 +1175,13 @@ function GK.Store()
     key = key or "-"
     local g = GK.db.guilds[key]
     if not g then
-        g = { board = {}, orders = {}, wanted = {}, slain = {}, tormentors = {}, feed = {}, people = {}, nextId = 1 }
+        g = { board = {}, orders = {}, wanted = {}, slain = {}, tormentors = {}, enemyGuilds = {}, feed = {}, people = {},
+            nextId = 1 }
         GK.db.guilds[key] = g
     end
     if not g.slain then g.slain = {} end      -- a store from before the guild kept its tally
     if not g.tormentors then g.tormentors = {} end   -- and from before it counted who kills us
+    if not g.enemyGuilds then g.enemyGuilds = {} end -- and from before it knew an enemy's guild (Guild.lua, 2026-11-22)
     -- the notes (Notes.lua), here from the start: made by the first read instead, an empty one turned up
     -- after the test panel had put the store back (smoke_grudgekeeper, 2026-11-05)
     if not g.people then g.people = {} end
@@ -1360,7 +1361,7 @@ local function Help()
     print("  /grudge letters  - read your letters")
     print("  /grudge test  - five sample letters, to see what they look like")
     print("  /grudge arrange  - put the letter icon, the spree splash and its toasts where you want them")
-    print("  /grudge spree  - show a sample spree splash and toast (or: spree fulfilled, spree tormentor, spree revenge)")
+    print("  /grudge spree  - show a sample spree splash and toast (or: spree fulfilled, spree tormentor, spree revenge, spree grudge)")
     print("  /grudge rank  - show a sample new-title splash and toast (or: rank nemesis, rank all)")
     print("  /grudge options  - open the settings")
     print("  /grudge guild  - officers: put an enemy guild on watch by its name")
@@ -1721,7 +1722,8 @@ local function MoveRevenge(db)
     for _, p in ipairs(GK.NOTIFY_PRESETS or {}) do
         local same = true
         for k, v in pairs(p.set) do
-            if k ~= "revengeMine" and k ~= "revengeGuild" and db[k] ~= v then same = false end
+            -- not the keys that came with Revenge or after it: such a file has none of them
+            if k ~= "revengeMine" and k ~= "revengeGuild" and k ~= "grudgeMine" and db[k] ~= v then same = false end
         end
         if same then
             db.revengeMine, db.revengeGuild = p.set.revengeMine, p.set.revengeGuild
@@ -1736,8 +1738,7 @@ GK.MoveRevenge = MoveRevenge                 -- for tests/run.lua
 
 -- A warning's row: "screen" by the letter icon, "chat" one line, or "off". true and false are an older saved
 -- file's, from when each row was a box to tick: true is the row's own way, as it was then.
-local WARN_WAY = { alertNear = "screen", leadNear = "screen", noteAlerts = "screen", watchNearby = "chat", watchGroup = "screen",
-    kudosGroup = "chat" }
+local WARN_WAY = { alertNear = "screen", watchNearby = "chat", watchGroup = "screen", kudosGroup = "chat" }
 
 --- How a warning is told now: "screen", "chat" or "off".
 function GK.WarnStyle(key)
@@ -1783,6 +1784,10 @@ LIB.On("PLAYER_LOGIN", function()
     -- Retired 2026-11-07, when taking an order went: the orders you took, and the warning for every
     -- order beside the one for yours (every order warns now). Gone from the saved files too.
     GK.char.accepted, GK.db.alertAll = nil, nil
+    -- Retired 2026-11-22: the warning for one who leads over you near ("leads over me kanskje ikke ha alert? men
+    -- heller en sånn notification om du dreper noen du har grudge mot", the owner) - a toast at the kill now
+    -- (grudgeMine) - and Marked, with its warning (kill orders and Track do its work).
+    GK.db.leadNear, GK.db.noteAlerts = nil, nil
     -- Reaper's splash is the scythe since 2026-11-20 ("reaper scythe er default eller? mye bedre enn reaper
     -- smoke ... ja bytt til scythe", the owner). Every saved file already holds "smoke", the old default written
     -- into it, and nothing tells that apart from a pick: each account is moved once, and keeps what it picks after.

@@ -1,5 +1,5 @@
 -- Grudgekeeper - the who-picker: who a page's own action is for. The ledger's "Post a kill order",
--- "Mark someone", "Put someone on Shame" and "Give someone kudos" open it, and so does /grudge post with
+-- "Track someone", "Put someone on Shame" and "Give someone kudos" open it, and so does /grudge post with
 -- no enemy targeted (it used to do nothing but print a line: "trykke post a kill order gjør ingenting
 -- fordi man må ha et target", the owner, 2026-11-06).
 -- A small window with a name box and the people you most likely mean: your target, then for Shame and
@@ -21,10 +21,9 @@ local ROWS, ROW_H, ROWS_TOP = 9, 30, 68
 local LEFT_FOR = 2 * 3600       -- who left the group stays a suggestion this long
 local MAX_RECENT = 40           -- and at most this many of them are remembered
 
--- What each kind asks, and whom it suggests: enemies (orders, marks) or the people you group with.
+-- What each kind asks, and whom it suggests: enemies (orders, tracking) or the people you group with.
 local KINDS = {
     order = { title = "Who gets the kill order?", enemy = true },
-    kos = { title = "Who do you mark?", enemy = true, list = "kos" },
     track = { title = "Who do you track?", enemy = true },
     watch = { title = "Who goes on Shame?", list = "watch" },
     kudos = { title = "Who gets kudos?", list = "kudos" },
@@ -366,7 +365,7 @@ local function Build()
     frame = f
 end
 
---- Open the picker for a kind: "order" (a kill order), a list - "kos", "watch" or "kudos" - or "guild",
+--- Open the picker for a kind: "order" (a kill order), "track", a list - "watch" or "kudos" - or "guild",
 --- the guild on watch.
 function GK.OpenPicker(k)
     if not KINDS[k] then return end

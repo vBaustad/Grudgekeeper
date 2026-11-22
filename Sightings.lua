@@ -323,21 +323,9 @@ local function TrackedNear(key, e, s)
     GK.Warn(("Tracked: %s is near!"):format(GK.Show(key)), true, nil, key, key)
 end
 
---- One who leads over you in sight (more of their kills on you than yours on them, Grudges' "owed"): a warning,
---- at most one in ALERT_GAP, until you stand even - then they are nobody special (Settings, Warnings). Drawn
---- first (art/mockups/grudges, 2026-11-20). Not for one with an order on them or one you track: theirs comes.
-local leadAt = {}                          -- [key] = GetTime() of the last "... is near - owed N"
-local function LeadsNear(key, f)
-    local owed = (f.d or 0) - (f.k or 0)
-    if owed <= 0 or GK.WarnStyle("leadNear") == "off" then return end
-    local now = GetTime()
-    if leadAt[key] and now - leadAt[key] < ALERT_GAP then return end
-    for k, at in pairs(leadAt) do
-        if now - at > ALERT_GAP then leadAt[k] = nil end
-    end
-    leadAt[key] = now
-    GK.WarnAs("leadNear", ("%s is near - owed %d"):format(GK.Show(key), owed), true, nil, key, key)
-end
+-- One who leads over you in sight warned you until you stood even, from 2026-11-20 until 2026-11-22: "leads over
+-- me kanskje ikke ha alert? men heller en sånn notification om du dreper noen du har grudge mot" (the owner).
+-- The kill is told instead (Kills.lua, GK_GRUDGE); a warning near is Track's.
 
 -- Every plate on screen looked at again - but only when an order or the Tracked changed, or the skulls
 -- were switched on or off. It used to run on every change of any kind, a guildie's score included.
@@ -515,6 +503,7 @@ function GK.See(unit)
         local ok, guild = pcall(GetGuildInfo, unit)
         if ok and not Secret(guild) and type(guild) == "string" and guild ~= "" then
             s.g = guild
+            if GK.NoteEnemyGuild then GK.NoteEnemyGuild(key, guild) end    -- kept, for the score (Guild.lua)
             if GK.IsGuildWatched(guild) then
                 GuildNear(guild, key)
                 GK.SpellWatchedGuild(guild)          -- a name typed in, spelled as the game does
@@ -540,8 +529,7 @@ function GK.See(unit)
             s.keptRf, s.keptSx = s.rf, s.sx
         end
     end
-    if order then Spotted(order, s) elseif tracked then TrackedNear(trackedKey, tracked, s)
-    elseif f then LeadsNear(key, f) end
+    if order then Spotted(order, s) elseif tracked then TrackedNear(trackedKey, tracked, s) end
 end
 
 function GK.StartSightings()

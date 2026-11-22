@@ -229,7 +229,8 @@ local function Fill()
             p = l[1] == "K" and GK.Points(base, p.l, 0, false) or nil, s = l[1] == "D" and SPELL[p.c] or nil }
     end
 
-    -- Notes: the guild's Shame, Kudos and Marked lists, with votes, and an enemy guild on watch.
+    -- Notes: the guild's Shame and Kudos lists, with votes, a note on an enemy (on no list since Marked went,
+    -- 2026-11-22: it shows on his poster), and an enemy guild on watch.
     local function Info(p) return { c = p.c, r = p.r, rf = p.rf, sx = p.sx, l = p.l } end
     local function Wrote(by, p, ago, tag, list, text)
         Note(by, "N", 1, p.key, now - ago, now - ago, nil, tag, p.c, p.r, p.l, text)
@@ -249,7 +250,8 @@ local function Fill()
         "Kept six of us alive through a raid on our flight master.")
     Votes(x.tamsin, g.elowen, id, g.corwin, g.tobias, g.isolde, g.brannoc)
     GK.AddNote(x.wystan.key, "Ran back to my corpse with me, twice.", "Helpful", "kudos", Info(x.wystan))
-    Wrote(g.brannoc, e.grimbold, DAY, nil, "kos", "Ganks anyone under 40 at the flight master.")
+    Note(g.brannoc, "N", 1, e.grimbold.key, now - DAY, now - DAY, nil, nil, e.grimbold.c, e.grimbold.r, e.grimbold.l,
+        "Ganks anyone under 40 at the flight master.")
     Note(g.brannoc, "W", 1, RIVALS, now - DAY, nil, g.brannoc.key)
 
     -- Letters: a kill order from the guild, and the title your last kill earned - only these two, not the
