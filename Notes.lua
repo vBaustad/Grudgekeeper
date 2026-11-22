@@ -56,6 +56,19 @@ GK.TAGS = {
     kudos = { "Helpful", "Kind", "Skilled", "Great healer", "Great tank", "Fair looter", "Fun to group with" },
 }
 
+--- Does the tag belong on this list? A note keeps no list: its author's mark decides, so moving someone
+--- from Kudos to Shame takes "Helpful" along. Another list's preset never fits; a typed tag always does.
+function GK.TagFits(list, tag)
+    for other, presets in pairs(GK.TAGS) do
+        if other ~= list then
+            for _, preset in ipairs(presets) do
+                if tag == preset then return false end
+            end
+        end
+    end
+    return true
+end
+
 -- One icon per preset tag, so a tag can be told apart at a glance; a tag a player typed gets the note.
 local TAG_ICON = {
     ["Ninja looter"] = "Ability_Stealth", ["Scammer"] = "INV_Misc_Coin_01", ["Toxic"] = "Spell_Nature_NullifyPoison",
@@ -617,7 +630,7 @@ function GK.KnownTags(list)
         for author, byId in pairs(p.notes) do
             if AuthorList(p, author) == list then
                 for _, n in pairs(byId) do
-                    if n.tag and not n.del and not seen[n.tag] then
+                    if n.tag and not n.del and not seen[n.tag] and GK.TagFits(list, n.tag) then
                         seen[n.tag] = true
                         extra[#extra + 1] = n.tag
                     end

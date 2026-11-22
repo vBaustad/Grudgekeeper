@@ -315,6 +315,19 @@ test("the medal row: most given first, newest first on a tie, three at most and 
     eq(more, 0)
 end)
 
+test("a tag fits its own list and any typed tag; another list's preset never does", function()
+    local GK = boot()
+    eq(GK.TagFits("watch", "Toxic"), true)
+    eq(GK.TagFits("watch", "Bad at tanks"), true)
+    eq(GK.TagFits("watch", "Helpful"), false)
+    eq(GK.TagFits("kudos", "Ninja looter"), false)
+    -- a kudos note left behind when its author moves the player to Shame is not offered as a typed Shame tag
+    W.receive(GK, KARI, msg("N", 1, GANK, 1, B, "", "Helpful", "", "", "", "x"))
+    W.receive(GK, KARI, msg("L", 1, GANK, "watch", B))
+    assert(not has(GK.KnownTags("watch"), "Helpful"))
+    eq(#GK.KnownTags("watch"), #GK.TAGS.watch)
+end)
+
 test("known tags are the presets and then the custom ones in use on that list", function()
     local GK = boot()
     local tags = GK.KnownTags("watch")
@@ -1403,6 +1416,19 @@ local function labels(node)
     for _, k in ipairs(node.kids) do out[#out + 1] = k.label end
     return table.concat(out, "|")
 end
+
+test("the plate's medals: kudos tags written before a move to Shame do not show as shame badges", function()
+    local GK = bootUI()
+    GK.AddNote(GANK, nil, "Helpful", "kudos")
+    GK.AddNote(GANK, nil, "Skilled", "kudos")
+    GK.AddNote(GANK, nil, "Ninja looter", "watch")
+    local s = GK.NoteSummary(GANK)
+    eq(s.primary, "watch")
+    local row = GK.MedalRow(s.taglist.watch, s.tagcount.watch)
+    local art = {}
+    for i, tag in ipairs(row) do art[i] = GK.Medal("watch", tag):match("Media\\(.+)$") end
+    eq(table.concat(art, ","), "shame_ninja_looter")
+end)
 
 -- Marked had no page from 2026-11-07, and went altogether on 2026-11-22.
 test("the list pages: Shame and Kudos on the right, none with links; Marked has none", function()

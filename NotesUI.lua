@@ -65,11 +65,11 @@ end
 -- nobody wrote about are kept as false: most of the world.
 local cache, cacheVersion = {}, -1
 
---- Every tag the authors gave, newest first, and how many notes gave each.
-local function Distinct(notes, authors)
+--- Every tag the authors gave that fits the list, newest first, and how many notes gave each.
+local function Distinct(notes, authors, list)
     local tags, counts = {}, {}
     for _, n in ipairs(notes) do
-        if n.tag and authors[n.author] then
+        if n.tag and authors[n.author] and GK.TagFits(list, n.tag) then
             if not counts[n.tag] then tags[#tags + 1] = n.tag end
             counts[n.tag] = (counts[n.tag] or 0) + 1
         end
@@ -91,7 +91,7 @@ local function BuildSummary(key)
             s.on[#s.on + 1] = list
             local set = {}
             for _, a in ipairs(authors) do set[a] = true end
-            s.taglist[list], s.tagcount[list] = Distinct(s.notes, set)
+            s.taglist[list], s.tagcount[list] = Distinct(s.notes, set, list)
             s.tags[list] = s.taglist[list][1]
         end
     end
