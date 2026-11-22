@@ -45,7 +45,7 @@ local PENDING_FOR = 10 * 60                 -- seconds a held vote waits
 local KEEP_TOMBSTONE = 30 * GK.DAY
 -- Marked (kos), the guild's kill-on-sight list, went on 2026-11-22: "marked fjerner vi. featuren kan vel fjernes
 -- helt. vi har kill orders, og personal track og guild track" (the owner). A kos mark off the wire is refused, one
--- already kept means nothing (AuthorList, MyMark) and goes at the next prune, and a note alone puts nobody on a list.
+-- already kept means nothing (MarkHas, MyMark) and goes at the next prune, and a note alone puts nobody on a list.
 local LISTS = { watch = true, kudos = true }
 local NONE = {}                             -- the usual answer, shared: callers only ever read it
 
@@ -56,17 +56,14 @@ GK.TAGS = {
     kudos = { "Helpful", "Kind", "Skilled", "Great healer", "Great tank", "Fair looter", "Fun to group with" },
 }
 
---- Does the tag belong on this list? A note keeps no list: its author's mark decides, so moving someone
---- from Kudos to Shame takes "Helpful" along. Another list's preset never fits; a typed tag always does.
-function GK.TagFits(list, tag)
-    for other, presets in pairs(GK.TAGS) do
-        if other ~= list then
-            for _, preset in ipairs(presets) do
-                if tag == preset then return false end
-            end
+--- The list a preset tag belongs to, or nil for a tag a player typed.
+function GK.TagList(tag)
+    for list, presets in pairs(GK.TAGS) do
+        for _, preset in ipairs(presets) do
+            if tag == preset then return list end
         end
     end
-    return true
+    return nil
 end
 
 -- One icon per preset tag, so a tag can be told apart at a glance; a tag a player typed gets the note.
@@ -361,16 +358,18 @@ end
 -- the receiving end would have to throw away.
 local Encode = {}
 
---- My note id on key. A deleted note travels with no text or tag.
+--- My note id on key. A deleted note travels with no text, tag or list. The list it was written for is
+--- field 12 (from 2026-11-22): an older client stops reading at the text, field 11.
 function Encode.N(key, id, n, p)
     local live = not n.del
     return Msg("N", PROTO, key, id, n.ts, n.del and 1 or nil, live and GK.Clean(n.tag, GK.MAX_TAG) or nil,
-        p.c, p.r, p.l, live and GK.Clean(n.text, MAX_TEXT) or nil)
+        p.c, p.r, p.l, live and GK.Clean(n.text, MAX_TEXT) or nil, live and n.list or nil)
 end
 
---- My mark on key (m.list is nil in a removed one).
+--- My mark on key (m.list is nil in a removed one). m.list is the list I put them on last, the one an older
+--- client reads; m.also, field 10 (from 2026-11-22), the other one when they are on both of mine.
 function Encode.L(key, m, p)
-    return Msg("L", PROTO, key, m.list, m.ts, m.del and 1 or nil, p.c, p.r, p.l)
+    return Msg("L", PROTO, key, m.list, m.ts, m.del and 1 or nil, p.c, p.r, p.l, m.also)
 end
 
 function Encode.V(key, author, id, v, ts)
@@ -531,7 +530,8 @@ local function ReplayPending(key, kind)
     end
 end
 
---- rec = { text, tag, ts, del, imp }. imp marks a note the Guild Grudge import wrote for someone else:
+--- rec = { text, tag, list, ts, del, imp }: list is the one it was written for, nil from an older client or
+--- the import. imp marks a note the Guild Grudge import wrote for someone else:
 --- its id is ours, not theirs, so a vote on it is never sent.
 function Put.Note(key, author, id, rec)
     local people = Tables().people
@@ -553,18 +553,22 @@ function Put.Note(key, author, id, rec)
         byId = {}
         p.notes[author] = byId
     end
-    byId[id] = { text = rec.text, tag = rec.tag, ts = rec.ts, del = rec.del or nil, imp = rec.imp or nil }
+    byId[id] = { text = rec.text, tag = rec.tag, list = (not rec.del) and LISTS[rec.list] and rec.list or nil,
+        ts = rec.ts, del = rec.del or nil, imp = rec.imp or nil }
     ReplayPending(key, "V")
     return true
 end
 
---- rec = { list, ts, del }: list is watch or kudos, and nil in a removed mark.
+--- rec = { list, also, ts, del }: list is watch or kudos, and nil in a removed mark; also the other list when
+--- the author has them on both.
 function Put.Mark(key, author, rec)
     local p = GK.Person(key, true)
     if not p then return false end
     local old = p.marks[author]
     if old and rec.ts <= old.ts then return false end
-    p.marks[author] = { list = (not rec.del) and rec.list or nil, ts = rec.ts, del = rec.del or nil }
+    local list = (not rec.del) and rec.list or nil
+    local also = list and LISTS[rec.also] and rec.also ~= list and rec.also or nil
+    p.marks[author] = { list = list, also = also, ts = rec.ts, del = rec.del or nil }
     ReplayPending(key, "V")
     return true
 end
@@ -590,27 +594,35 @@ end
 -- ---------------------------------------------------------------------------
 -- Tags, marks, lists
 -- ---------------------------------------------------------------------------
---- The list this author's mark puts the player on, or nil. A note alone put them on Marked until 2026-11-22;
---- now it puts them on none, and a Marked mark kept from before means nothing.
-local function AuthorList(p, author)
-    local m = p.marks[author]
-    if m and not m.del and LISTS[m.list] then return m.list end
-    return nil
+--- Does this author's mark put the player on the list? A mark holds one list, or two from 2026-11-22 (also).
+--- A note alone put them on Marked until 2026-11-22; now it puts them on none, and a Marked mark kept from
+--- before means nothing.
+local function MarkHas(m, list)
+    return m ~= nil and not m.del and LISTS[list] ~= nil and (m.list == list or m.also == list)
 end
 
---- Who has put this player on which list: { watch = { authors }, kudos = {...} }.
+local function AuthorOn(p, author, list)
+    return MarkHas(p.marks[author], list)
+end
+
+--- The list a note belongs to: the one it was written for; for a note from before 2026-11-22 or an older
+--- client, its preset tag's list, else the list its author put the player on last. nil when none says.
+local function NoteList(p, author, n)
+    if LISTS[n.list] then return n.list end
+    local list = GK.TagList(n.tag)
+    if list then return list end
+    local m = p.marks[author]
+    return m and not m.del and LISTS[m.list] and m.list or nil
+end
+
+--- Who has put this player on which list: { watch = { authors }, kudos = {...} }. One author can be on both.
 function GK.ListsOf(key)
     local lists = { watch = {}, kudos = {} }
     local p = GK.Person(key, false)
     if not p then return lists end
     for author in pairs(p.marks) do
-        local list = AuthorList(p, author)
-        if list then lists[list][#lists[list] + 1] = author end
-    end
-    for author in pairs(p.notes) do
-        if not p.marks[author] then
-            local list = AuthorList(p, author)
-            if list then lists[list][#lists[list] + 1] = author end
+        for list, authors in pairs(lists) do
+            if AuthorOn(p, author, list) then authors[#authors + 1] = author end
         end
     end
     for _, authors in pairs(lists) do table.sort(authors) end
@@ -628,9 +640,9 @@ function GK.KnownTags(list)
     local extra = {}
     for _, p in pairs(Tables().people) do
         for author, byId in pairs(p.notes) do
-            if AuthorList(p, author) == list then
+            if AuthorOn(p, author, list) then
                 for _, n in pairs(byId) do
-                    if n.tag and not n.del and not seen[n.tag] and GK.TagFits(list, n.tag) then
+                    if n.tag and not n.del and not seen[n.tag] and NoteList(p, author, n) == list then
                         seen[n.tag] = true
                         extra[#extra + 1] = n.tag
                     end
@@ -649,27 +661,56 @@ function GK.IsNoted(key)
     return p ~= nil and HasLive(p)
 end
 
---- The list I put this player on, or nil.
+--- The list I put this player on last, or nil.
 function GK.MyMark(key)
     local p, me = GK.Person(key, false), LIB.Me()
     local m = p and me and p.marks[me]
     return m and not m.del and LISTS[m.list] and m.list or nil
 end
 
---- Put the player on a list, or take them off mine (list nil). Only my own mark moves (D5).
-function GK.SetMark(key, list)
+--- Am I the one who put this player on the list?
+function GK.MyMarkHas(key, list)
+    local p, me = GK.Person(key, false), LIB.Me()
+    return p ~= nil and me ~= nil and MarkHas(p.marks[me], list)
+end
+
+--- My mark becomes list (nil: off all mine), with also as the second list. Only my own mark moves (D5).
+local function WriteMark(key, list, also)
     local me = LIB.Me()
     key = GK.PlayerKey(ValidKey(key))
     if not (me and key) or (list ~= nil and not LISTS[list]) then return false end
+    if also == list then also = nil end
     local p = GK.Person(key, list ~= nil)
     if not p then return list == nil end
     local old = p.marks[me]
     if list == nil and (not old or old.del) then return true end
-    if list and old and not old.del and old.list == list then return true end
-    local rec = { list = list, ts = NextTs(old), del = list == nil }
+    if list and old and not old.del and old.list == list and old.also == also then return true end
+    local rec = { list = list, also = also, ts = NextTs(old), del = list == nil }
     if not Put.Mark(key, me, rec) then return false end
     Send(Encode.L(key, p.marks[me], p))
     GK.Changed()
+    return true
+end
+
+--- Put the player on this list of mine and no other, or take them off all mine (list nil): /grudge move.
+function GK.SetMark(key, list)
+    return WriteMark(key, list, nil)
+end
+
+--- Put the player on a list of mine (on) or take them off it, and leave my other list as it is: the
+--- menus' Put on Shame and Give kudos, and a note written for a list.
+function GK.PutOn(key, list, on)
+    if not LISTS[list] then return false end
+    local p, me = GK.Person(key, false), LIB.Me()
+    local m = p and me and p.marks[me]
+    local live = m and not m.del
+    local first, second = live and m.list or nil, live and m.also or nil
+    if on then
+        -- the list put on last leads: it is the one an older client reads
+        return WriteMark(key, list, (first ~= list and first) or (second ~= list and second) or nil)
+    end
+    if first == list then return WriteMark(key, second, nil) end
+    if second == list then return WriteMark(key, first, nil) end
     return true
 end
 
@@ -805,11 +846,11 @@ local function MyVoteOf(p, author, id)
 end
 
 local function NoteRow(p, author, id, n, me)
-    return { author = author, id = id, text = n.text, tag = n.tag, ts = n.ts,
+    return { author = author, id = id, text = n.text, tag = n.tag, list = NoteList(p, author, n), ts = n.ts,
         score = NoteScoreOf(p, author, id), myVote = MyVoteOf(p, author, id), mine = author == me }
 end
 
---- Write a note on a player, and put them on a list when list is given (it moves my mark). info is
+--- Write a note on a player, for a list when list is given: it puts them on that list of mine too. info is
 --- what we know of them: { c, r, rf, sx, l }. Returns the note as NotesOf lists it, or nil and why not.
 function GK.AddNote(key, text, tag, list, info)
     local me = LIB.Me()
@@ -829,9 +870,9 @@ function GK.AddNote(key, text, tag, list, info)
     local s = Tables()
     local id = math.max(time(), s.nextNote or 1)
     s.nextNote = id + 1
-    if not Put.Note(key, me, id, { text = text, tag = tag, ts = time() }) then return nil, "That note didn't fit." end
+    if not Put.Note(key, me, id, { text = text, tag = tag, list = list, ts = time() }) then return nil, "That note didn't fit." end
     Send(Encode.N(key, id, p.notes[me][id], p))
-    if list then GK.SetMark(key, list) end
+    if list then GK.PutOn(key, list, true) end
     GK.Changed()
     return NoteRow(p, me, id, p.notes[me][id], me)
 end
@@ -866,22 +907,19 @@ end
 
 --- The players on a list, each { key, person, authors, ts, score, tags, mine }. ts is the latest note
 --- or mark of those who put them there, score the sum of their notes' scores, tags the distinct tags
---- on those notes (newest first), mine whether I have a mark or a note on them. Unordered.
+--- on those notes (newest first); only their notes for this list count, mine whether I have a mark or a note on them. Unordered.
 function GK.PeopleOn(list)
     local out, me = {}, LIB.Me()
     for key, p in pairs(Tables().people) do
         local authors, ts, score, notes = {}, 0, 0, {}
         for author in pairs(p.marks) do
-            if AuthorList(p, author) == list then authors[#authors + 1] = author end
-        end
-        for author in pairs(p.notes) do
-            if not p.marks[author] and AuthorList(p, author) == list then authors[#authors + 1] = author end
+            if AuthorOn(p, author, list) then authors[#authors + 1] = author end
         end
         for _, author in ipairs(authors) do
             local m = p.marks[author]
             if m and m.ts > ts then ts = m.ts end
             for id, n in pairs(p.notes[author] or NONE) do
-                if not n.del then
+                if not n.del and NoteList(p, author, n) == list then
                     if n.ts > ts then ts = n.ts end
                     score = score + NoteScoreOf(p, author, id)
                     notes[#notes + 1] = n
@@ -893,7 +931,7 @@ function GK.PeopleOn(list)
             table.sort(notes, function(a, b) return a.ts > b.ts end)
             local tags, seen = {}, {}
             for _, n in ipairs(notes) do
-                if n.tag and not seen[n.tag] and GK.TagFits(list, n.tag) then
+                if n.tag and not seen[n.tag] then
                     seen[n.tag] = true
                     tags[#tags + 1] = n.tag
                 end
@@ -956,7 +994,8 @@ local function OnNote(sender, f)
     elseif not (text or tag) then
         return false
     end
-    if not Put.Note(key, sender, id, { text = text, tag = tag, ts = ts, del = del }) then return false end
+    local list = LISTS[f[12]] and f[12] or nil       -- none from an older client
+    if not Put.Note(key, sender, id, { text = text, tag = tag, list = list, ts = ts, del = del }) then return false end
     LearnWire(key, f[8], f[9], f[10])
     return true
 end
@@ -965,10 +1004,11 @@ local function OnMark(sender, f)
     local key, ts = GK.PlayerKey(GK.LocalKey(ValidKey(f[3]))), Ts(f[5])
     local del = f[6] == "1"
     local list = LISTS[f[4]] and f[4] or nil
+    local also = LISTS[f[10]] and f[10] or nil       -- none from an older client: the one list
     -- an older client's move to Marked, which is gone: their mark comes off the list it was on. It makes no player.
     if key and f[4] == "kos" and GK.Person(key, false) then del = true end
     if not (key and ts) or (not del and not list) then return false end
-    if not Put.Mark(key, sender, { list = list, ts = ts, del = del }) then return false end
+    if not Put.Mark(key, sender, { list = list, also = also, ts = ts, del = del }) then return false end
     LearnWire(key, f[7], f[8], f[9])
     return true
 end
@@ -1112,7 +1152,7 @@ function GK.PruneNotes()
             if next(byId) == nil then p.notes[author] = nil end
         end
         for author, m in pairs(p.marks) do
-            -- A Marked mark kept from before 2026-11-22 goes: it puts nobody on a list now (AuthorList). A removed
+            -- A Marked mark kept from before 2026-11-22 goes: it puts nobody on a list now (MarkHas). A removed
             -- mark stays as long as its author has a live note on them, as it did when a note alone meant Marked.
             if not m.del and not LISTS[m.list] then
                 p.marks[author] = nil

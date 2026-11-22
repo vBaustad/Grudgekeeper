@@ -65,11 +65,11 @@ end
 -- nobody wrote about are kept as false: most of the world.
 local cache, cacheVersion = {}, -1
 
---- Every tag the authors gave that fits the list, newest first, and how many notes gave each.
+--- Every tag the authors gave in their notes for the list, newest first, and how many notes gave each.
 local function Distinct(notes, authors, list)
     local tags, counts = {}, {}
     for _, n in ipairs(notes) do
-        if n.tag and authors[n.author] and GK.TagFits(list, n.tag) then
+        if n.tag and authors[n.author] and n.list == list then
             if not counts[n.tag] then tags[#tags + 1] = n.tag end
             counts[n.tag] = (counts[n.tag] or 0) + 1
         end
@@ -181,17 +181,19 @@ local function IsEnemy(key, p)
         or (GK.char and GK.char.foes[key] ~= nil)
 end
 
---- The "More..." menu of a player's card: move or remove my mark, vote on a note, delete one of mine, and
---- for an enemy the wanted poster. root is the game's menu description; tests pass a stand-in.
+--- The "More..." menu of a player's card: put them on or take them off each of my lists, vote on a note,
+--- delete one of mine, and for an enemy the wanted poster. root is the game's menu description; tests pass
+--- a stand-in.
 function GK.NoteMenu(root, key)
     local p = GK.Person(key, false)
     if not p then return end
-    local mark = GK.MyMark(key)
-    local move = root:CreateButton("Move my mark to")
     for _, list in ipairs(ORDER) do
-        if list ~= mark then move:CreateButton(WORD[list], function() GK.SetMark(key, list) end) end
+        if GK.MyMarkHas(key, list) then
+            root:CreateButton("Take off " .. WORD[list], function() GK.PutOn(key, list, false) end)
+        else
+            root:CreateButton(list == "kudos" and "Give kudos" or "Put on Shame", function() GK.PutOn(key, list, true) end)
+        end
     end
-    if mark then root:CreateButton("Remove my mark", function() GK.SetMark(key, nil) end) end
     local theirs, mine = {}, {}
     for _, n in ipairs(GK.NotesOf(key)) do
         local into = n.mine and mine or theirs
@@ -393,7 +395,7 @@ WrapCard("RecordCard")
 -- Writing a note
 -- ---------------------------------------------------------------------------
 --- What the note sheet does with "Save". t = { key, c, r, rf, sx, l }. A note needs a few words or a
---- tag; with neither, a list alone is still something to write down (it moves my mark). Returns true,
+--- tag; with neither, a list alone is still something to write down (it puts them on it). Returns true,
 --- or nil and why not.
 function GK.WriteNote(t, list, text, tag)
     local key = t and t.key
@@ -405,7 +407,7 @@ function GK.WriteNote(t, list, text, tag)
         if not list then return nil, "Write something, pick a tag or pick a list." end
         -- the record first, so the mark goes out with what we know of them
         if GK.Person(key, true) then GK.LearnPerson(key, info) end
-        if not GK.SetMark(key, list) then return nil, "That didn't fit." end
+        if not GK.PutOn(key, list, true) then return nil, "That didn't fit." end
         return true
     end
     local note, why = GK.AddNote(key, text, tag, list, info)
