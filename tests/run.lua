@@ -1428,6 +1428,9 @@ test("the plate's medals: kudos tags written before a move to Shame do not show 
     local art = {}
     for i, tag in ipairs(row) do art[i] = GK.Medal("watch", tag):match("Media\\(.+)$") end
     eq(table.concat(art, ","), "shame_ninja_looter")
+    -- the row on the Shame page leaves them out too
+    local e = GK.PeopleOn("watch")[1]
+    eq(table.concat(e.tags, ","), "Ninja looter")
 end)
 
 -- Marked had no page from 2026-11-07, and went altogether on 2026-11-22.

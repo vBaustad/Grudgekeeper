@@ -893,7 +893,7 @@ function GK.PeopleOn(list)
             table.sort(notes, function(a, b) return a.ts > b.ts end)
             local tags, seen = {}, {}
             for _, n in ipairs(notes) do
-                if n.tag and not seen[n.tag] then
+                if n.tag and not seen[n.tag] and GK.TagFits(list, n.tag) then
                     seen[n.tag] = true
                     tags[#tags + 1] = n.tag
                 end
