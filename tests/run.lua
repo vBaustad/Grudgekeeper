@@ -1593,11 +1593,12 @@ test("a noted player's card: title, who put them where, the notes with their vot
     eq(d.lines[3], '"agreed" - Edvard, 3 days ago', "a note on no list comes after the blocks, uncoloured")
     assert(d.lines[2]:find('^|cffb98ce6"took the chest:\194\160twice" %- Kari, 3 days ago %(%+1%)|r$'), d.lines[2])
     assert(not d.lines[2]:find("^[^:,]+: "), "the ledger would read that as a label")
-    -- the page's list wins when they are on it; my own mark wins over that
+    -- the page's list wins when they are on it; with no page, or not on its list, my own mark
     eq(GK.NoteCard(GANK, "watch").title, "SHAME")
     eq(GK.NoteCard(GANK, "kudos").title, "SHAME", "not on that list: the one they are on")
     GK.SetMark(GANK, "kudos")
-    eq(GK.NoteCard(GANK, "watch").title, "KUDOS")
+    eq(GK.NoteCard(GANK, "watch").title, "SHAME", "the tab they were opened from")
+    eq(GK.NoteCard(GANK).title, "KUDOS")
     eq(GK.NoteCard(GANK).lines[1], "Kudos: |cff4dff66you|r", "my mark's list is shown first")
     -- buttons
     local t
@@ -1605,7 +1606,7 @@ test("a noted player's card: title, who put them where, the notes with their vot
     d.buttons[1][2]()
     eq(t.arg.key, GANK)
     eq(t.arg.c, "ROGUE")
-    eq(t.list, "kudos", "my mark at the time of the click")
+    eq(t.list, "watch", "the card's own list: it was a Shame card")
     eq(GK.NoteCard(GANK).buttons[1][1], "Add a note")
     eq(GK.NoteCard(GANK).buttons[2][1], "More...")
     eq(GK.NoteCard("Nobody-Realm"), nil)
@@ -1630,7 +1631,7 @@ test("a player on both lists: a block per list on the card, the shown list's fir
     GK.AddNote(GANK, "kind soul", "Kind", "kudos")
     GK.AddNote(GANK, "rude", "Toxic", "watch")
     local P, G = "|cffb98ce6", "|cff4dff66"
-    GK.PutOn(GANK, "kudos", true)
+    eq(GK.MyMark(GANK), "watch", "I put them on Shame last, but the Kudos tab still leads with Kudos")
     local k = GK.NoteCard(GANK, "kudos")
     eq(k.title, "KUDOS")
     eq(#k.lines, 4)
@@ -1638,7 +1639,6 @@ test("a player on both lists: a block per list on the card, the shown list's fir
     assert(k.lines[2]:find('^|cff4dff66"kind soul"') and k.lines[2]:sub(-2) == "|r", k.lines[2])
     eq(k.lines[3], "Shame: " .. P .. "you - " .. GK.TagText("Toxic", 12) .. "|r")
     assert(k.lines[4]:find('^|cffb98ce6"rude"') and k.lines[4]:sub(-2) == "|r", k.lines[4])
-    GK.PutOn(GANK, "watch", true)
     local w = GK.NoteCard(GANK, "watch")
     eq(w.title, "SHAME")
     eq(w.lines[1], k.lines[3])

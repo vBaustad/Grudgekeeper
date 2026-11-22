@@ -143,9 +143,10 @@ function GK.NoteCard(key, page)
     local p = GK.Person(key, false)
     if not p then return nil end
     local s = Summary(key)
-    -- the list the card is about: where I put them, else the page's list if they are on it, else the first
+    -- the list the card is about: the page's list if they are on it (its block leads), else where I put
+    -- them last, else the first
     local mark = GK.MyMark(key)
-    local shown = s and ((mark and OnList(s, mark) and mark) or (page and OnList(s, page) and page) or s.primary)
+    local shown = s and ((page and OnList(s, page) and page) or (mark and OnList(s, mark) and mark) or s.primary)
     local t = { key = key, c = p.c, r = p.r, rf = p.rf, sx = p.sx, l = p.l }
     local d = { key = key, c = p.c, rf = p.rf, sx = p.sx, title = shown and CARD_TITLE[shown] or "NOTES",
         name = GK.Show(key), info = GK.Describe(p.l, p.c, p.r), lines = {}, buttons = {} }
@@ -200,7 +201,7 @@ function GK.NoteCard(key, page)
     else
         lines[1] = "Nothing is written down about them."
     end
-    d.buttons[1] = { "Add a note", function() GK.OpenNoteSheet(t, GK.MyMark(key) or shown) end }
+    d.buttons[1] = { "Add a note", function() GK.OpenNoteSheet(t, shown or GK.MyMark(key)) end }
     d.buttons[2] = { "More...", function() OpenMenu(function(root) GK.NoteMenu(root, key) end) end }
     return d
 end
