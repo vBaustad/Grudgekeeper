@@ -1932,7 +1932,6 @@ local function BuildDetail(page, L)
         local l = page:CreateFontString(nil, "ARTWORK")
         Ink(l, FADED, TEXT_FONT, 10)
         l:SetJustifyH("LEFT")
-        l:SetWidth(L.valueX - L.padX - 4)          -- a long one ("Also has Kudos") goes on to a second line
         local v = page:CreateFontString(nil, "ARTWORK")
         Ink(v, INK, TEXT_FONT, 12)
         v:SetJustifyH("LEFT")
@@ -2037,14 +2036,16 @@ local function FillDetail(page, d, anyRows)
             l:SetText("")
             v:SetText("")
             page.divider:ClearAllPoints()
-            page.divider:SetPoint("TOPLEFT", L.padX, -(y + 4))
-            page.divider:SetPoint("TOPRIGHT", -L.padX, -(y + 4))
+            page.divider:SetPoint("TOPLEFT", L.padX, -(y + 8))
+            page.divider:SetPoint("TOPRIGHT", -L.padX, -(y + 8))
             page.divider:Show()
-            y = y + 12
+            y = y + 20
         elseif line then
             local label, value = Split(line)
             if label then
                 l:SetPoint("TOPLEFT", L.padX, -(y + 2))
+                -- a heading with nothing beside it has the line to itself
+                l:SetWidth(value == "" and (L.w - 2 * L.padX) or (L.valueX - L.padX - 4))
                 l:SetText(label:upper())
                 v:SetPoint("TOPLEFT", L.valueX, -y)
                 v:SetWidth(L.w - L.valueX - L.padX)
