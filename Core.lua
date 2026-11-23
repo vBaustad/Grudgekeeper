@@ -133,8 +133,8 @@ local defaults = {
     mineOnly = false,        -- whether the ledger's sortable pages list only the rows that are yours
     watchNearby = "off",     -- a player on your Shame list is near
     watchGroup = "screen",   -- a Shame list player joins your group
-    shameSound = "auto",     -- and the sound it plays (GK.SoundChoices; "off" for none; "auto" until one is picked: GK.ShameSoundKey)
-    nearSound = "kit:PVP_THROUGH_QUEUE", -- the sound of a target near, a Marked player or the watched guild (GK.NearSound)
+    shameSound = "game:566564", -- and the sound it plays (GK.SoundChoices; "off" for none): the Alliance bell
+    nearSound = "call:horn_rush", -- the sound of a target near: War horn rush (GK.NearSound; both the owner's, 2026-11-23)
     kudosGroup = "off",      -- a Kudos player joins your group (off: the owner doesn't read chat lines)
     plateNotes = true,       -- on a noted player's nameplate: Kudos' medals, Shame's small mark
     guilds = {},             -- [guild key] = { board, orders, wanted, slain, feed, nextId } (Guild.lua)
@@ -1036,7 +1036,6 @@ local SOUND_FILES = {
 GK.MOMENT_SOUND = { rank = "rankSound", order = "orderSound", revenge = "revengeSound", grudge = "grudgeSound",
     deathlist = "grudgeSound",
     ended = "endedSound", tormentor = "tormentorSound" }
-local SHAME_DEFAULT = "game:565564"        -- the troll gong, outside a guild with a clip of its own
 
 --- Whether one of our files is ours to offer: one for a guild only while we are in it (in any case), and
 --- not while the client can't say which guild that is.
@@ -1298,15 +1297,12 @@ function GK.NearSound()
     if not GK.PlayChoice(key) then GK.PlayChoice("kit:PVP_THROUGH_QUEUE") end
 end
 
---- The sound a Shame player joining plays: the one picked in the settings, and until one is ("auto") the
---- clip of a guild we are in, or the troll gong.
+--- The sound a Shame player joining plays: the one picked in the settings, else the Alliance bell. "auto" - the
+--- clip of a guild we are in, or the troll gong - was where it started until 1.12.0 moved everyone to the bell.
 function GK.ShameSoundKey()
     local key = GK.db and GK.db.shameSound
     if type(key) == "string" and key ~= "auto" then return key end
-    for _, s in ipairs(SOUND_FILES) do
-        if s.guild and Offered(s) then return "file:" .. s[1] end
-    end
-    return SHAME_DEFAULT
+    return defaults.shameSound
 end
 
 --- Something changed that a window may show. Every guild message calls this, and at login they come
@@ -1990,6 +1986,11 @@ LIB.On("PLAYER_LOGIN", function()
     -- written into every saved file, and nothing tells that apart from a pick: each account is moved off once,
     -- and keeps what it picks after.
     if not GK.db.shotsOff then GK.db.shotFulfil, GK.db.shotsOff = false, true end
+    -- "war horn for kill order near og alliance bell for shame player joins? og reset det for alle nå med nye
+    -- patchen" (the owner, 2026-11-23): each account is moved to the two once, and keeps what it picks after.
+    if not GK.db.sounds112 then
+        GK.db.nearSound, GK.db.shameSound, GK.db.sounds112 = defaults.nearSound, defaults.shameSound, true
+    end
     GK.ClaimPC(GK.char)
     GK.ForgetGoneSounds(GK.db)
     SplitSides(GK.db)                                -- after it: a None picked is a box off by then

@@ -2894,8 +2894,8 @@ test("the voice lines are for spree announcements only, not for a target near or
     eq(Voices(GK.SoundChoices(true)), 0, "nor a splash's: hearing them ahead spoils them (2026-11-22)")
     GK.db.nearSound, GK.db.shameSound = "file:voice_reaper", "file:voice_bloodied"
     GK.ForgetGoneSounds(GK.db)
-    eq(GK.db.nearSound, "kit:PVP_THROUGH_QUEUE", "a voice picked for a target near goes back to the horn")
-    eq(GK.db.shameSound, "auto", "and for a Shame player, to where it starts")
+    eq(GK.db.nearSound, "call:horn_rush", "a voice picked for a target near goes back to War horn rush")
+    eq(GK.db.shameSound, "game:566564", "and for a Shame player, to the Alliance bell")
 end)
 
 test("sounds: what was picked for a splash or toast goes, and None is that moment's box off", function()
@@ -3811,7 +3811,7 @@ test("a pick of a sound taken off the list goes back to the default", function()
     local GK = boot({ me = ME })
     GK.db.nearSound = "kit:HARDCORE_DUEL"
     GK.ForgetGoneSounds(GK.db)
-    eq(GK.db.nearSound, "kit:PVP_THROUGH_QUEUE")
+    eq(GK.db.nearSound, "call:horn_rush")
     GK.db.nearSound = "game:569112"
     GK.ForgetGoneSounds(GK.db)
     eq(GK.db.nearSound, "game:569112", "a pick still on the list stays")
@@ -4599,6 +4599,19 @@ test("screenshots: off by default, an older account's moved off once, then it ke
     eq(GK.db.shotFulfil, true, "ticked after that: kept")
     GK = boot({ me = ME, db = { share = true, shotsOff = true } })
     eq(GK.db.shotFulfil, false, "the default itself, where the move is done: off")
+end)
+
+-- "war horn for kill order near og alliance bell for shame player joins? og reset det for alle nå med nye patchen"
+-- (the owner, 2026-11-23): the defaults, and every account moved to them once, which keeps its pick after that.
+test("warning sounds: War horn rush and the Alliance bell, every account moved to them once", function()
+    local GK = boot({ me = ME })
+    eq(GK.db.nearSound .. "/" .. GK.db.shameSound, "call:horn_rush/game:566564", "a new install")
+    eq(GK.ShameSoundKey(), "game:566564", "the bell for a Shame player")
+    GK = boot({ me = ME, db = { share = true, nearSound = "game:569112", shameSound = "auto" } })
+    eq(GK.db.nearSound .. "/" .. GK.db.shameSound, "call:horn_rush/game:566564", "an older account: moved")
+    eq(GK.db.sounds112, true, "...once")
+    GK = boot({ me = ME, db = { share = true, sounds112 = true, nearSound = "game:569112", shameSound = "off" } })
+    eq(GK.db.nearSound .. "/" .. GK.db.shameSound, "game:569112/off", "picked after that: kept")
 end)
 
 test("effects: Grudgebound's crown at 15, the number on every 5 after it, the hundred at 100", function()
