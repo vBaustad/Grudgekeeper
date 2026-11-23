@@ -1,6 +1,6 @@
 -- Grudgekeeper - the window (/grudge, the minimap button): the Grudgekeeper's ledger, a sheet of parchment
 -- in the game's own frame (SettingsFrameTemplate, which Forever draws in bronze), as Guildhall's window is.
---   The game's tabs under the frame, one per page of GK.LedgerPages: Kill orders, Leaderboard, Most wanted,
+--   The game's tabs under the frame, one per page of GK.LedgerPages: Kill orders, Leaderboard, Death list,
 --   Grudges, News and You, then a step apart Shame and Kudos (NotesUI.lua adds those two lists).
 --   On the left that page's table; on the right the row you clicked - an enemy's wanted poster, a
 --   guildie's record (Profile.lua writes both, for here and the Inspect tab). Whatever opens a player's
@@ -66,7 +66,7 @@ local MAX_ROWS = math.floor((LIST_FOOT - (LIST_TOP - 46)) / ROW_H)    -- the mos
 -- the right-hand column stops short of the row's end: folded, room for the » that says a click turns
 -- the page (they ran into each other in the preview)
 local COL1, COL2, COL_WIDE, COL_RIGHT = 232, 266, 196, PAGE_W - 36
--- A word under the first count (Most wanted's "2 days ago" under how often they killed us): the count
+-- A word under the first count (Grudges' "2 days ago" under how often they killed us): the count
 -- stands C1_LIFT higher, the word C1_UNDER under the row's middle, as a grudge's "owed 3" under its
 -- score. The line under the name stops C1_UNDER_W short of the column's middle: half of "38 days ago" in
 -- that type and a gap. Worked out from the type's size, not measured in the game.
@@ -137,7 +137,7 @@ local SWAP_ICON = { Friends = ICONS .. "INV_Misc_GroupNeedMore", Enemies = MEDIA
 --- with Only mine they were "dead space med ting som ikke trengs og bare tar opp plass" (the owner,
 --- 2026-11-14).
 --- A page's column headings, and its own action: a list or a table, or a function for the view it shows
---- (Most wanted's two views have each their own).
+--- (Grudges' views have each their own).
 local function Headings(def)
     if type(def.headings) == "function" then return def.headings() end
     return def.headings or {}
@@ -245,21 +245,34 @@ local function Short(l, c, r)
     return s ~= "" and s or nil
 end
 
--- The views of the two pages that have two (the owner's pick from the mockup, 2026-11-18): Most wanted's
--- "Killed us most" and the guild on watch (Marked until 2026-11-22), the News's "All" and "Kill orders". As
--- chosen, until the next login.
-local wantedView, newsView = "killed", "all"
+-- The views of the pages that have more than one (ink tabs, the owner's pick from the mockup, 2026-11-18). Grudges
+-- took Most wanted's place and name on 2026-11-22, when the Death list became a page of its own: "most wanted
+-- høres jo nesten likt ut. er det andre bedre navn for den?" (the owner). What the game found, three ways: who
+-- killed you ("me"), who killed the guild ("killed"), and the guild on watch with the versus page ("guild").
+-- The News: "All" and "Kill orders". As chosen, until the next login.
+local grudgesView, newsView = "me", "all"
+-- What draws the versus page and picks each side's colour: filled in further down, once Ink and the portraits
+-- are there.
+local Versus = {}
 
---- Is Most wanted showing the guild on watch? Only while there is one: with none it shows who killed us most.
-local function GuildView()
-    local guild = GK.WatchedGuild and GK.WatchedGuild()
-    return wantedView == "guild" and guild ~= nil, guild
+--- The view Grudges shows, and the guild tracked, if one is. Versus is there with none as well, and says how
+--- one gets tracked ("tabben om man ikke tracker noe kan være noe default", the owner, 2026-11-22).
+local function GrudgesView()
+    return grudgesView, GK.WatchedGuild and GK.WatchedGuild()
 end
 
---- The score against the guild on watch, short: "us 12 - 8 them".
-local function ScoreText(guild)
-    local us, them = GK.GuildScore(guild)
-    return ("us %d - %d them"):format(us, them)
+--- Is Grudges showing the guild on watch?
+local function GuildView()
+    local view, guild = GrudgesView()
+    return view == "guild", guild
+end
+
+--- Does Only mine show, and count, on this page as it stands? Not on Grudges' first two views: Killed me is
+--- what it was for there, and a tick nobody can see must hide nothing.
+local function MineShown(def)
+    if not (def and def.sortable == true) then return false end
+    if def.onlyMine then return def.onlyMine() and true or false end
+    return true
 end
 
 --- One order's row on the page, open or closed.
@@ -309,12 +322,32 @@ end
 --- the minimap counted 46 and the page showed 25 ("minimap sier 46 stk på kill order men ser bare første 25",
 --- the owner, 2026-11-21). An open order is live, someone paid for it and it runs out by itself (a week, two
 --- at most off the wire: Guild.lua ORDER_DAYS); ten each a poster at most (MAX_OPEN_PER_POSTER), and the pages turn.
+-- The kill orders page's view ("kill orders kan bli 200 folk liksom", the owner, 2026-11-22). Its search went the
+-- next day: "det ble lagt til et søkefelt øverst i kill order? det likte jeg ikke. fjern det". One table: the
+-- file's locals.
+local ordersPage = { view = "all" }
+
+--- Is the order on the page as it stands?
+function ordersPage.Has(o, me)
+    local view = ordersPage.view
+    if view == "gold" and (GK.Pot(o)) <= 0 then return false end
+    if view == "mine" and o.by ~= me and not (o.pot and o.pot[me]) then return false end
+    return true
+end
+
+--- Every order again: for an order opened by its key.
+function ordersPage.All()
+    ordersPage.view = "all"
+end
+
 local function OrderItems()
     local items, me = {}, LIB.Me()
     local gold, free = {}, {}
     for _, o in ipairs(GK.OpenOrders()) do
-        local list = (GK.Pot(o)) > 0 and gold or free
-        list[#list + 1] = o
+        if ordersPage.Has(o, me) then
+            local list = (GK.Pot(o)) > 0 and gold or free
+            list[#list + 1] = o
+        end
     end
     for _, o in ipairs(gold) do items[#items + 1] = OrderRow(o, me) end
     -- the newest first (GK.OpenOrders already has them so, among equal pots of none)
@@ -324,28 +357,10 @@ local function OrderItems()
         it.rule = i == 1 and #gold > 0 or nil
         items[#items + 1] = it
     end
-    local officer = GK.CanWatchGuild and GK.CanWatchGuild()
+    if ordersPage.view == "gold" then return items, "No open kill order has gold on it. All has the rest." end
+    if ordersPage.view == "mine" then return items, "None you posted or put gold on. All has the guild's." end
     return items, "No open kill orders. Post one with Post a kill order, at the top of this page - or right-click "
-        .. "an enemy player and pick it there." .. (officer and " Put an enemy guild on watch with /grudge guild."
-        or "")
-end
-
---- The line under the kill orders page's title: the guild on watch, a click from its card, and for an officer
---- the way to put another on watch (Notes.lua) - a section of the page, with a heading and a row, before.
---- { { text, click, plain } }, empty when there is nothing to say.
-local function WatchLinks()
-    local out = {}
-    local name = GK.WatchedGuild and GK.WatchedGuild()
-    if name then
-        -- and the score against them, as Most wanted's view of them has it (2026-11-22)
-        out[#out + 1] = { text = ("Watching <%s>, %s"):format(name, ScoreText(name)), plain = true,
-            click = function() GK.ShowInLedger({ kind = "card", make = function() return GK.GuildCard(name) end }) end }
-    end
-    if GK.CanWatchGuild and GK.CanWatchGuild() then
-        out[#out + 1] = { text = name and "watch another" or "watch a guild",
-            click = function() GK.OpenPicker("guild") end }
-    end
-    return out
+        .. "an enemy player and pick it there."
 end
 
 local function BoardItems()
@@ -382,11 +397,11 @@ local function FirstName(key)
     return s:match("^[^ ]+") or s                   -- not %S: see GK.SameName
 end
 
--- The seal a kill order puts over its target's nameplate, in a line of text: on Most wanted it says an
+-- The seal a kill order puts over its target's nameplate, in a line of text: on Grudges' Killed us it says an
 -- order is out on them.
 local ORDER_MARK = ("|T%smark:20:20|t"):format(MEDIA)
 
---- Whom of the guild an enemy killed, for their row on Most wanted: you first, then who most often - two
+--- Whom of the guild an enemy killed, for their row on Grudges' Killed us: you first, then who most often - two
 --- of them by first name, with how often when more than once, and how many more there are:
 --- "killed you, Kriger x2 +1" (the x a multiplication sign). nil for nobody.
 local function Victims(w)
@@ -431,43 +446,43 @@ local function WantedItems()
             -- vise gold icon", the owner, 2026-11-10)
             right = o and (ORDER_MARK .. (pot > 0 and (" " .. GK.Coins(pot)) or "")) or "",
             select = PosterSpec(e.key, e.w), ts = e.w.last,
-            own = me and e.w.victims[me] and true or nil }            -- Only mine: those who killed you
+            eye = GK.IsTracked and GK.IsTracked(e.key) or nil,       -- on your Death list
+            own = me and e.w.victims[me] and true or nil }
     end
     return items, "Nobody has killed the guild yet - not that the Grudgekeeper heard of."
 end
 
---- Most wanted's other view: the guild on watch, and the score against it (Guild.lua, GK.GuildScore) - "vi må ha
---- en VS på guilden i vi tracker. hvor mange ganger har vi drept dem, hvor mange ganger har de drept oss" (the
---- owner, 2026-11-22). It took Marked's place, which went the same day. A row for each of theirs who fought us,
---- how often we killed them and how often they killed us, the most fought first.
+--- Grudges' third view: the guild on watch, with the versus page beside it - "vi må ha en VS på guilden i vi
+--- tracker. hvor mange ganger har vi drept dem, hvor mange ganger har de drept oss", then "så killed us most og
+--- lista over gamingboys er på venstre side og da spillerprofil og den VS er på høyre" (the owner, 2026-11-22). A
+--- row for each of theirs who fought us, the most fought first, each count in its side's colour where it leads.
 local function GuildItems(guild)
     local items = {}
     local _, _, rows = GK.GuildScore(guild)
+    local ours, theirs = Versus.Inks()
     for _, e in ipairs(rows) do
         items[#items + 1] = { key = "g:" .. e.key, name = GK.Show(e.key), desc = Short(e.l, e.c, e.r),
             class = e.c, face = { key = e.key, c = e.c },
             c1 = tostring(e.k), right = tostring(e.d), them = e.k, killed = e.d,
+            c1Colour = e.k >= e.d and ours or FADED, rightColour = e.d > e.k and theirs or FADED,
             select = PosterSpec(e.key, e), ts = e.last, own = e.own }
     end
     return items, ("Nobody of <%s> has fought us yet. A kill or a death counts once we know they are theirs: seen "
-        .. "while the guild is on watch, or named so by a guildie."):format(guild)
+        .. "while the guild is tracked, or named so by a guildie."):format(guild)
 end
 
 
--- Grudges is one list since 2026-11-20, in a fixed order: who you track first, an eye on their face, even at
--- 0 - 0; then who leads over you, the most owed first; then, under a faint line, who stands even, and who you
--- lead, the closest to catching you first. "det er liksom folk som dreper deg som du vil ha på notification
--- ... folk du har møtt og folk som er 0-0 osv er ikke så spennende" (the owner), drawn first
--- (art/mockups/grudges) and built to it. It had a Tracked section with Your grudges under it, in an order
--- picked by a word at the heading's right (most fought, latest, A to Z), and a row for an enemy you had only
--- helped kill.
-
+-- Two lists of players since 2026-11-22, where Grudges was one from 2026-11-20 with both in it: "han vil ha en
+-- Deathnote tab. KUN de han selv har lagt på lista, ikke randoms han har møtt" (the owner, of a streamer's word).
+-- The Death list is whom you put there, and Grudges' Killed me what came by itself. Drawn first
+-- (art/mockups/deathlist).
 --- Who leads, and by how much: above 0 they lead over you, by what it takes to stand even ("owed 3").
 local function Owed(f) return (f.d or 0) - (f.k or 0) end
 
---- The ones you track (Sightings.lua, GK.Track), whoever was seen latest first - a warning names them, and
---- here is where to find them after it.
-local function TrackedItems(items, c)
+--- The Death list (Sightings.lua, GK.Track): every one you put there and nobody else, whoever was seen latest
+--- first - a warning names them, and here is where to find them after it.
+local function DeathListItems()
+    local items, c = {}, GK.char
     local tracked = {}
     for key, t in pairs(c.tracked or {}) do
         tracked[#tracked + 1] = { key = key, t = t, s = GK.Seen and GK.Seen(key), name = GK.Show(key) }
@@ -487,20 +502,23 @@ local function TrackedItems(items, c)
         elseif f and f.last then
             sub = "last met " .. GK.Ago(f.last)
         else
-            sub = "tracked since " .. GK.Ago(e.t.t)
+            sub = "added " .. GK.Ago(e.t.t)
         end
+        local note = GK.DeathNote and GK.DeathNote(e.key)
+        if note then sub = '"' .. note .. '"' end            -- when you saw them is on their card
         local look = f or e.t
         local you, they = f and (f.k or 0) or 0, f and (f.d or 0) or 0
         items[#items + 1] = { key = "t:" .. e.key, name = e.name, class = look.c, face = { key = e.key, c = look.c },
-            desc = Short(look.l, look.c, look.r), sub = sub, score = { you, they }, eye = true,
+            desc = Short(look.l, look.c, look.r), sub = sub, noted = note ~= nil, score = { you, they },
             select = PosterSpec(e.key, look), you = you, they = they, ts = f and f.last or e.t.t, own = true }
     end
+    return items, "No names written yet. Add someone, or right-click an enemy and pick Add to Death list."
 end
 
 local NO_LOG = "No kills or deaths yet. Only the open world counts: dungeons and battlegrounds hide who is who."
 
 --- One line of your log (GK.AddLog) as a row, the i-th from the newest: a kill, an assist or a death, a
---- click from the enemy's poster. The Grudges page's Lately and the You page list them alike.
+--- click from the enemy's poster. The You page lists them.
 local function LogRow(e, i)
     local it = { key = "l:" .. i, face = { key = e.n, c = e.c }, select = PosterSpec(e.n, e), ts = e.t, own = true,
         sub = table.concat({ e.z or "", GK.Ago(e.t) }, e.z and " - " or "") }
@@ -523,22 +541,19 @@ local function LogRow(e, i)
     return it
 end
 
-local function GrudgeItems()
+--- Killed me: who has killed you, the most owed first, then under a faint line who you are even with or lead.
+--- One on your Death list is here too, with the eye. "most wanted er jo typ 'de du har møtt som har drept oss'"
+--- (the owner, 2026-11-22).
+local function KilledMeItems()
     local items, c = {}, GK.char
-    TrackedItems(items, c)
     -- the last thing that happened with each of them: your log is newest first
     local lastOf = {}
     for _, e in ipairs(c.log) do
         if e.n and not lastOf[e.n] then lastOf[e.n] = e end
     end
     local foes = {}
-    -- not one you track: they are at the top already, with the same score (one row each, 2026-11-16); and
-    -- not one you only helped kill - the score is kills against deaths, and 0 - 0 says nothing
-    local tracked = c.tracked or {}
     for k, v in pairs(c.foes) do
-        if (v.k or 0) + (v.d or 0) > 0 and not tracked[k] then
-            foes[#foes + 1] = { key = k, f = v, name = GK.Show(k), owed = Owed(v) }
-        end
+        if (v.d or 0) > 0 then foes[#foes + 1] = { key = k, f = v, name = GK.Show(k), owed = Owed(v) } end
     end
     -- who leads over you, the most owed first; then even; then who you lead, the smallest lead first. Within
     -- each, the latest met first.
@@ -575,11 +590,12 @@ local function GrudgeItems()
         end
         items[#items + 1] = { key = "f:" .. e.key, name = e.name, class = e.f.c, face = { key = e.key, c = e.f.c },
             desc = Short(e.f.l, e.f.c, e.f.r), sub = sub, score = { you, they }, rule = rule,
+            eye = GK.IsTracked and GK.IsTracked(e.key) or nil,
             select = PosterSpec(e.key, e.f), you = you, they = they, ts = e.f.last, own = true }
     end
     -- Your log is the You page's: it stood here under Lately as well, the same 25 rows twice (2026-11-16).
-    -- Grudges is who you have a history with; what you did is on the You page.
-    return items, NO_LOG
+    -- Grudges is who owes you; what you did is on the You page.
+    return items, "Nobody has killed you yet. Only the open world counts: dungeons and battlegrounds hide who is who."
 end
 
 --- The You page: you at the top, a click from your own card wherever you were on the page, and under you
@@ -832,6 +848,7 @@ local function PointsHelp()
         ("The target of a kill order +%d."):format(GK.ORDER_BONUS),
         ("The same player counts %d times a day, then nothing."):format(GK.REPEATS),
         ("An assist: the kill's points less %d, but at least 1 if the kill gives any."):format(GK.ASSIST_LESS),
+        "A kill streak counts no grey kill and none farmed, whatever they give.",
     }
 end
 
@@ -840,6 +857,9 @@ end
 --- on, click } }, linksTail = fn -> text, sortable, max, side, add, icon, default = fn(items) -> the row chosen
 --- when none is }. max: a sortable page with no section headings lists at most this many rows (GK.SortItems);
 --- all, to sub, is how many there were before it. icon: the texture on its tab folded, down the frame's side.
+--- onlyMine: fn -> whether Only mine shows and counts as the page stands (MineShown). versus: fn -> the guild
+--- whose versus page stands where the card would, or nil. views, setView, getView: a page whose rows differ
+--- by view, for what looks for someone's row (RowAtHome).
 --- headings: the column headings over the table, { text, x, justify, sort, tip, help }: a heading with a sort
 --- (an item field: "name", or a number, the biggest first) sorts the page when clicked, and tip finishes
 --- "Sort by ..." in its tooltip. help: fn -> lines its tooltip starts with, the first as a title, sorting
@@ -853,7 +873,13 @@ GK.LedgerPages = {
     -- title and has a row more (ListFrame). In its own order: what was got lately, the gold, the rest.
     { name = "Kill orders", items = OrderItems, icon = MEDIA .. "mark", headings = {},
       add = { text = "Post a kill order", kind = "order" },
-      subLinks = WatchLinks,                     -- the watched guild, under the title (WatchLinks)
+      setView = function(view) ordersPage.All() ordersPage.view = view end,
+      links = function()
+          local v = ordersPage.view
+          return { { text = "All", on = v == "all", click = function() ordersPage.view = "all" end },
+                   { text = "Bounties", on = v == "gold", click = function() ordersPage.view = "gold" end },
+                   { text = "Mine", on = v == "mine", click = function() ordersPage.view = "mine" end } }
+      end,
       -- with no open order, your own record rather than a blank page; otherwise the first open order
       default = function(items)
           if #items > 0 then return nil end
@@ -866,57 +892,79 @@ GK.LedgerPages = {
           return { { text = "This week", on = weekly, click = function() weekly = true end },
                    { text = "All time", on = not weekly, click = function() weekly = false end } }
       end,
-      linksTail = ResetText },                    -- the first row chosen by itself: the week's leader, as any page's top
-    -- The guild's enemies, two ways: who killed us most, and the guild on watch with the score against it (Marked,
-    -- the guild's kill-on-sight list, until 2026-11-22). Each view its own headings; the second only while a guild
-    -- is on watch, and with none the page has no tabs.
-    { name = "Most wanted", sortable = true, max = LIST_MAX,
+      -- the week alone resets ("fjern resets in 3 days fra all time", the owner, 2026-11-22)
+      linksTail = function() return weekly and ResetText() or "" end },   -- the first row is chosen by itself
+    -- The list you made, and only that: no row gets here but by your click (DeathListItems). All of it, however
+    -- many turns of the page, so no max.
+    { name = "Death list", items = DeathListItems, headings = {},
       icon = ICONS .. "Ability_Hunter_SniperShot",          -- the hunter's mark: marked to be hunted
+      add = { text = "Add someone", kind = "track" },
+      sub = function() return "Every name written here is a death sentence." end,
+      default = function(items)
+          if #items > 0 then return nil end
+          return { key = "me", select = { kind = "record", key = LIB.Me() } }
+      end },
+    -- What came by itself, Most wanted until 2026-11-22: who killed you, who killed the guild, and the guild on
+    -- watch while one is, with the versus page where the profile would be. Each view its own headings.
+    { name = "Grudges", sortable = true, max = LIST_MAX, icon = ICONS .. "Ability_DualWield",
+      views = { "me", "killed" },                           -- where a card opened from outside looks (GK.ShowInLedger)
+      setView = function(view) grudgesView = view end,
+      getView = function() return grudgesView end,
       items = function()
-          local on, guild = GuildView()
-          if on then return GuildItems(guild) end
-          return WantedItems()
+          local view, guild = GrudgesView()
+          if view == "guild" then
+              if guild then return GuildItems(guild) end
+              return {}, "No guild tracked yet. " .. (GK.CanWatchGuild and GK.CanWatchGuild()
+                  and "Track one with the button at the top, or right-click one of their players."
+                  or "An officer or the guild master can track an enemy guild.")
+          end
+          if view == "killed" then return WantedItems() end
+          return KilledMeItems()
       end,
       headings = function()
-          if GuildView() then
+          local view, guild = GrudgesView()
+          if view == "guild" then
+              if not guild then return {} end                  -- no rows, so nothing to head
               return { { "Name", 48, nil, "name", "name, A to Z" },
                   { "We killed", COL1, "CENTER", "them", "how often we killed them" },
                   { "Killed us", COL_RIGHT, "RIGHT", "killed", "how often they killed us" } }
           end
+          -- each grudge says its own score, in an order of its own (KilledMeItems)
+          if view == "me" then return {} end
           return { { "Name", 48, nil, "name", "name, A to Z" },
               { "Killed us", COL1, "CENTER", "killed", "how often they killed us" },
               { "Kill order", COL_RIGHT, "RIGHT", "bounty", "kill order, the most gold first" } }
       end,
-      add = { text = "Post a kill order", kind = "order" },
-      links = function()
-          local guild = GK.WatchedGuild and GK.WatchedGuild()
-          if not guild then return {} end
-          local on = wantedView == "guild"
-          -- the guild's own name for its tab, cut short where a long one would run into the score
-          local label = guild
-          if #guild > 16 then
-              -- between two letters: a byte from 128 to 191 is the inside of one ("ø" is two bytes)
-              local cut = 14
-              while cut > 0 and guild:byte(cut + 1) >= 128 and guild:byte(cut + 1) < 192 do cut = cut - 1 end
-              label = guild:sub(1, cut) .. "..."
-          end
-          return { { text = "Killed us most", on = not on, click = function() wantedView = "killed" end },
-                   { text = label, on = on, click = function() wantedView = "guild" end } }
-      end,
-      -- the score at the tabs' right end, in the guild's view
-      linksTail = function()
+      onlyMine = function()
           local on, guild = GuildView()
-          return on and ScoreText(guild) or ""
-      end },
-    -- no heading row: each grudge says its own score, in an order of its own (GrudgeItems)
-    { name = "Grudges", items = GrudgeItems, headings = {}, icon = ICONS .. "Ability_DualWield",
-      add = { text = "Track someone", kind = "track" },
-      sub = function() return "Who you have a history with" end,       -- not everyone: LIST_MAX of them
-      -- its first row, the first you track where you track anyone; your own record only on a page with none
-      default = function(items)
-          for _, it in ipairs(items) do
-              if not it.header then return nil end
+          return on and guild ~= nil
+      end,
+      versus = function()                                   -- the guild to draw the versus page of, "" with none
+          local on, guild = GuildView()
+          if on then return guild or "" end
+          return nil
+      end,
+      -- on Versus an officer's button is the tracking: all of it is here ("ha hele guild tracking greia på
+      -- grudges", the owner, 2026-11-22)
+      add = function()
+          local on, guild = GuildView()
+          if on and GK.CanWatchGuild and GK.CanWatchGuild() then
+              return { text = guild and "Track another" or "Track a guild", kind = "guild" }
           end
+          return { text = "Post a kill order", kind = "order" }
+      end,
+      links = function()
+          local view, guild = GrudgesView()
+          local out = { { text = "Killed me", on = view == "me", click = function() grudgesView = "me" end },
+              { text = "Killed us", on = view == "killed", click = function() grudgesView = "killed" end } }
+          -- never the guild's name: of up to 24 letters it ran off the page on two views and was cut to
+          -- "WARDENS OF ..." beside Only mine on the third ("lange guild navn kan gjøre det problematisk i
+          -- headeren", the owner, 2026-11-22). The name is on the mouse here and on its banner.
+          out[3] = { text = "Versus", tip = guild, on = view == "guild", click = function() grudgesView = "guild" end }
+          return out
+      end,
+      default = function(items)
+          if #items > 0 then return nil end
           return { key = "me", select = { kind = "record", key = LIB.Me() } }
       end },
     -- Everything, or the kill orders alone: posted, backed, got. "Fulfilled lately" stood over the open orders
@@ -982,11 +1030,11 @@ end
 --- owner, 2026-11-10; that page has had no headings to sort by since 2026-11-14, and the rule stands for
 --- any page of sections). A heading Only mine left with no rows goes. Names go A to Z, numbers the biggest
 --- first; ties go A to Z. A page with a max keeps that many, the first in its own order, after Only mine and
---- before the sort: Most wanted by name is still the 25 who killed us most, A to Z, and Only mine finds the
---- one who killed you if they are 40th. Returns a new list, or the same one untouched, and how many rows
+--- before the sort: Killed us by name is still the 25 who killed us most, A to Z, and Only mine finds yours
+--- if they are 40th. Returns a new list, or the same one untouched, and how many rows
 --- it had before the max.
 function GK.SortItems(items, page)
-    local key, mineOnly = GK.SortKey(page), GK.db.mineOnly == true
+    local key, mineOnly = GK.SortKey(page), GK.db.mineOnly == true and MineShown(page)
     local max = page and page.max
     if not (page and page.sortable) or (not key and not mineOnly and not max) then return items, #items end
     -- the sections: the rows before the first heading, then each heading with the rows under it
@@ -1110,7 +1158,321 @@ local MakePortrait = GK.MakePortrait
 
 local Refresh                -- below; the rows and buttons call it
 
+-- ---------------------------------------------------------------------------
+-- The versus page: the right page of Grudges' view of the guild on watch
+-- ---------------------------------------------------------------------------
+-- "så en stilig statisk oversikt ... som bruker hele sida til å vise versus guilden", the list on the left and
+-- this on the right, then "jeg liker både score og latest fight" (the owner, 2026-11-22), drawn first
+-- (art/mockups/versus). Two of the client's own war banners (Forever's character creation), each side's in its
+-- faction's colour, with the score and the top killer on them, and the latest four fights under them.
+-- A banner is cut out of its one texture: the cloth above its first hole, stretched to hold the words, and the
+-- torn point under them. The holes stood behind the top killer's name on the Horde's ("litt vanskelig å se
+-- teksten på horde siden, kanskje hullene i banneret", the owner), so no word stands lower than the cloth, and
+-- every word on a banner is cream or gold whatever the class: Shaman blue is 2.8 to 1 on the red.
+-- In a block: the file is near Lua 5.1's 200 locals.
+do
+    local W, H, POINT, FADE, EDGE = 160, 304, 92, 18, 0.035
+    local CLOTH_END, POINT_FROM = 1000 / 1588, 1190 / 1588       -- in the atlas's own height
+    local X_OURS, X_THEIRS = 86, 282
+    local CREAM, BRASS = { 0.957, 0.894, 0.757 }, { 1, 0.82, 0 }
+    local FIGHTS, FIGHT_TOP, FIGHT_H = 4, 331, 38
+    local BACK_ROOM = 22                                         -- folded, the way back over the banners
+    local ALLIANCE = { flag = "charactercreate-factionflag-alliance", logo = "charcreatetest-logo-alliance",
+        ink = { 0.11, 0.27, 0.51 }, onDark = { 0.45, 0.66, 1 } }
+    local HORDE = { flag = "charactercreate-factionflag-horde", logo = "charcreatetest-logo-horde",
+        ink = { 0.52, 0.08, 0.055 }, onDark = { 1, 0.38, 0.32 } }
+
+    --- Our side, then theirs.
+    local function Sides()
+        if UnitFactionGroup and UnitFactionGroup("player") == "Horde" then return HORDE, ALLIANCE end
+        return ALLIANCE, HORDE
+    end
+
+    --- Each side's colour on the page as the skin has it, ours first.
+    function Versus.Inks()
+        local ours, theirs = Sides()
+        if GK.Classic() then return ours.onDark, theirs.onDark end
+        return ours.ink, theirs.ink
+    end
+
+    local function OurName()
+        if GK.shotGuild then return GK.shotGuild end            -- the screenshot mode's made-up guild (Shots.lua)
+        local name = GetGuildInfo and GetGuildInfo("player")
+        if type(name) == "string" and name ~= "" and not GK.Secret(name) then return name end
+        return "Us"
+    end
+
+    --- One banner, its top at the body's, its middle at x.
+    local function Banner(body, x, side)
+        local info = C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(side.flag)
+        local file = info and (info.file or info.filename)
+        local left, top, over = x - W / 2, H - POINT, H - POINT + FADE
+        local cloth = {}
+        if file and info.leftTexCoord then
+            local l, r, t, b = info.leftTexCoord, info.rightTexCoord, info.topTexCoord, info.bottomTexCoord
+            -- x and v are shares of the banner's width and of the art's height; y is down the page
+            local function Part(sub, x0, x1, y0, y1, v0, v1, atTop, atFoot)
+                local tex = body:CreateTexture(nil, "ARTWORK", nil, sub)
+                tex:SetTexture(file)
+                tex:SetTexCoord(l + (r - l) * x0, l + (r - l) * x1, t + (b - t) * v0, t + (b - t) * v1)
+                tex:SetSize(W * (x1 - x0), y1 - y0)
+                tex:SetPoint("TOPLEFT", body, "TOPLEFT", left + W * x0, -y0)
+                if atTop then
+                    tex:SetGradient("VERTICAL", CreateColor(1, 1, 1, atFoot), CreateColor(1, 1, 1, atTop))
+                end
+                cloth[#cloth + 1] = tex
+            end
+            local upper = CLOTH_END * top / over
+            local lower = POINT_FROM + (1 - POINT_FROM) * FADE / POINT
+            Part(0, 0, 1, 0, top, 0, upper)
+            -- where they meet the point fades in over the cloth, whose middle stays whole under it; only its
+            -- edges, and the shadow outside them, fade out
+            Part(0, EDGE, 1 - EDGE, top, over, upper, CLOTH_END)
+            Part(0, 0, EDGE, top, over, upper, CLOTH_END, 1, 0)
+            Part(0, 1 - EDGE, 1, top, over, upper, CLOTH_END, 1, 0)
+            Part(1, 0, 1, top, over, POINT_FROM, lower, 0, 1)
+            Part(1, 0, 1, over, H, lower, 1)
+        else
+            local tex = body:CreateTexture(nil, "ARTWORK")
+            tex:SetAtlas(side.flag)
+            tex:SetSize(W, H)
+            tex:SetPoint("TOPLEFT", body, "TOPLEFT", left, 0)
+            cloth[1] = tex
+        end
+        local logo = body:CreateTexture(nil, "OVERLAY", nil, 1)
+        logo:SetAtlas(side.logo)
+        logo:SetSize(54, 64)
+        logo:SetPoint("CENTER", body, "TOPLEFT", x, -36)
+        -- these keep their colours in either skin, so never GK.Ink
+        local function Word(y, font, size, colour)
+            local fs = body:CreateFontString(nil, "OVERLAY", nil)
+            GK.SetFont(fs, font, size)
+            fs:SetTextColor(colour[1], colour[2], colour[3])
+            fs:SetShadowColor(0, 0, 0, 1)
+            fs:SetShadowOffset(1, -1)
+            fs:SetWordWrap(false)
+            fs:SetPoint("CENTER", body, "TOPLEFT", x, -y)
+            return fs
+        end
+        local banner = { cloth = cloth, side = side,
+            name = Word(81, GK.TITLE_FONT, 21, BRASS),
+            score = Word(119, GK.TITLE_FONT, 56, CREAM),
+            kills = Word(155, GK.TEXT_FONT, 10, CREAM),
+            label = Word(176, GK.TEXT_FONT, 10, BRASS),
+            who = Word(194, GK.TEXT_FONT, 14, CREAM),
+            count = Word(211, GK.TEXT_FONT, 11, CREAM) }
+        banner.kills:SetText("KILLS")
+        banner.label:SetText("TOP KILLER")
+        local line = body:CreateTexture(nil, "OVERLAY", nil, 1)
+        line:SetColorTexture(BRASS[1], BRASS[2], BRASS[3], 0.55)
+        line:SetSize(84, 1)
+        line:SetPoint("CENTER", body, "TOPLEFT", x, -165)
+        return banner
+    end
+
+    --- The text in the font, stepping down until it fits the width.
+    local function Fit(fs, words, font, size, width)
+        GK.SetFont(fs, font, size)
+        fs:SetText(words)
+        while size > 9 and TextWidth(fs) > width do
+            size = size - 1
+            GK.SetFont(fs, font, size)
+        end
+    end
+
+    local function FightRow(body, i)
+        local f = CreateFrame("Frame", nil, body)
+        f:SetSize(360, FIGHT_H)
+        f:SetPoint("TOPLEFT", body, "TOPLEFT", 4, -(FIGHT_TOP + (i - 1) * FIGHT_H))
+        f.stripe = f:CreateTexture(nil, "BACKGROUND")
+        f.stripe:SetAllPoints()
+        Paint(f.stripe, "stripe")
+        f.stripe:SetShown(i % 2 == 1)
+        f.bar = f:CreateTexture(nil, "ARTWORK")
+        f.bar:SetSize(4, 30)
+        f.bar:SetPoint("LEFT", 2, 0)
+        f.face = MakePortrait(f, 32)
+        f.face.tex:SetPoint("CENTER", f, "LEFT", 26, 0)
+        f.line = f:CreateFontString(nil, "ARTWORK")
+        Ink(f.line, INK, TEXT_FONT, 13)
+        f.line:SetPoint("TOPLEFT", 48, -5)
+        f.line:SetJustifyH("LEFT")
+        f.line:SetWordWrap(false)
+        f.zone = f:CreateFontString(nil, "ARTWORK")
+        Ink(f.zone, FADED, TEXT_FONT, 10)
+        f.zone:SetPoint("TOPLEFT", 48, -22)
+        f.zone:SetWidth(220)
+        f.zone:SetJustifyH("LEFT")
+        f.zone:SetWordWrap(false)
+        f.when = f:CreateFontString(nil, "ARTWORK")
+        Ink(f.when, FADED, TEXT_FONT, 10)
+        f.when:SetPoint("TOPRIGHT", -10, -22)
+        return f
+    end
+
+    --- The page, made the first time a guild on watch is looked at, over the card's own place.
+    function Versus.Build(book, detail, back)
+        local page = CreateFrame("Frame", "GrudgekeeperVersus", book)
+        page:SetFrameLevel(detail:GetFrameLevel())
+        page:SetAllPoints(detail)                    -- the card's rect, also while the card is hidden
+        page:Hide()
+        page.back = CreateFrame("Button", nil, page)
+        page.back:SetSize(220, 16)
+        page.back:SetPoint("TOPLEFT", 10, -4)
+        page.back.text = page.back:CreateFontString(nil, "ARTWORK")
+        Ink(page.back.text, BLOOD, TEXT_FONT, 12)
+        page.back.text:SetPoint("LEFT")
+        page.back.text:SetText("\194\171 Back to grudges")
+        page.back:SetScript("OnClick", back)
+        local body = CreateFrame("Frame", nil, page)
+        body:SetSize(PAGE_W, PAGE_H)
+        body:SetPoint("TOPLEFT", page, "TOPLEFT", 0, 0)
+        page.body = body
+        local ours, theirs = Sides()
+        page.ours, page.theirs = Banner(body, X_OURS, ours), Banner(body, X_THEIRS, theirs)
+        local clash = body:CreateTexture(nil, "OVERLAY", nil, 2)
+        clash:SetAtlas("Start-VersusSplash")
+        clash:SetSize(96, 94)
+        clash:SetPoint("CENTER", body, "TOPLEFT", 184, -122)
+        page.vs = body:CreateFontString(nil, "OVERLAY")
+        GK.SetFont(page.vs, GK.TITLE_FONT, 29)
+        page.vs:SetTextColor(CREAM[1], CREAM[2], CREAM[3])
+        page.vs:SetShadowColor(0, 0, 0, 1)
+        page.vs:SetShadowOffset(1, -1)
+        page.vs:SetPoint("CENTER", body, "TOPLEFT", 184, -123)
+        page.vs:SetText("VS")
+        page.verdict = body:CreateFontString(nil, "ARTWORK")
+        Ink(page.verdict, BLOOD, TITLE_FONT, 19)
+        page.verdict:SetPoint("CENTER", body, "TOPLEFT", PAGE_W / 2, -298)
+        page.verdict:SetWordWrap(false)
+        page.latest = body:CreateFontString(nil, "ARTWORK")
+        Ink(page.latest, FADED, TEXT_FONT, 10)
+        page.latest:SetPoint("LEFT", body, "TOPLEFT", 12, -320)
+        page.latest:SetText("LATEST FIGHTS")
+        page.since = body:CreateFontString(nil, "ARTWORK")
+        Ink(page.since, FADED, TEXT_FONT, 9)
+        page.since:SetPoint("RIGHT", body, "TOPLEFT", 356, -320)
+        page.rule = body:CreateTexture(nil, "BORDER")
+        Paint(page.rule, "rule")
+        page.rule:SetSize(352, 1)
+        page.rule:SetPoint("TOPLEFT", body, "TOPLEFT", 8, -329)
+        -- with no guild tracked: what this would be, and an officer's button
+        page.call = body:CreateFontString(nil, "ARTWORK")
+        Ink(page.call, INK, TEXT_FONT, 12)
+        page.call:SetPoint("TOP", body, "TOPLEFT", PAGE_W / 2, -332)
+        page.call:SetWidth(300)
+        page.call:SetSpacing(3)
+        page.track = GK.MakeButton(body, 150, 22)
+        page.track:SetPoint("TOP", body, "TOPLEFT", PAGE_W / 2, -400)
+        page.track:SetText("Track a guild")
+        page.track:SetScript("OnClick", function() GK.OpenPicker("guild") end)
+        -- their banner opens their card: who of theirs was seen, and an officer's Stop tracking. It was a click
+        -- on the kill orders page's Watching line
+        local seen = CreateFrame("Button", nil, body)
+        seen:SetSize(W, H - POINT)
+        seen:SetPoint("TOP", body, "TOPLEFT", X_THEIRS, 0)
+        seen:SetScript("OnEnter", function(self)
+            if not page.guild then return end
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:SetText(page.guild)
+            GameTooltip:AddLine("Click for who of theirs was seen lately.", 1, 1, 1, true)
+            GameTooltip:Show()
+        end)
+        seen:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        seen:SetScript("OnClick", function()
+            local guild = page.guild
+            if not guild then return end
+            GK.ShowInLedger({ kind = "card", make = function() return GK.GuildCard(guild) end })
+        end)
+        page.seen = seen
+        page.none = body:CreateFontString(nil, "ARTWORK")
+        Ink(page.none, FADED, TEXT_FONT, 11)
+        page.none:SetPoint("CENTER", body, "TOPLEFT", PAGE_W / 2, -380)
+        page.none:SetText("No fight with them heard of yet.")
+        page.fights = {}
+        for i = 1, FIGHTS do page.fights[i] = FightRow(body, i) end
+        return page
+    end
+
+    local function FillBanner(banner, name, score, top)
+        Fit(banner.name, name, GK.TITLE_FONT, 21, 126)
+        Fit(banner.score, tostring(score), GK.TITLE_FONT, 56, 112)
+        Fit(banner.who, top and GK.Show(top.key) or "-", GK.TEXT_FONT, 14, 112)
+        banner.count:SetText(top and Plural(top.n, "kill") or "")
+    end
+
+    --- One fight's row: who killed whom, each name in its side's colour, the zone and how long ago under it.
+    local function FillFight(f, e, ours, theirs)
+        local won = e.kind == "K"
+        local side = won and ours or theirs
+        f.bar:SetColorTexture(side[1], side[2], side[3], 0.9)
+        f.face:Set({ key = e.n, c = e.c })
+        local function Line(Who)
+            local us = ("|cff%s%s|r"):format(Hex(ours), Who(e.who))
+            local them = ("|cff%s%s|r"):format(Hex(theirs), Who(e.n))
+            return ("%s |cff%skilled|r %s"):format(won and us or them, Hex(FADED), won and them or us)
+        end
+        local room = 300
+        Ink(f.line, INK, TEXT_FONT, 13)
+        f.line:SetText(Line(GK.Show))
+        if TextWidth(f.line) > room then
+            Ink(f.line, INK, TEXT_FONT, 12)
+            if TextWidth(f.line) > room then f.line:SetText(Line(FirstName)) end
+        end
+        f.zone:SetText(e.z or "")
+        f.when:SetText(GK.Ago(e.t))
+    end
+
+    function Versus.Fill(page, guild, folded)
+        local us, them, rows = GK.GuildScore(guild)
+        local top, topTheirs = GK.GuildTopKillers(rows)
+        local name = OurName()
+        page.guild = guild
+        FillBanner(page.ours, name, us, top)
+        FillBanner(page.theirs, guild or "Who's next?", guild and them or "?", topTheirs)
+        local said = guild and "No blood yet" or "Pick a fight"
+        if us > them then said = ("%s leads by %d"):format(name, us - them)
+        elseif them > us then said = ("%s leads by %d"):format(guild, them - us)
+        elseif us > 0 then said = "Dead even" end
+        local size = 19
+        Ink(page.verdict, BLOOD, TITLE_FONT, size)
+        page.verdict:SetText(said)
+        while size > 11 and TextWidth(page.verdict) > 344 do
+            size = size - 1
+            Ink(page.verdict, BLOOD, TITLE_FONT, size)
+        end
+        local _, _, since = GK.WatchedGuild()
+        since = guild and tonumber(since) or nil
+        page.since:SetText(since
+            and ("Tracked since %d %s"):format(tonumber(date("%d", since)) or 0, date("%B", since)) or "")
+        page.back:SetShown(folded)
+        page.body:ClearAllPoints()
+        page.body:SetPoint("TOPLEFT", page, "TOPLEFT", 0, folded and -BACK_ROOM or 0)
+        local shown = folded and FIGHTS - 1 or FIGHTS          -- the fourth would stand past the page's foot
+        local list = GK.LatestFights(guild, shown)
+        local ours, theirs = Versus.Inks()
+        for i, f in ipairs(page.fights) do
+            f:SetShown(i <= shown and list[i] ~= nil)
+            if i <= shown and list[i] then FillFight(f, list[i], ours, theirs) end
+        end
+        page.none:SetShown(guild ~= nil and #list == 0)
+        page.latest:SetShown(guild ~= nil)
+        page.rule:SetShown(guild ~= nil)
+        page.call:SetShown(not guild)
+        local officer = not guild and GK.CanWatchGuild and GK.CanWatchGuild() or false
+        page.track:SetShown(officer)
+        if not guild then
+            page.call:SetText((officer and "Track an enemy guild" or "An officer or the guild master can track an enemy guild")
+                .. " and it's us against them: the score, the top killers and the latest fights.")
+        end
+    end
+end
+
 local function Select(item)
+    -- beside the versus page a row opens no profile ("ikke noe spiller profil når man trykker på de", the owner,
+    -- 2026-11-22): folded it turns to that page, and a card pinned over it gives way
+    local def = GK.LedgerPages[tab]
+    if not pinned and not Folded() and def and def.versus and def.versus() then return end
     selected[tab], pinned = item.key, nil
     if Folded() then turned = true end
     GK.Sound("IG_ABILITY_PAGE_TURN")
@@ -1155,7 +1517,7 @@ local function BuildRow(parent, i)
     row.rank:SetPoint("CENTER", row.seal, "CENTER", 0, 0)
     row.face = MakePortrait(row, FACE)
     row.face.tex:SetPoint("CENTER", row, "LEFT", NAME_X - 19, 0)        -- FillRow moves it for a rank
-    -- the eye of one you track, on the face's lower left: the class crest has the lower right. 22 across: at 16
+    -- the eye of one on your Death list, on the face's lower left: the class crest has the lower right. 22 across: at 16
     -- it "kunne vært litt større" (the owner, 2026-11-20)
     row.eye = row:CreateTexture(nil, "OVERLAY", nil, 3)
     row.eye:SetTexture(MEDIA .. "eye")
@@ -1189,7 +1551,7 @@ local function BuildRow(parent, i)
     end
     row.c1, row.c2, row.c3 = Col(COL1, "CENTER"), Col(COL2, "CENTER"), Col(BOARD_A, "CENTER")
     row.wide, row.right = Col(COL_WIDE), Col(COL_RIGHT, "RIGHT")
-    -- a word under the first count, which then stands a little higher (FillRow): on Most wanted, when
+    -- a word under the first count, which then stands a little higher (FillRow): on Grudges, when
     -- they killed last under how often
     row.c1under = row:CreateFontString(nil, "ARTWORK")
     Ink(row.c1under, FADED, TEXT_FONT, 10)
@@ -1373,7 +1735,7 @@ local function FillRow(row, it, chosen)
         -- and for a line with several of us in it, the shortest: who and how many more (NewsItems)
         if TextWidth(row.name) > room and it.shortest then row.name:SetText(Words("shortest")) end
     end
-    Ink(row.sub, FADED, TEXT_FONT, 11)
+    Ink(row.sub, it.noted and BLOOD or FADED, TEXT_FONT, 11)
     row.sub:SetText(it.sub or "")
     -- the line under the name stops short of a word under the first count, which is on its line
     local subRoom = it.c1under and math.min(room, COL1 - C1_UNDER_W - x0) or room
@@ -1404,6 +1766,8 @@ local function FillRow(row, it, chosen)
     row.c1under:SetText(it.c1under or "")
     row.c2:ClearAllPoints()
     row.c2:SetPoint("CENTER", row, "LEFT", (it.c3 and BOARD_D or COL2) - 4, 0)
+    local cc = it.c1Colour or INK
+    row.c1:SetTextColor(cc[1], cc[2], cc[3])
     row.c1:SetText(it.c1 or "")
     row.c2:SetText(it.c2 or "")
     row.c3:SetText(it.c3 or "")
@@ -1422,7 +1786,7 @@ local function BuildList(page)
     page.sub:SetPoint("TOPLEFT", 12, -44)
     page.sub:SetJustifyH("LEFT")
     page.sub:SetWordWrap(false)
-    -- A choice of what the page shows - the leaderboard's This week and All time, Most wanted's Killed us
+    -- A choice of what the page shows - the leaderboard's This week and All time, Grudges' Killed me, Killed us
     -- most and the guild on watch, the News's All and Kill orders: an ink tab on the paper, in capitals, the chosen one
     -- in blood with a thick line under it, and a rule under the row of them (tabRule). The owner's pick from
     -- the mockup (2026-11-18), over a bronze switch and leather bookmarks; it took the place of the game's
@@ -1452,47 +1816,34 @@ local function BuildList(page)
             offset = 0
             Refresh()
         end)
-        b:SetScript("OnEnter", function(self) if not self.on then self.text:SetTextColor(INK[1], INK[2], INK[3]) end end)
-        b:SetScript("OnLeave", function(self) if not self.on then self.text:SetTextColor(FADED[1], FADED[2], FADED[3]) end end)
+        b:SetScript("OnEnter", function(self)
+            if not self.on then self.text:SetTextColor(INK[1], INK[2], INK[3]) end
+            if self.tip then                                 -- what the tab's word stands for: the guild on watch
+                GameTooltip:SetOwner(self, "ANCHOR_TOP")
+                GameTooltip:SetText(self.tip)
+                GameTooltip:Show()
+            end
+        end)
+        b:SetScript("OnLeave", function(self)
+            if not self.on then self.text:SetTextColor(FADED[1], FADED[2], FADED[3]) end
+            if self.tip then GameTooltip:Hide() end
+        end)
         return b
     end
     -- the page's own views, laid out from its links()
     page.links = {}
-    for i = 1, 4 do page.links[i] = Link(function(self) self.click() end) end
+    for i = 1, 4 do
+        page.links[i] = Link(function(self)
+            self.click()
+            -- another view of a page with views: its top name on the right, as when its tab is chosen
+            if GK.LedgerPages[tab].views then selected[tab], pinned = nil, nil end
+        end)
+    end
     page.tabRule = page:CreateTexture(nil, "BORDER")
     Paint(page.tabRule, "rule")
     page.tabRule:SetHeight(1)
     page.tabRule:SetPoint("TOPLEFT", 8, -(TAB_INK_Y + 21))
     page.tabRule:SetPoint("TOPRIGHT", -8, -(TAB_INK_Y + 21))
-    -- Links on the line under the title of a page without tabs (the kill orders page's watched guild,
-    -- WatchLinks): in blood and underlined, or plain ink that underlines under the mouse.
-    page.subLinks = {}
-    for i = 1, 2 do
-        local b = CreateFrame("Button", nil, page)
-        b:SetHeight(16)
-        b.text = b:CreateFontString(nil, "ARTWORK")
-        Ink(b.text, BLOOD, TEXT_FONT, 11)
-        b.text:SetPoint("LEFT")
-        b.line = b:CreateTexture(nil, "ARTWORK")
-        Paint(b.line, "blood", 0.7)
-        b.line:SetHeight(1)
-        b.line:SetPoint("BOTTOMLEFT", 0, 1)
-        b.line:SetPoint("BOTTOMRIGHT", 0, 1)
-        function b:Set(text, plain)
-            self.plain = plain and true or false
-            Ink(self.text, self.plain and INK or BLOOD, TEXT_FONT, 11)
-            self.text:SetText(text)
-            self.line:SetShown(not self.plain)
-            self:SetWidth(math.ceil(TextWidth(self.text)) + 2)
-        end
-        b:SetScript("OnClick", function(self)
-            GK.Sound("IG_ABILITY_PAGE_TURN")
-            if self.click then self.click() end
-        end)
-        b:SetScript("OnEnter", function(self) self.line:Show() end)
-        b:SetScript("OnLeave", function(self) self.line:SetShown(not self.plain) end)
-        page.subLinks[i] = b
-    end
     -- Only mine: the game's own checkbox, on the line under the title at the page's right, its words in
     -- ink after it. (Drawn in ink at the foot of the page it read as part of the page; the frame has real
     -- controls now, so this is one too - previewed 2026-11-06.)
@@ -1541,7 +1892,8 @@ local function BuildList(page)
     add:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:AddLine(self.def.text, 1, 1, 1)
-        GameTooltip:AddLine("Pick who: your target, someone you met lately, or type a name.", nil, nil, nil, true)
+        GameTooltip:AddLine(self.def.kind == "guild" and "Type the guild's name, or pick one seen lately."
+            or "Pick who: your target, someone you met lately, or type a name.", nil, nil, nil, true)
         GameTooltip:Show()
     end)
     add:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -1637,7 +1989,7 @@ end
 -- factX in. A card without one - a note card - is drawn as lines here too.
 local DETAIL = { w = PAGE_W, h = PAGE_H, face = 84, faceX = 66, faceY = 76, bigY = 128, bigSize = 26,
     titleX = 124, titleY = 48, titleSize = 24, seal = 46, sealX = 26, sealY = 36, ruleY = 194, linesY = 206,
-    padX = 24, valueX = 120, signY = 24, buttonY = 18, rich = true, tilesY = 130, factX = 128 }
+    padX = 24, valueX = 120, signY = 24, buttonY = 18, rich = true, tilesY = 130, factX = 128, third = true }
 
 -- ---------------------------------------------------------------------------
 -- The rich card: tiles, the way to the next title, and sections of facts, pairs or news, as previewed
@@ -1683,6 +2035,72 @@ local function Flat(page, role, a, sub)
     Paint(t, role, a)
     t:SetDrawLayer("BORDER", sub or 0)
     return t
+end
+
+--- A profile's Highlights ("denne delen på profiler kunne trengt litt mer fixing/styling", the owner, 2026-11-22):
+--- the counts side by side, each over its name as the card's tiles are, and under them the nemesis with their
+--- face and how often, in a row of their own. rows: { name, value, under, who (the nemesis's key), times }.
+--- Down to where, and how many were drawn.
+local function Highlights(page, rows, pad, inner, y, limit)
+    local counts, nemesis, drawn = {}, nil, 0
+    for _, row in ipairs(rows) do
+        if row.who then nemesis = row else counts[#counts + 1] = row end
+    end
+    if #counts > 0 and y + 44 <= limit then
+        local cell = inner / #counts
+        for i, row in ipairs(counts) do
+            local x = pad + (i - 0.5) * cell
+            local n = Text(page, INK, 16)
+            n:SetText(row[2])
+            n:SetPoint("TOP", page, "TOPLEFT", x, -y)
+            local name = Text(page, FADED, 9, cell - 4, 1)
+            name:SetJustifyH("CENTER")
+            name:SetText(row[1]:upper())
+            name:SetPoint("TOP", page, "TOPLEFT", x, -(y + 19))
+            local under = Text(page, FADED, 9, cell - 4, 1)
+            under:SetJustifyH("CENTER")
+            under:SetText(row[3] or "")
+            under:SetPoint("TOP", page, "TOPLEFT", x, -(y + 31))
+            if i > 1 then
+                local div = Flat(page, "rule")
+                div:SetPoint("TOPLEFT", page, "TOPLEFT", pad + (i - 1) * cell, -(y + 1))
+                div:SetSize(1, 39)
+            end
+            drawn = drawn + 1
+        end
+        y = y + 48
+    end
+    if nemesis and y + 36 <= limit then
+        local band = Flat(page, "stripe")
+        band:SetPoint("TOPLEFT", page, "TOPLEFT", pad - 4, -y)
+        band:SetSize(inner + 8, 36)
+        local bar = Flat(page, "blood", 0.9, 1)
+        bar:SetPoint("TOPLEFT", page, "TOPLEFT", pad - 4, -y)
+        bar:SetSize(3, 36)
+        local f = Take(page.richParts.faces)
+        f:SetPoint("CENTER", page, "TOPLEFT", pad + 18, -(y + 18))
+        f.face:Set({ key = nemesis.who })
+        local room, stop = inner - 44, pad + inner - 4
+        if nemesis.times then
+            local n = Text(page, BLOOD, 17)
+            n:SetText(nemesis.times)
+            n:SetPoint("TOPRIGHT", page, "TOPLEFT", stop, -(y + 2))
+            local under = Text(page, FADED, 9)
+            under:SetText(nemesis[3] or "")
+            under:SetPoint("TOPRIGHT", page, "TOPLEFT", stop, -(y + 22))
+            room = room - math.ceil(math.max(TextWidth(n), TextWidth(under))) - 10
+        end
+        local head = Text(page, BLOOD, 9)
+        head:SetText(nemesis[1]:upper())
+        head:SetPoint("TOPLEFT", page, "TOPLEFT", pad + 40, -(y + 4))
+        local name = Text(page, INK, 13, room, 1)
+        name:SetText(nemesis[2])
+        if TextWidth(name) > room then Ink(name, INK, TEXT_FONT, 11) end
+        name:SetPoint("TOPLEFT", page, "TOPLEFT", pad + 40, -(y + 17))
+        y = y + 36
+        drawn = drawn + 1
+    end
+    return y, drawn
 end
 
 --- Draw d.rich on a page built with a rich layout. Returns how far down it went, for the buttons.
@@ -1759,9 +2177,21 @@ local function FillRich(page, d, L)
         local after = pad + math.ceil(TextWidth(head)) + 6
         local line = Flat(page, "rule")
         line:SetPoint("TOPLEFT", page, "TOPLEFT", after, -(y + 5))
-        line:SetSize(math.max(1, w - pad - after), 1)
+        local ruleTo, link = w - pad, nil
+        if sec.edit then
+            link = Take(page.richParts.links)
+            link.run = sec.edit[2]
+            link.text:SetText(sec.edit[1])
+            local wide = math.ceil(TextWidth(link.text)) + 4
+            link:SetSize(wide, 16)
+            link:SetPoint("TOPRIGHT", page, "TOPLEFT", w - pad, -(y - 3))
+            ruleTo = ruleTo - wide - 6
+        end
+        line:SetSize(math.max(1, ruleTo - after), 1)
         y = y + 17
-        if sec.kind == "events" then
+        if sec.kind == "highlights" then
+            y, drawn = Highlights(page, sec.rows, pad, inner, y, limit)
+        elseif sec.kind == "events" then
             for i, e in ipairs(sec.rows) do
                 if y + 28 > limit then break end
                 if i % 2 == 0 then
@@ -1846,6 +2276,7 @@ local function FillRich(page, d, L)
         if drawn == 0 and #sec.rows > 0 then
             head:Hide()
             line:Hide()
+            if link then link:Hide() end
             y = top
             break
         end
@@ -1913,6 +2344,23 @@ local function BuildDetail(page, L)
             texts = { n = 0, make = function() return page:CreateFontString(nil, "ARTWORK") end },
             paint = { n = 0, make = function() return page:CreateTexture(nil, "BORDER") end },
             icons = { n = 0, make = function() return page:CreateTexture(nil, "ARTWORK") end },
+            faces = { n = 0, make = function()                   -- a portrait in a section's row (the nemesis)
+                local f = CreateFrame("Frame", nil, page)
+                f:SetSize(30, 30)
+                f.face = MakePortrait(f, 30)
+                f.face.tex:SetPoint("CENTER")
+                return f
+            end },
+            links = { n = 0, make = function()                   -- a word to click on a section's heading (sec.edit)
+                local b = CreateFrame("Button", nil, page)
+                b.text = b:CreateFontString(nil, "ARTWORK")
+                Ink(b.text, BLOOD, TEXT_FONT, 11)
+                b.text:SetPoint("RIGHT")
+                b:SetScript("OnClick", function(self) if self.run then self.run() end end)
+                b:SetScript("OnEnter", function(self) self.text:SetTextColor(INK[1], INK[2], INK[3]) end)
+                b:SetScript("OnLeave", function(self) self.text:SetTextColor(BLOOD[1], BLOOD[2], BLOOD[3]) end)
+                return b
+            end },
         }
     end
     -- below the portrait's number and its caption (on the ledger they end about 172 down)
@@ -1937,9 +2385,13 @@ local function BuildDetail(page, L)
     page.sign:SetPoint("BOTTOMRIGHT", -(L.padX + 2), L.signY)
     page.sign:SetText("- the Grudgekeeper")
     page.buttons = {}
-    for i = 1, 2 do
+    -- a third, under the first, where the layout has the room (third): a poster's Forget grudge. At its lowest
+    -- it stands left of the signature, on its line, so it takes no room from the card's rows.
+    for i = 1, L.third and 3 or 2 do
         local b = GK.MakeButton(page, 140, 22)
-        if i == 1 then b:SetPoint("BOTTOMLEFT", L.padX, L.buttonY) else b:SetPoint("LEFT", page.buttons[1], "RIGHT", 6, 0) end
+        if i == 1 then b:SetPoint("BOTTOMLEFT", L.padX, L.buttonY)
+        elseif i == 2 then b:SetPoint("LEFT", page.buttons[1], "RIGHT", 6, 0)
+        else b:SetPoint("TOPLEFT", page.buttons[1], "BOTTOMLEFT", 0, -4) end
         page.buttons[i] = b
     end
 end
@@ -2181,8 +2633,9 @@ local function Layout()
     local folded = Folded()
     local b = folded and FOLDED or OPEN
     win:SetSize(b.W, b.H)
-    -- the skin's background: the parchment, or in classic the frame's own panel, as Guildhall has it
-    if GK.Classic() then
+    -- the skin's background: the parchment, or in classic the frame's own panel, as Guildhall has it. The
+    -- settings are on that dark panel in either skin, with no inner frame (the owner's pick A, 2026-11-22)
+    if settingsOn or GK.Classic() then
         win.sheet:SetAtlas("heavybronze-frame-background")
         win.sheet:SetDesaturation(0)
         win.sheet:SetVertexColor(1, 1, 1)
@@ -2193,6 +2646,7 @@ local function Layout()
     end
     win.divider:SetShown(not folded)                 -- folded there is one page: nothing to divide
     if settingsOn then win.divider:Hide() end        -- the settings draw their own, at the menu's edge
+    win.inner:SetShown(not settingsOn)
     -- folded, the tabs down the right side stay on the screen with the frame (PlaceTabs)
     win:SetClampRectInsets(0, folded and -(TAB_H_ON - TAB_TUCK) or 0, 0, 0)
     win.list:ClearAllPoints()
@@ -2735,7 +3189,10 @@ Refresh = function()
     -- the settings over both pages: the list and the card wait under them, as they were
     win.list:SetShown(not settingsOn)
     win.detail:SetShown(not settingsOn)
-    if settingsOn then return end
+    if settingsOn then
+        if win.versus then win.versus:Hide() end
+        return
+    end
     local folded = Folded()
     local def = GK.LedgerPages[tab]
     local items, empty = def.items()
@@ -2745,7 +3202,9 @@ Refresh = function()
     -- a card pinned from outside marks no row; one that has nothing to show any more lets the page choose
     local card = pinned and DetailCard(pinned)
     if not card then pinned = nil end
-    local chosen = not pinned and Chosen(items) or nil
+    -- the guild on watch's view has the versus page where a card would be, unless a card was asked for
+    local versus = not pinned and def.versus and def.versus() or nil
+    local chosen = not pinned and not versus and Chosen(items) or nil
     -- the list page
     list.title:SetText(def.name)
     -- the page's views as ink tabs on the paper, under the title, with a rule under the row of them
@@ -2756,46 +3215,33 @@ Refresh = function()
         b:SetShown(l ~= nil)
         if l then
             b:Set(l.text, l.on)
-            b.click = l.click
+            b.click, b.tip = l.click, l.tip
             b:ClearAllPoints()
             if last then b:SetPoint("LEFT", last, "RIGHT", TAB_INK_GAP, 0) else b:SetPoint("TOPLEFT", 10, -TAB_INK_Y) end
             last = b
         end
     end
     list.tabRule:SetShown(last ~= nil)
-    local sortable = def.sortable == true
-    list.mine:SetShown(sortable)
-    if sortable then list.mine:Set("Only mine", GK.db.mineOnly == true) end
+    local sortable, mineShown = def.sortable == true, MineShown(def)
+    list.mine:SetShown(mineShown)
+    if mineShown then
+        list.mine:Set("Only mine", GK.db.mineOnly == true)
+    end
     -- the tail (the leaderboard's "resets in 1 day") at the tabs' right end, short of Only mine
     list.reset:ClearAllPoints()
-    list.reset:SetPoint("TOPRIGHT", list, "TOPRIGHT", -(sortable and list.mine.width + 14 or 12), -(TAB_INK_Y + 3))
+    list.reset:SetPoint("TOPRIGHT", list, "TOPRIGHT", -(mineShown and list.mine.width + 14 or 12), -(TAB_INK_Y + 3))
     list.reset:SetText(last and def.linksTail and def.linksTail() or "")
-    -- the line under the title on a page without tabs: words, and links after them (WatchLinks)
+    -- the line under the title on a page without tabs, decided here and not read back: the game's GetText gives
+    -- no "" for an empty line
     list.sub:ClearAllPoints()
     list.sub:SetPoint("TOPLEFT", 12, -44)
-    list.sub:SetWidth(last and 0 or (PAGE_W - 24 - (sortable and list.mine.width + 10 or 0)))
-    -- the words decided here, not read back: the game's GetText gives no "" for an empty line, so the
-    -- watched guild's links hung after the empty line's far end, out on the right page (the owner's
-    -- screenshot, 2026-11-18)
+    list.sub:SetWidth(last and 0 or (PAGE_W - 24 - (mineShown and list.mine.width + 10 or 0)))
     local subText = not last and def.sub and def.sub(items, all) or ""
     list.sub:SetText(subText)
-    local subLinks = not last and def.subLinks and def.subLinks() or {}
-    local after = subText ~= "" and list.sub or nil
-    for i, b in ipairs(list.subLinks) do
-        local l = subLinks[i]
-        b:SetShown(l ~= nil)
-        if l then
-            b:Set(l.text, l.plain)
-            b.click = l.click
-            b:ClearAllPoints()
-            if after then b:SetPoint("LEFT", after, "RIGHT", 8, 0) else b:SetPoint("TOPLEFT", 12, -42) end
-            after = b
-        end
-    end
     local heads, action = Headings(def), Action(def)
     list.add:SetShown(action ~= nil)
     list.underline:SetShown(#heads > 0)
-    local top, perPage = ListFrame(def, last ~= nil or subText ~= "" or #subLinks > 0)
+    local top, perPage = ListFrame(def, last ~= nil or subText ~= "")
     if list.top ~= top then
         list.top = top
         for i, row in ipairs(list.rows) do row:SetPoint("TOPLEFT", 4, -(top + (i - 1) * ROW_H)) end
@@ -2858,10 +3304,18 @@ Refresh = function()
     -- the detail: the right-hand page, or the page turned
     local showDetail = not folded or turned
     list:SetShown(not folded or not turned)
-    detail:SetShown(showDetail)
+    detail:SetShown(showDetail and not versus)
+    if versus and not win.versus then
+        win.versus = Versus.Build(win, detail, function()
+            turned = false
+            Refresh()
+        end)
+    end
+    if win.versus then win.versus:SetShown(showDetail and versus ~= nil) end
+    if showDetail and versus then Versus.Fill(win.versus, versus ~= "" and versus or nil, folded) end
     detail.back:SetShown(folded)
     detail.back.text:SetText("\194\171 Back to " .. def.name:lower())
-    if showDetail then FillDetail(detail, card or DetailCard(chosen and chosen.select), #items > 0) end
+    if showDetail and not versus then FillDetail(detail, card or DetailCard(chosen and chosen.select), #items > 0) end
 end
 
 function GK.OpenWindow(page)
@@ -2882,6 +3336,7 @@ end
 
 --- The kill orders page, on this order (by its key) when it has a row there; else the page as it was.
 function GK.OpenOrder(orderKey)
+    ordersPage.All()                                 -- whatever was shown: that order's row
     GK.OpenWindow(1)                                 -- first: choosing the tab starts the page afresh
     local o = type(orderKey) == "string" and GK.Store().orders[orderKey]
     if o and o.state ~= "o" then
@@ -2931,18 +3386,19 @@ function GK.ShowLedgerSettings()
     Refresh()
 end
 
---- The ledger at a page found by its name, in one of its views: Most wanted's "killed" or "guild", the
+--- The ledger at a page found by its name, in one of its views: Grudges' "me", "killed" or "guild", the
 --- News's "all" or "orders".
 function GK.OpenLedgerView(name, view)
-    if name == "Most wanted" then wantedView = view == "guild" and "guild" or "killed" end
+    if name == "Grudges" then grudgesView = (view == "guild" or view == "killed") and view or "me" end
     if name == "News" then newsView = view == "orders" and "orders" or "all" end
     GK.OpenLedgerPage(name)
 end
 
 -- Where a card opened from outside the book looks for a row about them, after the page that is up: an
--- enemy on your Grudges, then Most wanted (an open order on them goes first of all, GK.ShowInLedger); a
--- guildie or you on the You page (yours) and the leaderboard; a note's card on the lists it is from.
-local HOMES = { poster = { "Grudges", "Most wanted" }, record = { "You", "Leaderboard" },
+-- enemy on your Death list, then your Grudges, who killed you and who killed the guild (an open order on them
+-- goes first of all, GK.ShowInLedger); a guildie or you on the You page (yours) and the leaderboard; a note's
+-- card on the lists it is from.
+local HOMES = { poster = { "Death list", "Grudges" }, record = { "You", "Leaderboard" },
     card = { "Shame", "Kudos" } }
 
 --- Is this row about whom the spec is: the same kind of card, on the same player (GK.SameName: another
@@ -2968,6 +3424,20 @@ local function RowAbout(i, spec)
     end
 end
 
+--- As RowAbout, on a page with views in each of those where a row is a player's card: it is left in the one that
+--- has them, and as it was where none has.
+local function RowAtHome(i, spec)
+    local def = GK.LedgerPages[i]
+    if not def.views then return RowAbout(i, spec) end
+    local was = def.getView()
+    for _, view in ipairs(def.views) do
+        def.setView(view)
+        local n, key = RowAbout(i, spec)
+        if n then return n, key end
+    end
+    def.setView(was)
+end
+
 --- Open the ledger on someone's card: whatever opened a card of its own before - the right-click menu on a
 --- player, a kill order's pin on the map, a note's menu - opens it here, the card the ledger and the
 --- Inspect tab draw. The small card of its own said less in a note's frame ("den 'profil' ved høyreklikk er
@@ -2991,7 +3461,7 @@ function GK.ShowInLedger(spec)
     for _, name in ipairs(not at and HOMES[spec.kind] or {}) do
         for i, def in ipairs(GK.LedgerPages) do
             if def.name == name then
-                n, key = RowAbout(i, spec)
+                n, key = RowAtHome(i, spec)
                 if n then at = i end
                 break
             end
@@ -3001,6 +3471,9 @@ function GK.ShowInLedger(spec)
     if at and at ~= tab then SelectTab(at) end
     if at then
         selected[at], pinned = key, nil
+        -- a card asked for shows over the versus page, whose rows open none
+        local def = GK.LedgerPages[at]
+        if def.versus and def.versus() then pinned = spec end
         offset = n - 1                 -- the turn of the list the row is on (Refresh finds its start)
     else
         pinned = spec

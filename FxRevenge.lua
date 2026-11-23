@@ -160,3 +160,134 @@ GK.TOASTFX.revenge = {
         DrawRing(toast, P, toast.revenge, age, TOAST)
     end,
 }
+
+-- ---------------------------------------------------------------------------
+-- A Death list kill: the eye. A1 in the effect lab's round 10, the owner's pick, 2026-11-23.
+-- ---------------------------------------------------------------------------
+-- "kan vi ikke bare ha 1 ting for hele death listen? you killed someone on your deathlist kinda? de skal ikke bli
+-- borte fra listen med mindre man selv fjerner dem" (the owner): nothing is struck off. The Death list's own mark,
+-- the black wax seal with the eye that stands over their plates (Media/eye), slams in with the eye shut; it opens and
+-- glows blood red, a notch is cut in the wax for the kill, and DEATH LIST slams down over it. Codex drew the seal as
+-- 16 frames after the owner's own (art/import_deathlist.py: fx_deathlist_eye), the next laid over each as it comes.
+-- Its sounds are the owner's picks in the lab: a boom as the seal lands, Backstab (Spell_RO_Backstab_Cast_01) on the
+-- notch, no call and nothing on the word. Here because it is a grudge's kill as revenge is, and a file of its own
+-- would need the game started again to load.
+local EYE_SHEET = "fx_deathlist_eye"
+local EYE_FPS, EYE_OPEN, EYE_GLOW, EYE_HIT = 12, 2, 6, 9            -- frames: the eye opens, glows, is notched
+local EYE_HIT_X, EYE_HIT_Y = 0.27, -0.27                            -- the notch, as shares of the picture from its middle
+local EYE_ART = 0.8                                                 -- how much of a cell the seal fills
+local EYE_WORD_COLOUR = { 0.8, 0.12, 0.07 }                         -- REVENGE's blood red: the same family of kill
+local EYE_SPLASH = { size = 210, y = -20, start = 0.12, slam = 0.14, k = 1, dust = 16, sparks = 18, jolt = 4 }
+local EYE_TOAST = { size = 63, y = 0, start = 0.05, slam = 0.12, k = 0.3, dust = 6, sparks = 6, jolt = 4 }
+
+local function EyeTimes(d)
+    local land = d.start + d.slam
+    return land, land + EYE_HIT / EYE_FPS
+end
+local EYE_LAND, EYE_HIT_T = EyeTimes(EYE_SPLASH)
+local EYE_WORD = EYE_HIT_T + 0.32
+local EYE_T_LAND, EYE_T_HIT = EyeTimes(EYE_TOAST)
+local EYE_CELL = function(i)
+    local col, row = i % 4, math.floor(i / 4)
+    return { col / 4, (col + 1) / 4, row / 4, (row + 1) / 4 }
+end
+
+local function BuildEye(frame, P, d)
+    local s, k = {}, d.k
+    local hx, hy = EYE_HIT_X * d.size, d.y + EYE_HIT_Y * d.size
+    s.glow = P.Tex(frame, "spree_glow", "ARTWORK", 1, true)
+    -- the frame and the next laid over it: the old stays whole underneath, never see-through
+    s.eye = { P.Tex(frame, EYE_SHEET, "ARTWORK", 3), P.Tex(frame, EYE_SHEET, "ARTWORK", 4) }
+    s.landFlash = P.Tex(frame, "spree_glow", "OVERLAY", 2, true)
+    s.flash = P.Tex(frame, "spree_glow", "OVERLAY", 3, true)
+    s.dust = P.Burst(frame, d.dust, { t0 = d.start + d.slam + EYE_HIT / EYE_FPS, cx = hx, cy = hy, speed = 220 * k, life = 0.5,
+        size = 14 * k, file = "fx_dust", add = false, tint = { 0.3, 0.2, 0.35 }, seed = 81 })
+    s.sparks = P.Burst(frame, d.sparks, { t0 = d.start + d.slam + EYE_HIT / EYE_FPS, cx = hx, cy = hy, speed = 300 * k,
+        life = 0.45, size = d.k < 1 and 5 or 9, stretch = 2, tint = { 1, 0.3, 0.2 }, seed = 82 })
+    return s
+end
+
+local function DrawEye(frame, P, s, age, d)
+    local E, S, Y = P.E, d.size, d.y
+    local land = d.start + d.slam
+    local hit = land + EYE_HIT / EYE_FPS
+    local hx, hy = EYE_HIT_X * S, Y + EYE_HIT_Y * S
+    -- the seal comes in at 2.2 times and lands, rocking a little; the sheet plays from its landing
+    local kq = P.prog(age, d.start, d.slam, E.inQ)
+    local sc = age < land and P.lerp(2.2, 1, kq) or 1 + 0.08 * math.exp(-(age - land) * 12) * math.cos((age - land) * 30)
+    local a = P.prog(age, d.start, 0.06)
+    local j = (Jolt(age, hit, d.jolt) + Jolt(age, land, 6)) * d.k
+    local t = age - land
+    local pos = t < 0 and 0 or math.min(15, t * EYE_FPS)
+    -- the eye's red behind it from the frame it glows, breathing
+    local glowAt = land + EYE_GLOW / EYE_FPS
+    if age >= glowAt then
+        P.Set(frame, s.glow, { y = Y, w = S * 1.5, h = S * 1.5, a = P.prog(age, glowAt, 0.3) * (0.55 + 0.15 * math.sin(age * 5)),
+            cr = 0.85, cg = 0.08, cb = 0.05 })
+    else
+        s.glow:Hide()
+    end
+    if age >= land then
+        P.Set(frame, s.landFlash, { y = Y, w = S * 1.8, h = S * 1.4, a = 0.6 * math.exp(-(age - land) * 9), cr = 0.75, cg = 0.55, cb = 1 })
+    else
+        s.landFlash:Hide()
+    end
+    local i = math.floor(pos)
+    local w = pos - i
+    local o = { y = Y + j, w = S, h = S, s = sc }
+    if i >= 15 or w < 0.4 then
+        o.coord, o.a = EYE_CELL(i), a
+        P.Set(frame, s.eye[1], o)
+        s.eye[2]:Hide()
+    else
+        local fresh = P.clamp((w - 0.4) / 0.4)
+        local old = 1 - P.clamp((w - 0.8) / 0.2)
+        o.coord, o.a = EYE_CELL(i), a * old
+        P.Set(frame, s.eye[1], o)
+        P.Set(frame, s.eye[2], { y = Y + j, w = S, h = S, s = sc, coord = EYE_CELL(i + 1), a = a * fresh })
+    end
+    if age >= hit then
+        P.Set(frame, s.flash, { x = hx, y = hy, w = S * 1.5, h = S, a = 0.85 * math.exp(-(age - hit) * 7), cr = 1, cg = 0.3, cb = 0.2 })
+    else
+        s.flash:Hide()
+    end
+    s.dust(age)
+    s.sparks(age)
+end
+
+GK.FX.deathlist = {
+    land = EYE_WORD + 0.1,             -- the line and the glow come after the word, and the hold counts from them
+    voice = false,                     -- no call (the owner's pick in the lab: "Kallet: Ingen"); its cues are its sound
+    cues = { { EYE_LAND, "boom" }, { EYE_HIT_T, 1305792 } },
+    build = function(splash, P)
+        local s = BuildEye(splash, P, EYE_SPLASH)
+        s.gloom = P.Tex(splash, "fx_gloom", "BACKGROUND", 2)
+        s.head = P.Headline(splash, "DEATH LIST", EYE_WORD_COLOUR, WORD_GLOW, WORD_FLASH,
+            P.HeadOver(EYE_SPLASH.y - EYE_SPLASH.size * EYE_ART / 2))
+        splash.deathlist = s
+    end,
+    update = function(splash, age, P)
+        local s = splash.deathlist
+        P.Set(splash, splash.seal, { a = 0 })            -- the eye is where the seal would be
+        P.Set(splash, s.gloom, { y = EYE_SPLASH.y, w = EYE_SPLASH.size * 1.9, h = EYE_SPLASH.size * 1.6, a = 0.6 * P.prog(age, 0, 0.2) })
+        DrawEye(splash, P, s, age, EYE_SPLASH)
+        P.DrawHeadline(splash, s.head, age, EYE_WORD)
+        -- the line up under the eye (Announce.lua puts it back for the next splash)
+        splash.line:ClearAllPoints()
+        splash.line:SetPoint("TOP", splash, "TOP", 0,
+            -P.SEAL / 2 - (EYE_SPLASH.y + EYE_SPLASH.size * EYE_ART / 2 + 14))
+    end,
+}
+
+GK.TOASTFX.deathlist = {
+    voice = false,
+    cues = { { EYE_T_LAND, "boom" }, { EYE_T_HIT, 1305792 } },
+    build = function(toast, P)
+        toast.fxOrigin = { point = "TOPLEFT", x = 32, y = -32 }      -- the toast's seal's centre (FxToast.lua)
+        toast.deathlist = BuildEye(toast, P, EYE_TOAST)
+    end,
+    update = function(toast, age, P)
+        P.Set(toast, toast.seal, { a = 0 })
+        DrawEye(toast, P, toast.deathlist, age, EYE_TOAST)
+    end,
+}

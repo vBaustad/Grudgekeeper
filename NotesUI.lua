@@ -5,7 +5,7 @@
 --                       wanted poster and the record when there are notes on that player
 --   the note sheet      in the game's own frame: whom, the list, a tag, a few words, Save
 --   the right-click menu   Put on Shame and Give kudos on a friendly player, with their tags
---   quiet marks         a line on the tooltip, a dim mark on the nameplate. They never open anything
+--   quiet marks         a line on the tooltip, medals or a mark on the plate. They never open anything
 --   warnings            only when asked: a Shame player near (off), a Shame player joining your group
 --                       (on), a Kudos one (a chat line, off)
 -- It also wraps a few functions of the other files (docs/guild-grudge-merge.md, H7): the poster and
@@ -67,11 +67,19 @@ local cache, cacheVersion = {}, -1
 
 --- Every tag the authors gave, newest first, and how many notes gave each.
 local function Distinct(notes, authors)
-    local tags, counts = {}, {}
+    local tags, counts, gave = {}, {}, {}
     for _, n in ipairs(notes) do
         if n.tag and authors[n.author] then
-            if not counts[n.tag] then tags[#tags + 1] = n.tag end
-            counts[n.tag] = (counts[n.tag] or 0) + 1
+            local by = gave[n.tag]
+            if not by then
+                by = {}
+                gave[n.tag], tags[#tags + 1], counts[n.tag] = by, n.tag, 0
+            end
+            -- people and not notes: four from one are one who says it, and three from three are three
+            if not by[n.author] then
+                by[n.author] = true
+                counts[n.tag] = counts[n.tag] + 1
+            end
         end
     end
     return tags, counts
@@ -79,7 +87,7 @@ end
 
 --- { key, lists = GK.ListsOf, notes = GK.NotesOf (newest first), count, score, on = the lists they are on,
 --- primary = the one to show, tags = [list] = the newest tag, taglist = [list] = every tag,
---- tagcount = [list] = { [tag] = notes that gave it } } or nil.
+--- tagcount = [list] = { [tag] = how many of them gave it } } or nil.
 local function BuildSummary(key)
     if not GK.IsNoted(key) then return nil end
     local s = { key = key, lists = GK.ListsOf(key), notes = GK.NotesOf(key), on = {}, tags = {}, taglist = {}, tagcount = {}, score = 0 }
@@ -292,10 +300,10 @@ function GK.GuildCard(guild)
     local name, by, ts = GK.WatchedGuild()
     if not GK.SameGuild(name, guild) then return nil end
     guild = name                    -- as it is spelled now: a name typed in gets the game's spelling later
-    local d = { title = "WATCHED GUILD", name = "<" .. guild .. ">", info = "Anyone of theirs near warns you.",
+    local d = { title = "TRACKED GUILD", name = "<" .. guild .. ">", info = "Anyone of theirs near warns you.",
         lines = {}, buttons = {}, seal = "mark" }
-    d.lines[1] = ("Put on watch by %s, %s."):format(by and Who(by) or "an officer", GK.Ago(ts))
-    -- the score against them (Guild.lua, 2026-11-22), as Most wanted's view of them has it
+    d.lines[1] = ("Tracked by %s, %s."):format(by and Who(by) or "an officer", GK.Ago(ts))
+    -- the score against them (Guild.lua, 2026-11-22), as Grudges' view of them has it
     if GK.GuildScore then
         local us, them = GK.GuildScore(guild)
         d.lines[2] = ("Score: we killed them %d, they killed us %d."):format(us, them)
@@ -309,7 +317,7 @@ function GK.GuildCard(guild)
         end
     end
     if GK.CanWatchGuild() then
-        d.buttons[1] = { "Stop watching", function() GK.WatchGuild(guild, false) end }
+        d.buttons[1] = { "Stop tracking", function() GK.WatchGuild(guild, false) end }
     end
     return d
 end
@@ -703,6 +711,11 @@ local marks = setmetatable({}, { __mode = "k" })   -- plate -> our mark on it (m
 local marked = {}                                  -- unit -> the plate its mark is on
 local nearAt = {}                                  -- [key] = GetTime() of the last warning
 local lastGroup = {}                               -- the keys in our group at the last roster update
+-- Whether you are in a fight. The medals wait for it to end: "det kan bli annoying med alle medaljene, spesielt om
+-- de er på til enhver tid", then "ha det som nå, men ikke vises i dungeons/raids eller i combat" (the owner,
+-- 2026-11-22). An instance has no marks at all already (Look: GK.InWorld). The events say it, as InCombatLockdown
+-- is not true yet while PLAYER_REGEN_DISABLED is handled.
+local fighting = false
 
 local function PlateOf(unit)
     if not (C_NamePlate and C_NamePlate.GetNamePlateForUnit) then return nil end
@@ -757,9 +770,20 @@ local function KudosRow(f, s)
     f.more:SetShown(more > 0)
 end
 
+--- The game's raid icon where the medals would sit: in name-only plates it is 10 over the name, at any other
+--- it is left of the health bar (Blizzard_NamePlateUnitFrame.lua:851, build 71037). Its frame says both, shown and
+--- showOnlyName, set by plain Show and Hide (Blizzard_NamePlateRaidTarget.lua). GetRaidTargetIndex can't be asked:
+--- its returns are secret.
+local function IconOverName(icon)
+    if type(icon) ~= "table" or not icon.IsShown then return false end
+    local shown, nameOnly = icon:IsShown(), icon.showOnlyName
+    if Secret(shown) or Secret(nameOnly) then return false end
+    return (shown and nameOnly == true) and true or false
+end
+
 --- A small dim mark on the plate, left of the kill order's seal (Sightings.lua: 26 wide, centred, 6 down
 --- into the plate) so the two never cover each other. Kudos wears a row of medals in the seal's own
---- place: a player with an open order gets no note mark, so the two never meet.
+--- place: none where the seal or Tracked's eye is, and over the game's raid icon where that is over the name.
 local function Mark(unit, list, s)
     Unmark(unit)
     local plate = PlateOf(unit)
@@ -777,9 +801,11 @@ local function Mark(unit, list, s)
     if list == "kudos" then
         -- Blizzard's friendly plate is tall with the name low in it, so its top floats far above the
         -- name; sit on the name when it shows. Plate addons (ElvUI, Ellesmere) hide it and keep the plate tight.
-        local name = plate.UnitFrame and plate.UnitFrame.name
-        if name and name:IsVisible() then
-            f:SetPoint("BOTTOM", name, "TOP", 0, 2)
+        local frame = plate.UnitFrame
+        local name, icon = frame and frame.name, frame and frame.RaidTargetFrame
+        local named = name and name:IsVisible()
+        if not Secret(named) and named then
+            f:SetPoint("BOTTOM", IconOverName(icon) and icon or name, "TOP", 0, 2)
         else
             f:SetPoint("BOTTOM", plate, "TOP", 0, 2)
         end
@@ -834,22 +860,29 @@ local function Look(unit)
     local guid = UnitGUID(unit)
     local order = GK.OrderOn(key, (not Secret(guid) and type(guid) == "string") and guid or nil)
     if plates[unit] then
-        if order or not GK.db.plateNotes then Unmark(unit) else Mark(unit, s.primary, s) end
+        if order or not GK.db.plateNotes then
+            Unmark(unit)
+        elseif s.primary == "kudos" and (fighting or (GK.EyeOn and GK.EyeOn(unit))) then
+            Unmark(unit)                             -- the medals alone: Shame is a warning, so its mark stays
+        else
+            Mark(unit, s.primary, s)
+        end
     end
     if not order then Nearby(key, s) end
 end
 
--- The plates on screen looked at again when the notes change: a mark appears, or goes, at once.
+-- The plates on screen looked at again when the notes change, a fight begins or ends, or the raid icons move:
+-- a mark appears, or goes, at once.
 local function RefreshPlates()
     for unit in pairs(plates) do Look(unit) end
 end
 
---- The sound for a Shame player joining: the one picked in the settings, the chime when that one can't be
+--- The sound for a Shame player joining: the one picked in the settings, the horn when that one can't be
 --- played (a warning must never go silent because a file went missing), nothing for None.
 local function ShameSound()
     local key = GK.ShameSoundKey()
-    if not GK.db.sound or key == "off" then return end
-    if not GK.PlayChoice(key) then GK.Sound("UI_RAID_BOSS_WHISPER_WARNING") end
+    if GK.db.warnSounds == false or key == "off" then return end
+    if not GK.PlayChoice(key) then GK.PlayChoice("kit:PVP_THROUGH_QUEUE") end
 end
 
 --- Who joined the group since the last update: Shame warns, Kudos says one friendly line.
@@ -1068,4 +1101,15 @@ LIB.On("PLAYER_LOGIN", function()
     LIB.On("UPDATE_MOUSEOVER_UNIT", function() Look("mouseover") end)
     LIB.On("GROUP_ROSTER_UPDATE", GK.CheckNotesGroup)
     LIB.Listen("GRUDGEKEEPER_CHANGED", RefreshPlates)
+    fighting = InCombatLockdown() and true or false  -- a /reload can land in a fight
+    local function Fight(on)
+        fighting = on
+        if GK.db.plateNotes and next(plates) then RefreshPlates() end
+    end
+    LIB.On("PLAYER_REGEN_DISABLED", function() Fight(true) end)
+    LIB.On("PLAYER_REGEN_ENABLED", function() Fight(false) end)
+    -- a frame later, as the game's own plate hears the same event and only then shows its icon
+    LIB.On("RAID_TARGET_UPDATE", function()
+        if next(marked) then LIB.Debounce("GrudgekeeperRaidIcon", 0, RefreshPlates) end
+    end)
 end)

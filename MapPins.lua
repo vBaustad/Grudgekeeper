@@ -21,7 +21,8 @@ function GK.MapPinData(now)
     now = now or time()
     for _, o in pairs(GK.Store().orders) do
         local s = o.seen
-        if o.state == "o" and s and s.m and s.x and s.y and now - (s.t or 0) <= PIN_FOR then
+        if o.state == "o" and s and s.m and s.x and s.y and now - (s.t or 0) <= PIN_FOR
+            and (not GK.OrderLoud or GK.OrderLoud(o)) then
             list[#list + 1] = { o = o, m = s.m, x = s.x / 1000, y = s.y / 1000 }
         end
     end

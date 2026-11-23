@@ -959,9 +959,14 @@ test("kill order sheet: a new order, one of yours, and someone else's pot", func
     eq(p.pot, theirs)
     eq(p.title, "ADD TO THE POT")
     eq(p.bounty, "Your share")
-    eq(p.button, "Add it")
+    eq(p.button, "Change it", "a share of yours is in: it is changed, never added to")
     eq(p.amount, 300)
     eq(p.asksWhy, false)
+    eq(p.small, "Kari already has an order on them: 50s in all. Your share is 3s now. A new amount replaces it.")
+    theirs.pot = nil
+    p = GK.PostPlan(t)
+    eq(p.button, "Add it", "none of yours in it yet")
+    eq(p.amount, 0)
     eq(p.small, "Kari already has an order on them: 50s. Your share goes on top, and you pay it to whoever fulfils it.")
     eq(GK.PostLabel(t), "Add to the pot")
 end)
@@ -1391,7 +1396,7 @@ test("the list pages: Shame and Kudos on the right, none with links; Marked has 
     local want = { { "Shame", "right", 7 }, { "Kudos", "right", 8 } }
     local order = {}
     for i, page in ipairs(GK.LedgerPages) do order[i] = page.name end
-    eq(table.concat(order, "|"), "Kill orders|Leaderboard|Most wanted|Grudges|News|You|Shame|Kudos")
+    eq(table.concat(order, "|"), "Kill orders|Leaderboard|Death list|Grudges|News|You|Shame|Kudos")
     for _, w in ipairs(want) do
         local page = GK.LedgerPages[w[3]]
         eq(page.name, w[1])
@@ -2263,16 +2268,16 @@ test("assist: a fight begun before the meter was read hides ours in Current, so 
     eq(table.concat(asked, ","), "9,8", "newest first, and no further than it had to")
 end)
 
-test("assist: the points of an assist that cross a title bring the title's letter", function()
+test("assist: the points of an assist that cross a title bring no letter, as a kill's bring none", function()
     local GK, LIB = bootKills()
     local letters = {}
-    function GK.KillLetter(v, zone, title) letters[#letters + 1] = title end
+    function GK.KillLetter(v, zone, title) letters[#letters + 1] = title end    -- gone since 2026-11-22: never called
     GK.db.myLetters = true
     GK.char.points = 9
     GK.OnPartyKill(KARI_GUID, FOE_GUID)
     endFight(LIB, { { "Me", 65 } })
     eq(GK.char.points, 10)
-    eq(letters[1], "Cutthroat", "the letter, as a kill's")
+    eq(#letters, 0, "no letter: the title's splash says it")
 end)
 
 test("old race portraits: the face from the old sheet, today's icon for a race it lacks, no face guessed", function()
@@ -2793,34 +2798,36 @@ test("what's new: every letter missed, oldest first, once; none on a first insta
     GK.DeliverNews(false)
     eq(#GK.char.letters, 0, "a moment after login, not under the loading screen")
     W.advance(6)
-    eq(#GK.char.letters, 5)
+    eq(#GK.char.letters, 6)
     eq(GK.char.letters[1].news, "1.4.0", "the oldest first")
     eq(GK.char.letters[2].news, "1.5.0")
     eq(GK.char.letters[3].news, "1.6.0")
     eq(GK.char.letters[4].news, "1.7.0")
     eq(GK.char.letters[5].news, "1.9.0", "1.8.0 had none")
-    eq(GK.db.newsSeen, "1.9.0")
+    eq(GK.char.letters[6].news, "1.12.0", "1.10.0 and 1.11.0 had none")
+    eq(GK.db.newsSeen, "1.12.0")
     GK.DeliverNews(false)                          -- the next login
     W.advance(6)
-    eq(#GK.char.letters, 5, "once")
+    eq(#GK.char.letters, 6, "once")
 
     local GK1 = bootSheets({ me = ME })
     function GK1.NoticeUpdate() end
     GK1.db.newsSeen = "1.4.0"                      -- on 1.4.0: its letter came then
     GK1.DeliverNews(false)
     W.advance(6)
-    eq(#GK1.char.letters, 4)
+    eq(#GK1.char.letters, 5)
     eq(GK1.char.letters[1].news, "1.5.0", "only the ones after it")
     eq(GK1.char.letters[2].news, "1.6.0")
     eq(GK1.char.letters[3].news, "1.7.0")
     eq(GK1.char.letters[4].news, "1.9.0")
+    eq(GK1.char.letters[5].news, "1.12.0")
 
     local GK2 = bootSheets({ me = ME })
     function GK2.NoticeUpdate() end
     GK2.DeliverNews(true)
     W.advance(6)
     eq(#GK2.char.letters, 0, "a first install: nothing is new")
-    eq(GK2.db.newsSeen, "1.9.0", "and not later either")
+    eq(GK2.db.newsSeen, "1.12.0", "and not later either")
 
     local GK3 = bootSheets({ me = ME })
     function GK3.NoticeUpdate() end
@@ -2828,7 +2835,7 @@ test("what's new: every letter missed, oldest first, once; none on a first insta
     GK3.DeliverNews(false)
     W.advance(6)
     eq(#GK3.char.letters, 0, "letters off: none")
-    eq(GK3.db.newsSeen, "1.9.0")
+    eq(GK3.db.newsSeen, "1.12.0")
 
     local GK4 = bootSheets({ me = ME })
     function GK4.NoticeUpdate() end
@@ -2844,10 +2851,12 @@ end)
 test("what's new: short notes from him about no one, each with a button to where it is", function()
     local GK = bootSheets({ me = ME })
     local want = { ["1.4.0"] = { "A word from the keeper", "assists", "Leaderboard" },
-        ["1.5.0"] = { "Eyes on them", "Track an enemy", "Grudges" },
+        ["1.5.0"] = { "Eyes on them", "Put an enemy on your Death list", "Death list" },
         ["1.6.0"] = { "Blood in a row", "String your kills together", "Settings" },
         ["1.7.0"] = { "Who's slacking?", "puts my ledger beside guild chat", "Settings" },
-        ["1.9.0"] = { "Louder now", "a fanfare of its own", "Leaderboard" } }
+        ["1.9.0"] = { "Louder now", "a fanfare of its own", "Leaderboard" },
+        -- drawn as a scroll only in a picture or a test: opened, it is the patch notes (2026-11-23)
+        ["1.12.0"] = { "Patch notes", "A new version of Grudgekeeper is here", "Patch notes" } }
     for id, w in pairs(want) do
         local d = GK.LetterContent({ id = 1, kind = "news", news = id })
         eq(d.note, true, id)
@@ -2859,7 +2868,7 @@ test("what's new: short notes from him about no one, each with a button to where
         assert(not table.concat(d.lines, " "):find("%d"), id .. ": no numbers, those are on the Points heading")
         eq(d.buttons[1][1], w[3], id)
     end
-    eq(GK.LetterContent({ id = 1, kind = "news", sample = true }).title, "Louder now", "a sample: the latest")
+    eq(GK.LetterContent({ id = 1, kind = "news", sample = true }).title, "Patch notes", "a sample: the latest")
 end)
 
 test("the settings page and the help say the release, not how many changes there have been", function()
@@ -2882,13 +2891,30 @@ test("the voice lines are for spree announcements only, not for a target near or
         return n
     end
     eq(Voices(GK.SoundChoices()), 0, "a target near and a Shame player: no voice lines to pick")
-    eq(Voices(GK.SoundChoices(true)), 5, "a spree's: all five")
+    eq(Voices(GK.SoundChoices(true)), 0, "nor a splash's: hearing them ahead spoils them (2026-11-22)")
     GK.db.nearSound, GK.db.shameSound = "file:voice_reaper", "file:voice_bloodied"
-    GK.db.spreeSounds = { reaper = "file:voice_reaper" }
     GK.ForgetGoneSounds(GK.db)
     eq(GK.db.nearSound, "kit:PVP_THROUGH_QUEUE", "a voice picked for a target near goes back to the horn")
     eq(GK.db.shameSound, "auto", "and for a Shame player, to where it starts")
-    eq(GK.db.spreeSounds.reaper, "file:voice_reaper", "a spree keeps its voice")
+end)
+
+test("sounds: what was picked for a splash or toast goes, and None is that moment's box off", function()
+    local GK = boot({ me = ME })
+    GK.db.spreeSounds = { order = "game:930379", revenge = "kit:RAID_WARNING", rank = "off", ended = "off",
+        reaper = "file:voice_reaper" }
+    GK.ForgetGoneSounds(GK.db)
+    eq(GK.db.spreeSounds, nil, "no picks are kept")
+    eq(GK.db.rankSound, false, "None for a new title: its box off")
+    eq(GK.db.orderSound, true, "a roar picked: the order's own again")
+    eq(GK.db.revengeSound, true, "and Revenge's")
+    eq(GK.db.endedSound, true, "None was where a spree ended started: its pulse and shatter go on")
+    eq(GK.db.spreeSound, true, "one step's pick does not switch the sprees off")
+    GK.db.spreeSounds = { bloodied = "off", merciless = "off", butcher = "off", reaper = "off", grudgebound = "off" }
+    GK.ForgetGoneSounds(GK.db)
+    eq(GK.db.spreeSound, false, "every step on None: the sprees' one switch, off")
+    GK.db.rankSound = true
+    GK.ForgetGoneSounds(GK.db)
+    eq(GK.db.rankSound, true, "switched on again, it stays on at the next login")
 end)
 
 -- ---------------------------------------------------------------------------
@@ -2947,14 +2973,16 @@ local function killOf(GK, i, level)
         rf = "Orc", sx = 2 })
 end
 
-test("spree: +1 for a kill worth points; a grey kill adds to the streak and not the spree", function()
+-- "men kill streaks teller grå kills også? burde den det?" (the owner, 2026-11-22): the streak and the spree
+-- are one count, of kills that are neither grey nor farmed, whatever those give in points.
+test("spree: +1 for a kill in the streak; a grey kill adds to neither, and breaks neither", function()
     local GK = bootSpree()
     eq(GK.char.spree, 0)
     killOf(GK, 1)
     killOf(GK, 2, 20)
     killOf(GK, 3)
-    eq(GK.char.streak, 3, "the streak counts every kill")
-    eq(GK.char.spree, 2, "the spree only the kills worth points")
+    eq(GK.char.streak, 2, "the streak: the two that count, the grey one between breaking nothing")
+    eq(GK.char.spree, 2, "the spree, the same")
 end)
 
 test("spree: a kill farmed today is worth nothing and doesn't count", function()
@@ -2963,7 +2991,67 @@ test("spree: a kill farmed today is worth nothing and doesn't count", function()
     local before = GK.char.spree
     GK.RecordKill({ key = GANK, guid = FOE_GUID, c = "ROGUE", r = "Orc", l = 65, rf = "Orc", sx = 2 })
     eq(GK.char.spree, before, "the farmed kill")
-    eq(GK.char.streak, GK.REPEATS + 1)
+    eq(GK.char.streak, GK.REPEATS, "nor the streak")
+end)
+
+-- Bonus points took a grey or farmed kill into the spree until 2026-11-22: what counted was "worth points".
+test("spree: a grey kill with a bonus gives its points and stays out of the streak", function()
+    local bonus = {
+        revenge = function(GK) GK.Foe("Foe1-Realm", { n = "Foe1" }).lastDeath = time() end,
+        avenged = function(GK) GK.Avenged = function() return "Kari" end end,
+        order = function(GK)
+            GK.OrdersOn = function() return { { key = "Kari#1" } } end
+            GK.Fulfil = function() end
+        end,
+    }
+    for what, set in pairs(bonus) do
+        local GK = bootSpree()
+        set(GK)
+        killOf(GK, 1, 20)
+        eq(GK.char.spree, 0, what .. ": the spree")
+        eq(GK.char.streak, 0, what .. ": the streak")
+        eq((GK.char.bestStreak or 0), 0, what .. ": the best streak")
+        eq(GK.char.points > 0, true, what .. ": bonus points are still points")
+    end
+end)
+
+test("spree: a farmed kill with an order gives its points and stays out of the streak", function()
+    local GK = bootSpree()
+    for _ = 1, GK.REPEATS do killOf(GK, 1) end
+    GK.OrdersOn = function() return { { key = "Kari#1" } } end
+    GK.Fulfil = function() end
+    local points = GK.char.points
+    killOf(GK, 1)
+    eq(GK.char.spree, GK.REPEATS, "the spree")
+    eq(GK.char.streak, GK.REPEATS, "the streak")
+    eq(GK.char.points > points, true, "and its points")
+end)
+
+test("spree: a grey bonus kill tells no milestone again", function()
+    local GK, _, heard = bootSpree()
+    for i = 1, 3 do killOf(GK, i) end
+    eq(#heard, 1, "the milestone at three")
+    GK.Avenged = function() return "Kari" end
+    killOf(GK, 9, 20)
+    eq(#heard, 1, "the grey one at three still")
+    eq(table.concat(GK.news, "|"), "S 3 Bloodied", "and one piece of news")
+end)
+
+test("spree: a grey bonus kill never makes a milestone", function()
+    local GK, _, heard = bootSpree()
+    for i = 1, 2 do killOf(GK, i) end
+    GK.Avenged = function() return "Kari" end
+    killOf(GK, 9, 20)
+    eq(#heard, 0, "two and a grey one is two")
+    eq(#GK.news, 0, "and no news")
+end)
+
+test("spree: which kills count", function()
+    local GK = bootSpree()
+    eq(GK.CountsInStreak(60, 65, 0), true, "red")
+    eq(GK.CountsInStreak(60, 20, 0), false, "grey")
+    eq(GK.CountsInStreak(60, 65, GK.REPEATS - 1), true, "the last before farming")
+    eq(GK.CountsInStreak(60, 65, GK.REPEATS), false, "farmed")
 end)
 
 test("spree: an assist never changes it", function()
@@ -3393,7 +3481,7 @@ local function bootAnnounce()
     _G.IsInInstance = function() return A.instance end
     _G.SOUNDKIT = { IG_PVP_UPDATE = 1, RAID_WARNING = 2, PVP_THROUGH_QUEUE = 3, HARDCORE_DUEL = 4,
         UI_PVP_HONOR_PRESTIGE_RANK_UP = 5, UI_RAID_BOSS_DEFEATED = 6, UI_GARRISON_TOAST_INVASION_ALERT = 7,
-        RAID_WARNING_2 = 8, RAID_BOSS_EMOTE_WARNING = 9 }
+        RAID_WARNING_2 = 8, RAID_BOSS_EMOTE_WARNING = 9, UI_BATTLEGROUND_COUNTDOWN_FINISHED = 10 }
     _G.PlaySound = function(id) table.insert(A.played, id) end
     -- a file is remembered by its name, voice_butcher for ...\\Media\\voice_butcher.mp3
     -- (a game file is its FileDataID, a number, and is remembered as that number)
@@ -3433,7 +3521,7 @@ test("announce: the settings start as asked", function()
     eq(GK.db.orderDone, "toast")
     eq(GK.db.announceWhenMine, "always")
     eq(GK.db.announceWhenGuild, "noCombat")
-    eq(next(GK.db.spreeSounds), nil)
+    eq(GK.db.spreeSounds, nil, "no sound is picked for a splash or toast")
 end)
 
 test("announce: a guildie's spree in a fight is held, and shown with the next one when it ends", function()
@@ -3456,19 +3544,19 @@ end)
 
 test("announce: a held splash waits for the one before it, one after another", function()
     local GK, LIB, A = bootAnnounce()
-    GK.db.spreeGuild = "splash"
+    GK.db.announceWhenMine = "noCombat"         -- yours are the splashes
     A.combat = true
-    LIB.Fire("GK_SPREE", KARI, 5, "Merciless", false, "merciless")
-    LIB.Fire("GK_SPREE", EDVARD, 7, "Butcher", false, "butcher")
+    LIB.Fire("GK_SPREE", ME, 5, "Merciless", true, "merciless")
+    LIB.Fire("GK_SPREE", ME, 7, "Butcher", true, "butcher")
     A.combat = false
     LIB.fire("PLAYER_REGEN_ENABLED")
     eq(#A.txt, 1)
-    eq(A.txt[1], "Kari: 5 kills in a row")
+    eq(A.txt[1], "5 kills in a row")
     W.advance(4)
     eq(#A.txt, 1, "still the first one's time: three and a half seconds, and one more")
     W.advance(1)
     eq(#A.txt, 2)
-    eq(A.txt[2], "Edvard: 7 kills in a row")
+    eq(A.txt[2], "7 kills in a row")
 end)
 
 test("announce: held ones are released when the area changes, if it allows them", function()
@@ -3634,17 +3722,17 @@ test("announce: your kill order by its own row, a guildie's by theirs", function
     eq(#A.txt, 2, "yours told with a guildie's off - before 2026-11-20 Off turned both off")
 end)
 
-test("announce: the sound is the one picked, else the tier's own, and none when sounds are off", function()
+test("announce: the sound is the moment's own, and none when sounds are off", function()
     local GK, LIB, A = bootAnnounce()
     LIB.Fire("GK_SPREE", ME, 7, "Butcher", true, "butcher") W.advance(4)
     eq(A.played[1], "voice_butcher", "Butcher's own: the Grudgekeeper's call")
-    GK.db.spreeSounds.butcher = "kit:RAID_WARNING_2"
+    GK.db.spreeSounds = { butcher = "kit:RAID_WARNING_2" }
     LIB.Fire("GK_SPREE", ME, 7, "Butcher", true, "butcher") W.advance(4)
-    eq(A.played[2], 8, "the pick")
-    GK.db.spreeSounds.butcher = "off"
+    eq(A.played[2], "voice_butcher", "an older file's pick is not played: ours")
+    GK.db.spreeSound = false
     LIB.Fire("GK_SPREE", ME, 7, "Butcher", true, "butcher") W.advance(4)
-    eq(#A.played, 2, "None picked")
-    GK.db.spreeSounds.butcher = nil
+    eq(#A.played, 2, "the sprees' sound off: not a sound of theirs")
+    GK.db.spreeSound = true
     LIB.Fire("GK_SPREE_ENDED", ME, 5, "Gankalot", true)
     eq(#A.played, 2, "a spree ended calls with nothing out of the box: its pulse, shatter and bell are its sound")
     LIB.Fire("GK_TORMENTOR", ME, "Gankalot", 4, true)
@@ -3656,12 +3744,12 @@ test("announce: the sound is the one picked, else the tier's own, and none when 
     for i = 4, #A.played do if A.played[i] == 7 then tormentor = true end end
     eq(tormentor, true, "a tormentor's own, with its slam")
     local heard = #A.played
-    GK.db.sound = false
+    GK.db.mineSounds = false
     LIB.Fire("GK_SPREE", ME, 7, "Butcher", true, "butcher") W.advance(4)
     LIB.Fire("GK_SPREE_ENDED", ME, 5, "Gankalot", true)
     W.advance(4)
-    eq(#A.played, heard, "Sounds off mutes them")
-    eq(#A.txt, 7, "the announcement still comes")
+    eq(#A.played, heard, "Play sounds off on Mine mutes them")
+    eq(#A.txt, 7, "the announcement still comes, as the spree with its sound off did")
 end)
 
 test("announce: the art of a tier, of a spree ended and of a tormentor", function()
@@ -3719,13 +3807,111 @@ test("announce: toasts stack up to four, and /grudge spree shows a sample of bot
     eq(#A.played, before + 1, "one sound for the pair")
 end)
 
-test("a pick of a sound taken off the list goes back to the default, everywhere it was picked", function()
+test("a pick of a sound taken off the list goes back to the default", function()
     local GK = boot({ me = ME })
-    GK.db.nearSound, GK.db.spreeSounds = "kit:HARDCORE_DUEL", { butcher = "kit:HARDCORE_DUEL", reaper = "kit:RAID_WARNING" }
+    GK.db.nearSound = "kit:HARDCORE_DUEL"
     GK.ForgetGoneSounds(GK.db)
     eq(GK.db.nearSound, "kit:PVP_THROUGH_QUEUE")
-    eq(GK.db.spreeSounds.butcher, nil, "the tier's default plays again")
-    eq(GK.db.spreeSounds.reaper, "kit:RAID_WARNING", "a pick still on the list stays")
+    GK.db.nearSound = "game:569112"
+    GK.ForgetGoneSounds(GK.db)
+    eq(GK.db.nearSound, "game:569112", "a pick still on the list stays")
+end)
+
+-- "flere av lydene er dårlige, noen funker ikke ... forskjellige horns og sånn. det er kanskje artigere enn
+-- kjedelige lyder som ikke gir like mye mening" (the owner, 2026-11-22). The client's own SoundKit has the chime at
+-- a hundredth of full volume (VolumeFloat 0.01, build 71037), and it was what played for a pick that was missing.
+test("sounds: horns, bells and blows to pick, named to fit; the chime and the dull ones are gone", function()
+    local GK = bootAnnounce()
+    local names, first = {}, nil
+    for _, c in ipairs(GK.SoundChoices()) do
+        if not c[1]:find("^lsm:") and not c[1]:find("^file:") then
+            names[c[2]] = true
+            assert(#c[2] <= 17, c[2] .. ": cut in the narrowest sound dropdown")
+            if c.group and not first then first = c.group end
+        end
+    end
+    eq(first, "Urgent", "the urgent ones first")
+    for _, want in ipairs({ "Red alert", "Horde war horn", "Horn of Echeyakee", "Great bell", "Troll gong",
+            "Cleave", "War call" }) do
+        assert(names[want], want .. ": not on the list")
+    end
+    for _, gone in ipairs({ "The chime", "Map ping", "Alarm 1", "GM warning", "Hostile target", "Ready check",
+            "Group invite", "PvP update" }) do
+        assert(not names[gone], gone .. ": still on the list")
+    end
+end)
+
+-- "synes ikke folk skal kunne velge lyder på notifications hvor vi har splash og sånn ... vi har jo allerede lagd lyder
+-- for det andre" (the owner, 2026-11-22): a box each, and off is all of it, the call and the effect's.
+test("sounds: yours and a guildie's apart - a box and a Play sounds each, off is all of it", function()
+    local CASES = {
+        { "spreeSound", "spreeMine", "spreeGuild", "GK_SPREE", { 7, "Butcher" }, { "butcher" } },
+        { "rankSound", "rankMine", "rankGuild", "GK_RANKUP", { "Avenger", 450 } },
+        { "orderSound", "orderMine", "orderDone", "GK_ORDER_DONE", { {}, "Gankalot-Realm", 500 }, { "ROGUE" } },
+        { "revengeSound", "revengeMine", "revengeGuild", "GK_REVENGE", { "Gankalot", 2, 1 } },
+        { "endedSound", "spreeEnded", "spreeEndedGuild", "GK_SPREE_ENDED", { 5, "Gankalot" } },
+        { "tormentorSound", "spreeTormentor", "spreeTormentorGuild", "GK_TORMENTOR", { "Gankalot", 4 } },
+        { "grudgeSound", "grudgeMine", nil, "GK_GRUDGE", { "Gankalot", 2, 3 } },
+    }
+    for _, c in ipairs(CASES) do
+        for _, mine in ipairs(c[3] and { true, false } or { true }) do
+            local box = mine and c[1] or (c[1] .. "Guild")
+            local master = mine and "mineSounds" or "guildSounds"
+            local others = { mine and "guildSounds" or "mineSounds", "warnSounds", "sound" }
+            if c[3] then others[#others + 1] = mine and (c[1] .. "Guild") or c[1] end
+            for _, style in ipairs(mine and { "toast", "splash" } or { "toast" }) do
+                for _, off in ipairs({ "", box, master, "others" }) do
+                    local GK, LIB, A = bootAnnounce()
+                    GK.db.spreeGuildFrom, GK.db.rankGuildFrom = 3, 0
+                    if off == "others" then
+                        for _, key in ipairs(others) do GK.db[key] = false end
+                    elseif off ~= "" then
+                        GK.db[off] = false
+                    end
+                    GK.db[mine and c[2] or c[3]] = style
+                    local args = {}
+                    if c[3] then args[1] = mine and ME or KARI end
+                    for _, v in ipairs(c[5]) do args[#args + 1] = v end
+                    if c[3] then args[#args + 1] = mine end
+                    for _, v in ipairs(c[6] or {}) do args[#args + 1] = v end
+                    LIB.Fire(c[4], (table.unpack or unpack)(args))
+                    for _ = 1, 60 do
+                        for _, f in ipairs(A.frames) do if f.OnUpdate then f.OnUpdate(f, 0.05) end end
+                    end
+                    W.advance(4)
+                    local where = ("%s %s, %s, off: %s"):format(c[1], mine and "yours" or "a guildie's", style, off)
+                    if off == "" or off == "others" then
+                        assert(#A.played > 0, where .. ": and nothing heard")
+                    else
+                        eq(#A.played, 0, where .. ": and still heard")
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- "splash bør være bare for deg, og toast bør være for guildies. burde ikke kunne velge det" (the owner, 2026-11-22)
+test("announce: a guildie's is a toast, never a splash, whatever is saved", function()
+    local GK, LIB, A = bootAnnounce()
+    GK.db.spreeGuild, GK.db.spreeGuildFrom = "splash", 3
+    LIB.Fire("GK_SPREE", KARI, 5, "Merciless", false, "merciless")
+    LIB.Fire("GK_SPREE", EDVARD, 7, "Butcher", false, "butcher")
+    eq(#A.txt, 2, "both at once: toasts never wait their turn")
+end)
+
+test("sounds: trying one after another stops the one before", function()
+    local GK = bootAnnounce()
+    local stopped, handle = {}, 0
+    _G.StopSound = function(h) stopped[#stopped + 1] = h end
+    _G.PlaySoundFile = function()
+        handle = handle + 1
+        return true, handle
+    end
+    GK.PreviewSound("game:569112")
+    GK.PreviewSound("game:566064")
+    _G.StopSound = nil
+    eq(#stopped .. "/" .. tostring(stopped[1]), "1/1", "the first stopped as the second plays")
 end)
 
 test("announce: a burning splash and a cold one both play through to the end", function()
@@ -3746,30 +3932,28 @@ end)
 
 test("announce: a new splash waits for the one on screen, even when nothing is queued", function()
     local GK, LIB, A = bootAnnounce()
-    GK.db.spreeGuild = "splash"
-    LIB.Fire("GK_SPREE", KARI, 5, "Merciless", false, "merciless")
+    LIB.Fire("GK_SPREE", ME, 5, "Merciless", true, "merciless")
     eq(#A.txt, 1)
     W.advance(1)
-    LIB.Fire("GK_SPREE", EDVARD, 7, "Butcher", false, "butcher")
+    LIB.Fire("GK_SPREE", ME, 7, "Butcher", true, "butcher")
     eq(#A.txt, 1, "the first is still showing")
     W.advance(3)
     eq(#A.txt, 1, "4 s in: not yet")
     W.advance(1)
     eq(#A.txt, 2, "after the first one's time")
-    eq(A.txt[2], "Edvard: 7 kills in a row")
+    eq(A.txt[2], "7 kills in a row")
 end)
 
 test("announce: a toast does not wait for a splash that is waiting", function()
     local GK, LIB, A = bootAnnounce()
-    GK.db.spreeGuild = "splash"
-    LIB.Fire("GK_SPREE", KARI, 5, "Merciless", false, "merciless")
-    LIB.Fire("GK_SPREE", EDVARD, 7, "Butcher", false, "butcher")      -- waits
+    LIB.Fire("GK_SPREE", ME, 5, "Merciless", true, "merciless")
+    LIB.Fire("GK_SPREE", ME, 7, "Butcher", true, "butcher")      -- waits
     LIB.Fire("GK_SPREE_ENDED", KARI, 8, "Gankalot", false) -- a toast: at once
     eq(#A.txt, 2)
     eq(A.txt[2], "Kari's 8-kill spree ended (Gankalot)")
     W.advance(5)
     eq(#A.txt, 3)
-    eq(A.txt[3], "Edvard: 7 kills in a row", "the splash in its own turn")
+    eq(A.txt[3], "7 kills in a row", "the splash in its own turn")
 end)
 
 -- "gjør popup visende bittelitt lenger og legg settings så folk kan sette lengde selv" (the owner,
@@ -3803,9 +3987,9 @@ test("announce: how long one shows is the setting's - a toast that many seconds,
     eq(#A3.frames, 2, "shown at seven, then set to three: still up at five")
     -- a splash: half of it, and the next waits for that and a second more
     local GK4, LIB4, A4 = bootAnnounce()
-    GK4.db.announceTime, GK4.db.spreeGuild = 10, "splash"
-    LIB4.Fire("GK_SPREE", KARI, 5, "Merciless", false, "merciless")
-    LIB4.Fire("GK_SPREE", EDVARD, 7, "Butcher", false, "butcher")
+    GK4.db.announceTime = 10
+    LIB4.Fire("GK_SPREE", ME, 5, "Merciless", true, "merciless")
+    LIB4.Fire("GK_SPREE", ME, 7, "Butcher", true, "butcher")
     W.advance(5)
     eq(#A4.txt, 1, "set to ten: the splash has five seconds, and the next waits a sixth")
     W.advance(2)
@@ -3915,21 +4099,16 @@ end)
 local function bootSettings()
     local GK = boot({ me = ME })
     _G.SOUNDKIT = { RAID_WARNING = 1, PVP_THROUGH_QUEUE = 2 }
-    GK.SPREE_DEFAULT_SOUNDS = { bloodied = "file:voice_bloodied", merciless = "file:voice_merciless",
-        butcher = "file:voice_butcher", reaper = "file:voice_reaper", grudgebound = "file:voice_grudgebound",
-        ended = "kit:UI_RAID_BOSS_DEFEATED", tormentor = "kit:UI_GARRISON_TOAST_INVASION_ALERT" }
     assert(loadfile("Options.lua"))("Grudgekeeper", GK)
     local chapters = GK.SettingsChapters()
-    -- a row with that key, or a cell of a pair or an inline row (Notifications) with it
+    -- a check row with that key, or a dropdown's cell or a tick on a line with it
     local function Find(key)
         for _, ch in ipairs(chapters) do
             for _, r in ipairs(ch.rows) do
                 if r.key == key then return r, ch end
-                for _, cell in ipairs({ r.mine or false, r.guild or false }) do
-                    if cell and cell.key == key then return cell, ch end
-                end
                 for _, part in ipairs(r.parts or {}) do
-                    if type(part) == "table" and part.key == key then return part, ch end
+                    if part.cell and part.cell.key == key then return part.cell, ch end
+                    if part.check and part.check.key == key then return part.check, ch end
                 end
             end
         end
@@ -3942,38 +4121,51 @@ end
 local function menuOf(row)
     local entries, root = {}, {}
     function root.CreateRadio(_, text, selected, pick) table.insert(entries, { text, selected, pick }) end
-    row.menu(root)
+    row.fill(root)
     return entries
 end
 
--- Kill sprees, Warnings and Notes became Notifications and Sounds (2026-11-20): "så alt av notifications osv kan
--- stilles på ett sted og lyder og toasts/splashes osv" (the owner).
--- Warnings went to a chapter of their own when Revenge made Notifications taller than its page (2026-11-20).
-test("settings: seven chapters, Notifications first, and every saved setting has a row", function()
+-- The dark pages (the owner's pick A, 2026-11-22): a thing and its sound on one row. "det er cramped, vanskelig å
+-- forstå, spesielt lyder og notifications." Sounds was a page of its own from 2026-11-20 until then.
+test("settings: seven chapters in two groups, Mine first, and every saved setting has its place", function()
     local _, chapters, Find = bootSettings()
     local names = {}
     for i, ch in ipairs(chapters) do names[i] = ch.name end
-    eq(table.concat(names, ", "), "Notifications, Sounds, Warnings, Letters, Guild, Around the game, Look")
-    local where = { spreeMine = "Notifications", spreeGuild = "Notifications", rankMine = "Notifications",
-        rankGuild = "Notifications", orderMine = "Notifications", orderDone = "Notifications",
-        spreeEnded = "Notifications", spreeEndedGuild = "Notifications", spreeTormentor = "Notifications",
-        spreeTormentorGuild = "Notifications", guildZoneOnly = "Notifications", announceWhenMine = "Notifications",
-        announceWhenGuild = "Notifications", announceTime = "Notifications", revengeMine = "Notifications",
-        revengeGuild = "Notifications", grudgeMine = "Notifications", alertNear = "Warnings",
-        watchNearby = "Warnings", watchGroup = "Warnings", revenge = "Sounds",
-        kudosGroup = "Warnings", sound = "Sounds", guildSounds = "Sounds", near = "Sounds", shame = "Sounds",
-        anyLetters = "Letters", letters = "Letters", myLetters = "Letters", keepLetters = "Letters", share = "Guild",
-        shareOutside = "Guild",
-        autoOrders = "Guild", tooltip = "Around the game", unitMenu = "Around the game",
-        plateMarks = "Around the game", plateNotes = "Around the game", mapPins = "Around the game",
-        inspectTab = "Around the game", guildButton = "Around the game", minimap = "Around the game",
-        shotFulfil = "Around the game", shotEveryKill = "Around the game", look = "Look", oldPortraits = "Look",
-        reaperEffect = "Look" }
+    eq(table.concat(names, ", "), "Mine, Guildies, Warnings, Letters, Sharing, In the game, Appearance")
+    eq(chapters[3].group .. "/" .. chapters[4].group, "NOTIFICATIONS/GENERAL", "two groups in the menu")
+    local where = { spreeMine = "Mine", rankMine = "Mine", orderMine = "Mine", revengeMine = "Mine",
+        grudgeMine = "Mine", spreeEnded = "Mine", spreeTormentor = "Mine", announceWhenMine = "Mine",
+        announceTime = "Mine", mineSounds = "Mine", rankSound = "Mine", orderSound = "Mine", revengeSound = "Mine",
+        grudgeSound = "Mine", endedSound = "Mine", tormentorSound = "Mine",
+        spreeGuild = "Guildies", spreeGuildFrom = "Guildies", rankGuild = "Guildies", rankGuildFrom = "Guildies",
+        orderDone = "Guildies", revengeGuild = "Guildies", spreeEndedGuild = "Guildies",
+        spreeTormentorGuild = "Guildies", guildZoneOnly = "Guildies", announceWhenGuild = "Guildies", mode = "Guildies",
+        guildSounds = "Guildies", spreeSoundGuild = "Guildies", rankSoundGuild = "Guildies",
+        orderSoundGuild = "Guildies", revengeSoundGuild = "Guildies", endedSoundGuild = "Guildies",
+        tormentorSoundGuild = "Guildies",
+        spreeSound = "Mine", warnSounds = "Warnings", sound = "Appearance",
+        alertNear = "Warnings", watchNearby = "Warnings", watchGroup = "Warnings", kudosGroup = "Warnings",
+        near = "Warnings", shame = "Warnings",
+        anyLetters = "Letters", letters = "Letters", myLetters = "Letters", keepLetters = "Letters",
+        share = "Sharing", shareOutside = "Sharing", autoOrders = "Sharing",
+        tooltip = "In the game", unitMenu = "In the game", plateMarks = "In the game", plateNotes = "In the game",
+        mapPins = "In the game", inspectTab = "In the game", guildButton = "In the game", minimap = "In the game",
+        look = "Appearance", oldPortraits = "Appearance", shotFulfil = "Appearance", shotEveryKill = "Appearance" }
     for key, chapter in pairs(where) do
         local _, ch = Find(key)
         eq(ch.name, chapter, key)
     end
     for _, ch in ipairs(chapters) do assert(ch.intro, ch.name .. ": what it is about") end
+end)
+
+-- "dette er en settings for deg selv personlig er det ikke. skrevet som om du bestemmer settingen for hele
+-- guilden" (the owner, 2026-11-22): only the victim's own client posts, so the words are about you, both rules.
+test("settings: the automatic order reads as your own switch, with both its rules", function()
+    local _, _, Find = bootSettings()
+    local row = Find("autoOrders")
+    eq(row.label, "My deaths can post kill orders")
+    assert(row.help:find("you 3 times in half an hour", 1, true), row.help)
+    assert(row.help:find("3 of the guild in two hours", 1, true), row.help)
 end)
 
 test("settings: a check row keeps its setting, and does what else the change needs", function()
@@ -4015,7 +4207,7 @@ end)
 test("settings: the skin is chosen on the row, and switches at once", function()
     local GK, _, Find = bootSettings()
     local row = Find("look")
-    eq(row.kind, "choice")
+    eq(row.text(), "Parchment", "what the dropdown says")
     eq(row.get(), "parchment")
     row.set("classic")
     eq(GK.db.look, "classic")
@@ -4025,63 +4217,74 @@ test("settings: the skin is chosen on the row, and switches at once", function()
     eq(row.get(), "parchment")
 end)
 
---- A cell's menu entry by its words: { words, chosen(), pick() }.
+--- A dropdown's menu entry by its words: { words, chosen(), pick() }.
 local function entryOf(cell, words)
-    for _, o in ipairs(cell.options) do
-        if o[1] == words then return o end
+    for _, e in ipairs(menuOf(cell)) do
+        if e[1] == words then return e end
     end
     error(("no %q in the menu"):format(words))
 end
 
-test("settings: yours and a guildie's, each splash, toast or off; a guildie's sprees and titles from a threshold", function()
+test("settings: yours splash, toast or off; a guildie's a toast or not, sprees and titles from how many", function()
     local GK, _, Find = bootSettings()
-    for _, key in ipairs({ "spreeMine", "rankMine", "orderMine", "orderDone", "spreeEnded", "spreeEndedGuild",
-            "spreeTormentor", "spreeTormentorGuild" }) do
+    for _, key in ipairs({ "spreeMine", "rankMine", "orderMine", "spreeEnded", "spreeTormentor", "revengeMine",
+            "grudgeMine" }) do
         local cell = Find(key)
-        eq(#cell.options, 3, key)
-        eq(cell.options[1][1] .. "/" .. cell.options[2][1] .. "/" .. cell.options[3][1], "Splash/Toast/Off", key)
+        local menu = menuOf(cell)
+        eq(#menu, 3, key)
+        -- what they are, never where they stand: each is moved on its own ("'by the letter icon' blir jo ikke
+        -- riktig siden de kan flyttes på", the owner, 2026-11-22)
+        eq(menu[1][1] .. "/" .. menu[2][1] .. "/" .. menu[3][1], "Splash: big/Toast: small/Off", key)
         for i, want in ipairs({ "splash", "toast", "off" }) do
-            cell.options[i][3]()
+            menu[i][3]()
             eq(GK.db[key], want, key)
-            eq(cell.options[i][2](), true, key .. " shows it chosen")
+            eq(menu[i][2](), true, key .. " shows it chosen")
             eq(cell.text(), ({ "Splash", "Toast", "Off" })[i], key .. " on the page")
         end
     end
-    -- a guildie's sprees: how and from how many, in one menu
-    local sprees = Find("spreeGuild")
-    eq(sprees.text(), "Toast, 10+", "the Big moments out of the box")
-    entryOf(sprees, "Toast, only 25, 50 and 100")[3]()
-    eq(GK.db.spreeGuild .. "/" .. tostring(GK.db.spreeGuildFrom), "toast/round")
-    eq(sprees.text(), "Toast, 25/50/100")
-    entryOf(sprees, "Splash, Reaper and up (10+)")[3]()
-    eq(GK.db.spreeGuild .. "/" .. tostring(GK.db.spreeGuildFrom), "splash/10")
-    entryOf(sprees, "Off")[3]()
-    eq(GK.db.spreeGuild, "off")
-    eq(GK.db.spreeGuildFrom, 10, "Off leaves the threshold as it was")
-    eq(sprees.text(), "Off")
-    -- a guildie's titles: from which title up
-    local titles = Find("rankGuild")
-    eq(titles.text(), "Toast, Avenger+", "the Big moments out of the box")
-    entryOf(titles, "Toast, every title")[3]()
-    eq(GK.db.rankGuild .. "/" .. tostring(GK.db.rankGuildFrom), "toast/0")
-    eq(titles.text(), "Toast, every title")
+    for _, key in ipairs({ "spreeGuild", "rankGuild", "orderDone", "revengeGuild", "spreeEndedGuild",
+            "spreeTormentorGuild" }) do
+        local box = Find(key)
+        eq(box.kind, "check", key .. ": a box, no splash to pick")
+        box.set(true)
+        eq(GK.db[key], "toast", key)
+        eq(box.get(), true, key)
+        box.set(false)
+        eq(GK.db[key], "off", key)
+        eq(box.get(), false, key)
+    end
+    local from = Find("spreeGuildFrom")
+    eq(from.text(), "10 kills and up", "the Big moments out of the box")
+    eq(from.enabled(), false, "Off: no threshold to set")
+    GK.db.spreeGuild = "toast"
+    eq(from.enabled(), true, "shown: from how many")
+    entryOf(from, "Only 25, 50 and 100")[3]()
+    eq(GK.db.spreeGuild .. "/" .. tostring(GK.db.spreeGuildFrom), "toast/round", "the threshold alone")
+    Find("spreeGuild").set(false)
+    eq(tostring(GK.db.spreeGuildFrom), "round", "Off leaves the threshold as it was")
+    local titles = Find("rankGuildFrom")
+    eq(titles.text(), "Avenger and up", "the Big moments out of the box")
+    entryOf(titles, "Every title")[3]()
+    eq(GK.db.rankGuildFrom, 0)
     -- when, and for how long
     for _, key in ipairs({ "announceWhenMine", "announceWhenGuild" }) do
         local cell = Find(key)
-        eq(#cell.options, 4, key)
-        eq(cell.options[3][1], "Not in combat in a dungeon or raid")
+        local menu = menuOf(cell)
+        eq(#menu, 4, key)
+        eq(menu[3][1], "Not in combat in a dungeon or raid")
         for i, want in ipairs({ "always", "noCombat", "noCombatInInstance", "noInstance" }) do
-            cell.options[i][3]()
+            menu[i][3]()
             eq(GK.db[key], want, key)
-            eq(cell.options[i][2](), true, key .. " shows it chosen")
+            eq(menu[i][2](), true, key .. " shows it chosen")
         end
         eq(cell.text(), "Not in dungeons", "short on the page")
     end
     local seconds = Find("announceTime")
     eq(seconds.text(), "7 seconds", "seven seconds until another is picked")
-    eq(#seconds.options, 5)
-    eq(seconds.options[3][1], "7 seconds - a splash 3.5")
-    seconds.options[5][3]()
+    local times = menuOf(seconds)
+    eq(#times, 5)
+    eq(times[3][1], "7 seconds, a splash 3.5")
+    times[5][3]()
     eq(GK.db.announceTime, 15, "picked: the seconds, as a number")
     eq(seconds.text(), "15 seconds")
 end)
@@ -4089,72 +4292,194 @@ end)
 test("settings: each warning on screen, a chat line or off; an older file's true is the row's own way", function()
     local GK, _, Find = bootSettings()
     for key, own in pairs({ alertNear = "screen", watchNearby = "chat", watchGroup = "screen", kudosGroup = "chat" }) do
-        local row, ch = Find(key)
+        local cell, ch = Find(key)
         eq(ch.name, "Warnings", key)
-        eq(row.kind, "pick", key)
-        local entries = menuOf(row)
+        local entries = menuOf(cell)
         eq(entries[1][1] .. "/" .. entries[2][1] .. "/" .. entries[3][1], "On screen/Chat line/Off", key)
         GK.db[key] = true
-        eq(row.get(), own, key .. ": true from an older file is its own way")
+        eq(cell.get(), own, key .. ": true from an older file is its own way")
         GK.db[key] = false
-        eq(row.get(), "off", key .. ": false is off")
+        eq(cell.get(), "off", key .. ": false is off")
         entries[2][3]()
         eq(GK.db[key], "chat", key)
-        eq(row.get(), "chat")
+        eq(cell.get(), "chat")
     end
 end)
 
-test("settings: the presets set their rows; a page that matches none of them is Custom", function()
-    local GK = bootSettings()
-    eq(GK.NotifyPreset(), "big", "a new install: Big moments")
-    assert(GK.ApplyNotifyPreset("quiet"))
-    eq(GK.NotifyPreset(), "quiet")
-    eq(GK.db.spreeGuild .. "/" .. GK.db.rankGuild .. "/" .. GK.db.orderDone, "off/off/off", "nothing from guildies")
-    eq(GK.db.spreeMine .. "/" .. GK.db.rankMine .. "/" .. GK.db.orderMine, "toast/toast/toast", "yours small")
-    eq(GK.db.guildSounds, false)
-    GK.db.orderDone = "toast"
-    eq(GK.NotifyPreset(), "custom", "one row changed: Custom")
-    eq(GK.NotifyPresetHint("custom"), "Your own mix. Pick one of the others to start over from it.")
-    assert(GK.ApplyNotifyPreset("all"))
-    eq(GK.NotifyPreset(), "all")
-    eq(GK.db.spreeGuildFrom, 3, "every spree")
-    eq(GK.db.rankGuildFrom, 0, "every title")
-    GK.db.guildZoneOnly = true
-    eq(GK.NotifyPreset(), "all", "where a guildie is belongs to no preset")
-    assert(not GK.ApplyNotifyPreset("loud"), "no such preset")
-    eq(GK.db.revengeMine .. "/" .. GK.db.revengeGuild, "splash/toast", "All of it: a guildie's revenge too")
-    assert(GK.ApplyNotifyPreset("quiet"))
-    eq(GK.db.revengeMine .. "/" .. GK.db.revengeGuild, "toast/off", "Quiet: yours small, theirs off")
+-- The owner's first look in game (2026-11-22): "test for alle sammen er ikke gøy. ødelegger surprisen. og for de
+-- vanlige sprees la oss bare ha sound on/off i guess? for nå kan de jo endre alt og teste alt og se alt."
+test("settings: no surprise given away - no Test, no page of the spree's steps, none of their names", function()
+    local GK, chapters = bootSettings()
+    for _, ch in ipairs(chapters) do
+        for _, r in ipairs(ch.rows) do
+            local words = { r.label or "", r.help or "", r.text or "" }
+            for _, p in ipairs(r.parts or {}) do
+                assert(p.kind ~= "button", ch.name .. ": a button on a row")
+                if p.text then words[#words + 1] = p.text end
+                if p.cell then
+                    for _, o in ipairs(p.cell.choices()) do words[#words + 1] = o[2] end
+                end
+            end
+            local all = table.concat(words, " | ")
+            for _, t in ipairs(GK.SPREE_TIERS) do
+                assert(not all:find(t.name, 1, true), ("%s: gives away %s"):format(ch.name, t.name))
+            end
+        end
+    end
 end)
 
--- Revenge came on 2026-11-20. A file from before keeps the preset it matched: Quiet's revenge a toast, where the
--- default would have put a splash on a streamer's screen.
-test("settings: an older file gets Revenge as the preset it matched has it, else as its sprees", function()
+test("settings: a sound's menu has a title over each kind, and other addons' sounds in a menu of their own", function()
+    local GK, _, Find = bootSettings()
+    function GK.SoundChoices()
+        return { { "off", "None" }, { "game:1", "A horn", group = "Horns" }, { "game:2", "Another", group = "Horns" },
+            { "lsm:x", "Pack: X", group = "Other addons", sub = true } }
+    end
+    local seen = {}
+    local function Menu(name)
+        local m = {}
+        function m:CreateRadio(words) seen[#seen + 1] = name .. ":" .. words end
+        function m:CreateTitle(words) seen[#seen + 1] = name .. ":# " .. words end
+        function m:CreateButton(words)
+            seen[#seen + 1] = name .. ":> " .. words
+            return Menu("sub")
+        end
+        return m
+    end
+    Find("near").fill(Menu("top"))
+    eq(table.concat(seen, ", "), "top:None, top:# Horns, top:A horn, top:Another, top:> Other addons, sub:Pack: X")
+end)
+
+-- "i dropdown burde det være preview knapp for lydene så man ikke må åpne og lukke dropdown hver gang" (the owner,
+-- 2026-11-22): a radio row closes its menu when picked, so hearing one is a button of its own on the row.
+test("settings: a play button on each sound's row hears it, picks nothing and shuts nothing", function()
+    local GK, _, Find = bootSettings()
+    local heard, done, rows, shown = {}, 0, {}, nil
+    function GK.PreviewSound(key) heard[#heard + 1] = key end
+    local function Region()
+        local o = {}
+        function o:SetPoint(point) self.point = point end
+        function o:SetScript(name, fn) self[name] = fn end
+        function o:SetAtlas(name) self.atlas = name end
+        function o:SetAlpha() end
+        function o:SetSize() end
+        return o
+    end
+    local savedTemplates = _G.MenuTemplates
+    _G.MenuTemplates = { AttachBasicButton = function()
+        shown.button = Region()
+        return shown.button
+    end }
+    local function Menu()
+        local m = {}
+        function m:CreateTitle() end
+        function m:CreateButton() return Menu() end
+        function m:CreateRadio(words)
+            local d = { words = words }
+            function d:AddInitializer(fn) self.init = fn end
+            rows[#rows + 1] = d
+            return d
+        end
+        return m
+    end
+    local cell = Find("near")
+    local before = cell.get()
+    cell.fill(Menu(), function() done = done + 1 end)
+    local buttons, horn = 0, nil
+    for _, d in ipairs(rows) do
+        if d.words == "None" then eq(d.init, nil, "None has nothing to hear") else
+            assert(d.init, d.words .. ": no play button")
+            shown = { leftTexture1 = { GetWidth = function() return 16 end },
+                fontString = { GetWidth = function() return #d.words * 7 end } }
+            function shown.AttachTexture()
+                shown.icon = Region()
+                return shown.icon
+            end
+            local w, h = d.init(shown)
+            eq(shown.icon.atlas, "common-dropdown-icon-play", d.words)
+            eq(shown.button.point, "RIGHT", d.words)
+            assert(w - 24 >= 16 + #d.words * 7, d.words .. ": the button stands on the words")
+            eq(h, 20)
+            buttons = buttons + 1
+            if d.words == "Horde war horn" then horn = shown.button end
+        end
+    end
+    _G.MenuTemplates = savedTemplates
+    assert(buttons >= 31, "a button on each: " .. buttons)
+    horn.OnClick()
+    eq(heard[1], "game:569112", "heard")
+    eq(cell.get(), before, "nothing picked")
+    eq(done, 0, "the page left as it was")
+    -- every other menu is plain
+    rows = {}
+    Find("spreeMine").fill(Menu())
+    for _, d in ipairs(rows) do eq(d.init, nil, d.words .. ": no sound, no button") end
+end)
+
+-- "hvis du unchecker 'Play sounds' bør alle checkboxes til alle forskjellige notifications bli skrudd av men også
+-- låse/grey out" (the owner, 2026-11-22), and "presets.. fjerne eller?"
+test("settings: a page's Play sounds locks its own boxes and keeps their picks; no presets", function()
+    local GK, chapters, Find = bootSettings()
+    for _, p in ipairs({ { "mineSounds", "revengeSound", "orderSoundGuild" },
+            { "guildSounds", "orderSoundGuild", "revengeSound" }, { "warnSounds", "near", "revengeSound" } }) do
+        local master, own, other = Find(p[1]), Find(p[2]), Find(p[3])
+        eq(own.enabled(), true, p[2] .. ": live")
+        master.set(false)
+        eq(own.enabled(), false, p[2] .. ": locked with its page's Play sounds")
+        eq(other.enabled(), true, p[3] .. ": another page's is live")
+        master.set(true)
+        eq(own.enabled(), true, p[2] .. ": live again")
+    end
+    Find("revengeSound").set(false)
+    Find("mineSounds").set(false)
+    Find("mineSounds").set(true)
+    eq(GK.db.revengeSound, false, "a box off stays off through the master")
+    eq(GK.db.orderSound, true, "and one on comes back on")
+    GK.db.orderMine = "off"
+    eq(Find("orderSound").enabled(), false, "what doesn't show has no sound to set")
+    for _, ch in ipairs(chapters) do
+        for _, r in ipairs(ch.rows) do assert(r.label ~= "Preset", ch.name .. ": a preset") end
+    end
+    eq(GK.NotifyPreset, nil, "no preset to ask for")
+end)
+
+test("settings: yours and a guildie's go apart once, with what was off before still off", function()
+    local GK = boot({ me = ME, db = { share = true, notifyV2 = true, shotsOff = true, sound = false,
+        spreeSound = false, revengeGuild = "splash", revengeMine = "splash" } })
+    eq(GK.db.revengeGuild, "toast", "a guildie's splash: a toast")
+    eq(GK.db.revengeMine, "splash", "yours stays")
+    eq(tostring(GK.db.mineSounds) .. "/" .. tostring(GK.db.guildSounds) .. "/" .. tostring(GK.db.warnSounds),
+        "false/false/false", "Sounds was off: each page's starts off")
+    eq(GK.db.spreeSoundGuild, false, "one box was both sides': off on a guildie's as well")
+    eq(GK.db.rankSoundGuild, true, "one that was on stays on")
+    GK = boot({ me = ME, db = { share = true, notifyV2 = true, shotsOff = true, soundSplit = true, sound = false,
+        spreeSound = false, revengeMine = "toast" } })
+    eq(GK.db.mineSounds, true, "once: the ledger's sounds off after it leave the pages' alone")
+    eq(GK.db.spreeSoundGuild, true, "once: your box is not a guildie's after it")
+    GK = boot({ me = ME })
+    eq(tostring(GK.db.mineSounds) .. "/" .. tostring(GK.db.warnSounds), "true/true", "a new install: on")
+end)
+
+-- Revenge came on 2026-11-20. A file from before it: a streamer's toasts stay toasts, where the default would have
+-- put a splash on their screen, and who had everything from guildies gets their revenges too.
+test("settings: an older file gets Revenge as its sprees are, a guildie's only where it had everything", function()
     local GK = bootSettings()
-    for _, p in ipairs(GK.NOTIFY_PRESETS) do
-        local db = {}
-        for k, v in pairs(p.set) do
-            if k ~= "revengeMine" and k ~= "revengeGuild" then db[k] = v end
-        end
-        GK.MoveRevenge(db)
-        eq(db.revengeMine .. "/" .. db.revengeGuild, p.set.revengeMine .. "/" .. p.set.revengeGuild, p.key)
-    end
-    -- a file from before Revenge is from before the grudge toast as well, and has no such key
-    for _, p in ipairs(GK.NOTIFY_PRESETS) do
-        local db = {}
-        for k, v in pairs(p.set) do
-            if k ~= "revengeMine" and k ~= "revengeGuild" and k ~= "grudgeMine" then db[k] = v end
-        end
-        GK.MoveRevenge(db)
-        eq(db.revengeMine .. "/" .. db.revengeGuild, p.set.revengeMine .. "/" .. p.set.revengeGuild,
-            p.key .. ", from before the grudge toast")
-    end
+    local all = { spreeMine = "splash", rankMine = "splash", orderMine = "splash", spreeEnded = "toast",
+        spreeTormentor = "toast", spreeGuild = "toast", spreeGuildFrom = 3, rankGuild = "toast", rankGuildFrom = 0,
+        orderDone = "toast", spreeEndedGuild = "toast", spreeTormentorGuild = "toast", guildSounds = true }
+    GK.MoveRevenge(all)
+    eq(all.revengeMine .. "/" .. all.revengeGuild, "splash/toast", "had everything")
+    local quiet = { spreeMine = "toast", spreeGuild = "off", guildSounds = false }
+    GK.MoveRevenge(quiet)
+    eq(quiet.revengeMine .. "/" .. quiet.revengeGuild, "toast/off", "a streamer's")
+    local big = { spreeMine = "splash", spreeGuild = "toast", spreeGuildFrom = 10 }
+    GK.MoveRevenge(big)
+    eq(big.revengeMine .. "/" .. big.revengeGuild, "splash/off", "the big moments")
     local mix = { spreeMine = "off", spreeGuild = "toast", spreeGuildFrom = 7 }
     GK.MoveRevenge(mix)
     eq(mix.revengeMine .. "/" .. mix.revengeGuild, "off/off", "a mix of its own: yours as your sprees, theirs off")
-    local kept = { revengeMine = "toast", revengeGuild = "splash" }
+    local kept = { revengeMine = "toast", revengeGuild = "toast" }
     GK.MoveRevenge(kept)
-    eq(kept.revengeGuild, "splash", "a file that has them keeps them")
+    eq(kept.revengeGuild, "toast", "a file that has them keeps them")
     GK.MoveRevenge(nil)
 end)
 
@@ -4172,36 +4497,55 @@ test("settings: an older file moves once - titles by what the sprees said, an Of
     eq(GK.db.rankGuild, "toast", "moved once: a pick made after it is kept")
 end)
 
--- The page holds 380 units under its heading (Options.lua: host), and a row is 26 high, a sound's 24, a
--- heading's 28, a setting with a line of help 36: a chapter taller than that runs into the signature.
-test("settings: no chapter's rows are taller than the page", function()
+-- The page holds GK.SETTINGS_ROOM under its heading (Options.lua: host), 570 across: a chapter taller runs
+-- past the frame, and two controls on a line must not meet (a dropdown's art reaches 8 past it each side).
+test("settings: no chapter is taller than its page, no line's controls meet, and no words are cut", function()
     local GK, chapters = bootSettings()
     for _, ch in ipairs(chapters) do
         local tall = 0
-        for _, r in ipairs(ch.rows) do tall = tall + GK.SettingsRowHeight(r) end
-        assert(tall <= 380, ("%s: its rows are %d tall, the page 380"):format(ch.name, tall))
+        for _, r in ipairs(ch.rows) do
+            tall = tall + GK.SettingsRowHeight(r)
+            -- as wide as the game draws them, not our offline font: "Show them" is nine letters and was "Show the..."
+            -- in its 76 (the owner's screenshot, 2026-11-22). 8.8 a letter at 13, 6.9 at a dropdown's 12.
+            local first = r.parts and r.parts[1]
+            if first and r.label then
+                assert(#r.label * 8.8 <= first.x - 16, ("%s: %q would be cut"):format(ch.name, r.label))
+            end
+            local edge
+            for _, p in ipairs(r.parts or {}) do
+                if p.cell and p.w then
+                    local words = p.cell.text()
+                    assert(#words * 6.9 <= p.w - 33, ("%s: %q would be cut in its dropdown"):format(ch.name, words))
+                end
+                assert(not edge or p.x >= edge + 8, ("%s, %s: two controls meet"):format(ch.name, r.label))
+                if p.w then edge = p.x + p.w else edge = nil end
+            end
+            assert(not edge or edge <= 570, ("%s, %s: past the page"):format(ch.name, tostring(r.label)))
+        end
+        assert(tall <= GK.SETTINGS_ROOM, ("%s: its rows are %d tall, the page %d"):format(ch.name, tall, GK.SETTINGS_ROOM))
     end
-    -- and the heights are what the page draws: a row of help is 36, a plain one 26, a pair 22
-    eq(GK.SettingsRowHeight({ kind = "check", help = "x" }), 36)
-    eq(GK.SettingsRowHeight({ kind = "check" }), 26)
-    eq(GK.SettingsRowHeight({ kind = "pair" }), 22)
 end)
 
-test("settings: a sound row for each tier, the end and the tormentor; the voices on these rows only", function()
-    local GK, _, Find = bootSettings()
+test("settings: a sound to pick for the warnings alone; what is a splash or toast has a box", function()
+    local GK, chapters, Find = bootSettings()
     local played = {}
     function GK.PlayChoice(key) played[#played + 1] = key return true end
-    local names = { bloodied = "Bloodied", merciless = "Merciless", butcher = "Butcher", reaper = "Reaper",
-        grudgebound = "Grudgebound", ended = "Spree ended", tormentor = "Tormentor" }
-    for key, label in pairs(names) do
-        local row, ch = Find(key)
-        eq(ch.name, "Sounds")
-        eq(row.kind, "sound")
-        eq(row.label, label)
-        eq(row.get(), GK.SPREE_DEFAULT_SOUNDS[key], key .. " shows its own until one is picked")
-        row.set("kit:TEST")
-        eq(GK.db.spreeSounds[key], "kit:TEST", key)
-        eq(row.get(), "kit:TEST")
+    local menus = {}
+    for _, ch in ipairs(chapters) do
+        for _, r in ipairs(ch.rows) do
+            for _, p in ipairs(r.parts or {}) do
+                if p.cell and p.cell.preview then menus[#menus + 1] = ch.name .. ":" .. p.cell.key end
+            end
+        end
+    end
+    eq(table.concat(menus, ", "), "Warnings:near, Warnings:shame", "the sounds to pick")
+    for _, key in ipairs({ "spreeSound", "rankSound", "orderSound", "revengeSound", "grudgeSound", "endedSound",
+            "tormentorSound" }) do
+        local box = Find(key)
+        eq(box.kind, "check", key .. ": a box")
+        eq(box.get(), true, key .. ": on to begin with")
+        box.set(false)
+        eq(GK.db[key], false, key)
     end
     local function Voices(row)
         local n = 0
@@ -4210,46 +4554,51 @@ test("settings: a sound row for each tier, the end and the tormentor; the voices
         end
         return n
     end
-    eq(Voices(Find("reaper")), 5, "a spree's menu: the five voice lines")
     eq(Voices(Find("near")), 0, "a target near: none")
     eq(Voices(Find("shame")), 0, "a Shame player: none")
     -- picking one keeps it and plays it
     local near = Find("near")
     local horn
     for _, e in ipairs(menuOf(near)) do
-        if e[1] == "Raid warning" then horn = e end
+        if e[1] == "Horde war horn" then horn = e end
     end
-    assert(horn, "Raid warning is on the list")
+    assert(horn, "the Horde war horn is on the list")
     horn[3]()
-    eq(GK.db.nearSound, "kit:RAID_WARNING")
-    eq(played[#played], "kit:RAID_WARNING", "you hear what you chose")
+    eq(GK.db.nearSound, "game:569112")
+    eq(played[#played], "game:569112", "you hear what you chose")
     eq(horn[2](), true, "and it shows as chosen")
 end)
 
 -- ---------------------------------------------------------------------------
 -- Spree effects (Effects.lua): which one a splash plays, and the helpers they are drawn with
 -- ---------------------------------------------------------------------------
-test("effects: each tier its own, Butcher's blood bloom, Reaper by its setting", function()
+test("effects: each tier its own, Butcher's blood bloom, Reaper the scythe whatever a file says", function()
     local GK = bootAnnounce()
     eq(GK.SpreeEffect("spree", "bloodied", 3, GK.db), "bloodied_drops")
     eq(GK.SpreeEffect("spree", "merciless", 5, GK.db), "merciless_cross")
     eq(GK.SpreeEffect("spree", "butcher", 7, GK.db), "butcher_bloom")
-    eq(GK.db.reaperEffect, "scythe", "the scythe out of the box")
     eq(GK.SpreeEffect("spree", "reaper", 10, GK.db), "reaper_scythe")
-    GK.db.reaperEffect = "smoke"
-    eq(GK.SpreeEffect("spree", "reaper", 10, GK.db), "reaper_smoke")
-    GK.db.reaperEffect = "something old"
-    eq(GK.SpreeEffect("spree", "reaper", 10, GK.db), "reaper_scythe", "anything else: the scythe")
+    eq(GK.SpreeEffect("spree", "reaper", 10, { reaperEffect = "smoke" }), "reaper_scythe",
+        "no setting: 'kan vi ikke bare ha scythe for reaper og ikke smoke' (the owner, 2026-11-22)")
 end)
 
--- "ja bytt til scythe" (the owner, 2026-11-20): every saved file held "smoke", the old default written into it,
--- so each account is moved to the scythe once, and keeps what it picks after.
-test("Reaper's splash: an account that had the smoke is moved to the scythe once, then keeps its pick", function()
-    local GK = boot({ me = ME, db = { share = true, reaperEffect = "smoke" } })
-    eq(GK.db.reaperEffect, "scythe", "moved once")
-    eq(GK.db.reaperScythe, true, "...and marked as moved")
-    GK = boot({ me = ME, db = { share = true, reaperEffect = "smoke", reaperScythe = true } })
-    eq(GK.db.reaperEffect, "smoke", "the smoke picked after: kept")
+test("Reaper's splash: the choice is gone from the saved file", function()
+    local GK = boot({ me = ME, db = { share = true, reaperEffect = "smoke", reaperScythe = true } })
+    eq(GK.db.reaperEffect, nil, "no pick left")
+    eq(GK.db.reaperScythe, nil, "...nor its move's mark")
+end)
+
+-- "screenshots av by default btw" (the owner, 2026-11-22). The default was off since 1.1.0, but the betas' "on"
+-- was written into every saved file and nothing tells it from a pick: each account is moved once.
+test("screenshots: off by default, an older account's moved off once, then it keeps its pick", function()
+    local GK = boot({ me = ME })
+    eq(tostring(GK.db.shotFulfil) .. "/" .. tostring(GK.db.shotEveryKill), "false/false", "a new install")
+    GK = boot({ me = ME, db = { share = true, shotFulfil = true } })
+    eq(GK.db.shotFulfil, false, "the betas' default, written in: off")
+    GK = boot({ me = ME, db = { share = true, shotFulfil = true, shotsOff = true } })
+    eq(GK.db.shotFulfil, true, "ticked after that: kept")
+    GK = boot({ me = ME, db = { share = true, shotsOff = true } })
+    eq(GK.db.shotFulfil, false, "the default itself, where the move is done: off")
 end)
 
 test("effects: Grudgebound's crown at 15, the number on every 5 after it, the hundred at 100", function()
@@ -4321,12 +4670,12 @@ test("effects: cues play once each, in order, as the splash's age passes them, a
     eq(played(), "a b c voice_bloodied d a", "again from the start")
     -- sound off: the cues pass by, and are not played late when it comes back on
     W.advance(10)
-    GK.db.sound = false
+    GK.db.mineSounds = false
     local before = #A.played
     LIB.Fire("GK_SPREE", ME, 3, "Bloodied", true, "bloodied")
     for _ = 1, 8 do splash.OnUpdate(splash, 0.2) end
     eq(#A.played, before, "sound off mutes the cues and the voice")
-    GK.db.sound = true
+    GK.db.mineSounds = true
     splash.OnUpdate(splash, 0.2)
     eq(#A.played, before, "and they are not played late")
 end)
@@ -4358,7 +4707,9 @@ test("effects: every cue and the voice time of every effect is in order and name
     -- the effect lab (round 8, 2026-11-21). A number not here is a typo the client would play as silence.
     local GAME = { [838830] = true, [930444] = true, [566027] = true, [568874] = true, [567084] = true,
         [1036058] = true, [1305195] = true, [1267929] = true, [1345549] = true, [567556] = true,
-        [1305196] = true, [1362383] = true }
+        [1305196] = true, [1362383] = true,
+        -- the lab's round 10 and the owner's new picks (2026-11-23): Backstab, a big whoosh, a body falling, the bronze strike
+        [1305792] = true, [1305191] = true, [567195] = true, [4565238] = true }
     local function check(name, fx)
         local last = 0
         for _, c in ipairs(fx.cues or {}) do

@@ -1,10 +1,23 @@
 -- Grudgekeeper - its settings: a page of the ledger, two pages wide (Window.lua), with the ledger's tabs
--- under it to go back by. Down the left a menu of the chapters by name; beside it the chapter chosen,
--- written in ink and signed. A wax seal is a setting that is on, a dashed ring one that is off. "burde vi
--- ikke bare lage et eget settings panel ... gjøre det sjukt pent" (the owner, 2026-11-12, after the mover
--- met the game's own settings, which lie over the screen and which no addon may close); built to the
--- mockup approved the same day, as a window of its own that took the ledger's place - and its tabs, until
--- 2026-11-18 ("la tabs være der så man kan trykke på de for å komme tilbake isteden").
+-- under it to go back by. Dark, as the game's own options are, whatever the skin, and every control one of
+-- the game's: dropdowns, checkboxes and red buttons. "det er cramped, vanskelig å forstå, spesielt lyder og
+-- notifications. la oss bruke mer wow knapper og dropdowns og slikt, kanskje det ikke skal være
+-- parchment/classic bakgrunn" (the owner, 2026-11-22), who picked A, the dark one, of three drawn with the
+-- client's own art (art/mockups/settings2). The pages it replaced (2026-11-12 to 2026-11-22) were written in
+-- ink on the parchment, and their dropdowns were words over a thin line.
+-- A thing and its sound stand on one row: Sounds was a page of its own, with the same events over again.
+-- Yours, a guildie's and the warnings are a page each. Nothing gives a surprise away: no Test, no page of a
+-- spree's steps, no voice line to hear ahead - "test for alle sammen er ikke gøy. ødelegger surprisen. og for
+-- de vanlige sprees la oss bare ha sound on/off" (the owner, at the first look in game, 2026-11-22).
+-- Only a warning has a sound to pick: "synes ikke folk skal kunne velge lyder på notifications hvor vi har splash
+-- og sånn. bare på typ.. når du ser noen du har på kill list osv? vi har jo allerede lagd lyder for det andre"
+-- (the owner, 2026-11-22). What is a splash or a toast has a box, on or off.
+-- A guildie's is a toast or nothing, so there it is a box as well, and no page has a preset: "splash bør være bare
+-- for deg, og toast bør være for guildies. burde ikke kunne velge det egentlig? pointless? ... og presets.. fjerne
+-- eller?" (the owner, 2026-11-22). Each of the three pages has its own Play sounds, and off it locks and greys
+-- what is under it.
+-- Nothing here says where a splash or a toast stands: each is moved on its own (Arrange on screen) -
+-- "'by the letter icon' blir jo ikke riktig siden de kan flyttes på" (the owner, 2026-11-22).
 -- Ours opens in a fight, closes itself while things are moved on screen, and needs no scrolling: a
 -- chapter is a page. The game's Options -> AddOns -> Grudgekeeper keeps one button, which opens this.
 -- Grudgekeeper is not one of the YippYapp addons (the user, 2026-11-03): no YippYapp page or footer.
@@ -14,18 +27,33 @@ local ADDON, GK = ...
 local LIB = GK.Lib or LibStub("LibForever-1.0")      -- names by themselves (Core.lua, GK.Lib)
 
 -- ---------------------------------------------------------------------------
+-- What a dropdown offers: { value, the menu's words, the dropdown's own words where those are shorter }
+-- ---------------------------------------------------------------------------
+local STYLES = { { "splash", "Splash: big", "Splash" }, { "toast", "Toast: small", "Toast" }, { "off", "Off" } }
+local WARN_WAYS = { { "screen", "On screen" }, { "chat", "Chat line" }, { "off", "Off" } }
+local MODES = { { "normal", "Normal" }, { "streamer", "Streamer" }, { "private", "Private" } }
+local WHEN = { { "always", "Always" }, { "noCombat", "Not in combat" },
+    { "noCombatInInstance", "Not in combat in a dungeon or raid", "Not in combat in dungeons" },
+    { "noInstance", "Never in a dungeon or raid", "Not in dungeons" } }
+-- How long an announcement shows: the seconds a toast does, and a splash half of them (Announce.lua).
+-- Beyond these it is a setting nobody needs ("legg settings så folk kan sette lengde selv", the owner,
+-- 2026-11-14).
+local TIMES = { { 3, "3 seconds, a splash 1.5", "3 seconds" }, { 5, "5 seconds, a splash 2.5", "5 seconds" },
+    { 7, "7 seconds, a splash 3.5", "7 seconds" }, { 10, "10 seconds, a splash 5", "10 seconds" },
+    { 15, "15 seconds, a splash 7.5", "15 seconds" } }
+-- A guildie's sprees, from how many kills in a row (the tiers' own counts and never their names; "round": only
+-- 25, 50 and 100), and a guildie's titles, from which title (the points it stands at). How it shows is a dropdown of
+-- its own: one menu set both until 2026-11-22.
+local SPREES_FROM = { { 3, "3 kills and up" }, { 5, "5 kills and up" }, { 7, "7 kills and up" },
+    { 10, "10 kills and up" }, { 15, "15 kills and up" }, { "round", "Only 25, 50 and 100" } }
+local TITLES_FROM = { { 0, "Every title" }, { 100, "Slayer and up" }, { 450, "Avenger and up" },
+    { 900, "Nemesis and up" } }
+local SKINS = { { "parchment", "Parchment" }, { "classic", "Classic" } }
+local PLAY_ICON = "common-dropdown-icon-play"
+
+-- ---------------------------------------------------------------------------
 -- What there is to set
 -- ---------------------------------------------------------------------------
-local WHEN = { { "always", "Always" }, { "noCombat", "Not in combat" },
-    { "noCombatInInstance", "Not in combat in a dungeon or raid" },
-    { "noInstance", "Never in a dungeon or raid" } }
--- the same, short, where a when-rule stands on a line with others (the Notifications page)
-local WHEN_SHORT = { always = "Always", noCombat = "Not in combat", noCombatInInstance = "Not in combat in dungeons",
-    noInstance = "Not in dungeons" }
--- How long an announcement shows: the seconds a toast does, and a splash half of them (Announce.lua).
-local TIMES = { { 3, "3 seconds - a splash 1.5" }, { 5, "5 seconds - a splash 2.5" }, { 7, "7 seconds - a splash 3.5" },
-    { 10, "10 seconds - a splash 5" }, { 15, "15 seconds - a splash 7.5" } }
-
 --- A setting that is on or off, kept in GK.db[key]. child: it belongs under the row above. after(on):
 --- what else has to happen when it changes.
 local function Check(key, label, help, child, after)
@@ -33,370 +61,325 @@ local function Check(key, label, help, child, after)
         get = function() return GK.db[key] and true or false end,
         set = function(on)
             GK.db[key] = on and true or false
-            GK.Changed()
             if after then after(on) end
-        end }
-end
-
---- A few words to choose between, all on the row (kind "choice"), or more of them in a menu ("pick").
-local function Choice(kind, key, label, options, default)
-    local row = { kind = kind, key = key, label = label, options = options,
-        get = function() return GK.db[key] or default end,
-        set = function(value)
-            GK.db[key] = value
             GK.Changed()
         end }
-    function row.menu(root, done)
-        for _, o in ipairs(options) do
-            local value = o[1]
-            root:CreateRadio(o[2], function() return row.get() == value end, function()
-                row.set(value)
-                if done then done() end
-            end)
-        end
-    end
-    return row
 end
 
---- A sound to pick. Picking one keeps it and plays it, so you hear what you chose, and picking it again
---- plays it again. spree: a spree announcement's, which offers the Grudgekeeper's voice lines too.
-local function Sound(key, label, get, set, child, spree)
-    local row = { kind = "sound", key = key, label = label, child = child, spree = spree, get = get, set = set }
-    function row.menu(root, done)
-        if root.SetScrollMode then root:SetScrollMode(420) end
-        for _, c in ipairs(GK.SoundChoices(spree)) do
-            local picked = c[1]
-            root:CreateRadio(c[2], function() return get() == picked end, function()
-                set(picked)
-                GK.PlayChoice(picked)
-                if done then done() end
-            end)
-        end
-    end
-    return row
+--- A play button at the right of a menu's row. It plays, picks nothing and leaves the menu open: the game's
+--- radio row closes its menu at every pick (Blizzard_Menu, MenuTemplates.CreateRadio has no response of its own),
+--- so "man ikke må åpne og lukke dropdown hver gang" (the owner, 2026-11-22) needs a button of its own.
+local function AddPlay(radio, play)
+    if not (radio and radio.AddInitializer and MenuTemplates and MenuTemplates.AttachBasicButton) then return end
+    radio:AddInitializer(function(row)
+        -- the picture is the row's and the click a clear button's over it: the row's own click never hears it
+        local icon = row:AttachTexture()
+        icon:SetAtlas(PLAY_ICON)
+        icon:SetSize(16, 16)
+        icon:SetPoint("RIGHT", -3, 0)
+        icon:SetAlpha(0.75)
+        local button = MenuTemplates.AttachBasicButton(row, 24, 20)
+        button:SetPoint("RIGHT")
+        button:SetScript("OnEnter", function() icon:SetAlpha(1) end)
+        button:SetScript("OnLeave", function() icon:SetAlpha(0.75) end)
+        button:SetScript("OnClick", play)
+        -- the row's size is said here: measured from its parts, the button would stand on the last letters
+        return math.ceil(row.leftTexture1:GetWidth() + row.fontString:GetWidth()) + 38, 20
+    end)
 end
 
-local function Head(label, compact) return { kind = "head", label = label, compact = compact } end
-
--- ---------------------------------------------------------------------------
--- The notifications: one page for all that shows up (2026-11-20)
--- ---------------------------------------------------------------------------
--- Yours and a guildie's side by side, with the presets over them: "gjør settings bedre, så alt av
--- notifications osv kan stilles på ett sted og lyder og toasts/splashes osv.. det er sikkert flere som ikke
--- ønsker masse popups, spesielt streamers ... tenk en 1000 people guild" (the owner). Drawn first
--- (art/mockups/settings) and built to it. It took in the pages Kill sprees, Warnings and Notes; their sounds
--- went to Sounds, the nameplate marks and the map's pins to Around the game.
-local STYLES = { { "splash", "Splash" }, { "toast", "Toast" }, { "off", "Off" } }
-local STYLE_NAME = { splash = "Splash", toast = "Toast", off = "Off" }
--- A guildie's sprees: how, and from how many kills in a row ("round": only 25, 50 and 100). { style, from, the
--- menu's words, the page's }. The counts are the tiers' own (GK.SPREE_TIERS).
-local GUILD_SPREES = {
-    { "off", nil, "Off", "Off" },
-    { "toast", 3, "Toast, every one (3+)", "Toast, 3+" },
-    { "toast", 7, "Toast, Butcher and up (7+)", "Toast, 7+" },
-    { "toast", 10, "Toast, Reaper and up (10+)", "Toast, 10+" },
-    { "toast", 15, "Toast, Grudgebound and up (15+)", "Toast, 15+" },
-    { "toast", "round", "Toast, only 25, 50 and 100", "Toast, 25/50/100" },
-    { "splash", 10, "Splash, Reaper and up (10+)", "Splash, 10+" },
-    { "splash", "round", "Splash, only 25, 50 and 100", "Splash, 25/50/100" },
-}
--- A guildie's new titles: how, and from which title up, by the points it stands at (GK.TITLES).
-local GUILD_TITLES = {
-    { "off", nil, "Off", "Off" },
-    { "toast", 0, "Toast, every title", "Toast, every title" },
-    { "toast", 100, "Toast, Slayer and up", "Toast, Slayer+" },
-    { "toast", 450, "Toast, Avenger and up", "Toast, Avenger+" },
-    { "toast", 900, "Toast, Nemesis and up", "Toast, Nemesis+" },
-    { "splash", 450, "Splash, Avenger and up", "Splash, Avenger+" },
-}
-
--- The presets over the page: each sets the rows it names, and a page that matches none of them is Custom. Big
--- moments is what a new install has (Core.lua's defaults). Where a guildie is, and the warnings (a chapter of
--- their own since 2026-11-20), belong to no preset.
-local PRESETS = {
-    { key = "all", name = "All of it", hint = "All of yours, and every spree and title from guildies.",
-      set = { spreeMine = "splash", rankMine = "splash", orderMine = "splash", spreeEnded = "toast",
-          spreeTormentor = "toast", spreeGuild = "toast", spreeGuildFrom = 3, rankGuild = "toast", rankGuildFrom = 0,
-          orderDone = "toast", spreeEndedGuild = "toast", spreeTormentorGuild = "toast", guildSounds = true,
-          revengeMine = "splash", revengeGuild = "toast", grudgeMine = "toast" } },
-    { key = "big", name = "Big moments",
-      hint = "All of your own, and only the biggest sprees and titles from guildies.",
-      set = { spreeMine = "splash", rankMine = "splash", orderMine = "splash", spreeEnded = "toast",
-          spreeTormentor = "toast", spreeGuild = "toast", spreeGuildFrom = 10, rankGuild = "toast",
-          rankGuildFrom = 450, orderDone = "toast", spreeEndedGuild = "off", spreeTormentorGuild = "toast",
-          guildSounds = true, revengeMine = "splash", revengeGuild = "off", grudgeMine = "toast" } },
-    { key = "quiet", name = "Quiet", hint = "Your own as small toasts, and nothing from guildies. Good for streaming.",
-      set = { spreeMine = "toast", rankMine = "toast", orderMine = "toast", spreeEnded = "toast",
-          spreeTormentor = "toast", spreeGuild = "off", rankGuild = "off", orderDone = "off",
-          spreeEndedGuild = "off", spreeTormentorGuild = "off", guildSounds = false,
-          revengeMine = "toast", revengeGuild = "off", grudgeMine = "toast" } },
-}
-GK.NOTIFY_PRESETS = PRESETS
-local CUSTOM_HINT = "Your own mix. Pick one of the others to start over from it."
-
---- The preset the page matches now ("all", "big" or "quiet"), or "custom".
-function GK.NotifyPreset()
-    for _, p in ipairs(PRESETS) do
-        local same = true
-        for k, v in pairs(p.set) do
-            if GK.db[k] ~= v then
-                same = false
-                break
-            end
-        end
-        if same then return p.key end
+--- One value from a few: what a dropdown is. options is the list, or a function that makes it.
+local function Cell(key, options, get, set)
+    local cell = { key = key, get = get or function() return GK.db[key] end }
+    cell.set = set or function(value)
+        GK.db[key] = value
+        GK.Changed()
     end
-    return "custom"
-end
-
---- What a preset's tab says under it: its hint, or Custom's.
-function GK.NotifyPresetHint(key)
-    for _, p in ipairs(PRESETS) do
-        if p.key == key then return p.hint end
-    end
-    return CUSTOM_HINT
-end
-
---- Set every row a preset names. Returns whether there is such a preset.
-function GK.ApplyNotifyPreset(key)
-    for _, p in ipairs(PRESETS) do
-        if p.key == key then
-            for k, v in pairs(p.set) do GK.db[k] = v end
-            GK.Changed()
-            return true
-        end
-    end
-    return false
-end
-
--- A cell is one value on a row that holds more than one (a pair's two, an inline row's few): key, the words it
--- shows (text), and its menu's choices, options = { { words, chosen(), pick() } }.
-
---- Splash, toast or off, kept in GK.db[key].
-local function StyleCell(key)
-    local cell = { key = key, options = {} }
-    for _, s in ipairs(STYLES) do
-        local value = s[1]
-        cell.options[#cell.options + 1] = { s[2], function() return GK.db[key] == value end, function()
-            GK.db[key] = value
-            GK.Changed()
-        end }
-    end
-    function cell.text() return STYLE_NAME[GK.db[key]] or "Off" end
-    return cell
-end
-
---- How and from where, in one menu (GUILD_SPREES, GUILD_TITLES): a choice sets both keys; Off only the way.
-local function ComboCell(styleKey, fromKey, list)
-    local cell = { key = styleKey, fromKey = fromKey, options = {} }
-    local function Chosen(c)
-        if c[1] == "off" then return GK.db[styleKey] == "off" end
-        return GK.db[styleKey] == c[1] and GK.db[fromKey] == c[2]
-    end
-    for _, c in ipairs(list) do
-        cell.options[#cell.options + 1] = { c[3], function() return Chosen(c) end, function()
-            GK.db[styleKey] = c[1]
-            if c[2] ~= nil then GK.db[fromKey] = c[2] end
-            GK.Changed()
-        end }
+    function cell.choices()
+        if type(options) == "function" then return options() end
+        return options
     end
     function cell.text()
-        for _, c in ipairs(list) do
-            if Chosen(c) then return c[4] end
+        local value = cell.get()
+        for _, o in ipairs(cell.choices()) do
+            if o[1] == value then return o[3] or o[2] end
         end
-        return STYLE_NAME[GK.db[styleKey]] or "Off"      -- a mix the menu has no line for: its way alone
+        return cell.missing or (value == nil and "" or tostring(value))
     end
-    return cell
-end
-
---- One of a few values, short on the page (short(value)) and in full in its menu.
-local function PickCell(key, options, default, short)
-    local cell = { key = key, options = {} }
-    for _, o in ipairs(options) do
-        local value = o[1]
-        cell.options[#cell.options + 1] = { o[2], function() return (GK.db[key] or default) == value end, function()
-            GK.db[key] = value
-            GK.Changed()
-        end }
-    end
-    function cell.text() return short(GK.db[key] or default) end
-    return cell
-end
-
-local function Pair(label, mine, guild) return { kind = "pair", label = label, mine = mine, guild = guild } end
-
--- A warning's way (GK.WarnStyle, Core.lua): on screen by the letter icon, a line in chat, or not at all.
-local WARN_WAYS = { { "screen", "On screen" }, { "chat", "Chat line" }, { "off", "Off" } }
-local function Warning(key, label)
-    local row = { kind = "pick", key = key, label = label, options = WARN_WAYS, compact = true,
-        get = function() return GK.WarnStyle(key) end,
-        set = function(value)
-            GK.db[key] = value
-            GK.Changed()
-        end }
-    function row.menu(root, done)
-        for _, o in ipairs(WARN_WAYS) do
+    function cell.fill(root, done)
+        local list = cell.choices()
+        if cell.scroll and root.SetScrollMode then root:SetScrollMode(420) end
+        local into, group = root, nil
+        for _, o in ipairs(list) do
             local value = o[1]
-            root:CreateRadio(o[2], function() return row.get() == value end, function()
-                row.set(value)
+            -- a sound's menu: a title over each kind, and the other addons' in a menu of their own at the end
+            if o.group and o.group ~= group then
+                group, into = o.group, root
+                if o.sub and root.CreateButton then
+                    into = root:CreateButton(group)
+                    if into.SetScrollMode then into:SetScrollMode(420) end
+                elseif root.CreateTitle then
+                    root:CreateTitle(group)
+                end
+            end
+            local radio = into:CreateRadio(o[2], function() return cell.get() == value end, function()
+                cell.set(value)
+                if cell.picked then cell.picked(value) end
                 if done then done() end
             end)
+            if cell.preview and value ~= "off" then AddPlay(radio, function() cell.preview(value) end) end
         end
+    end
+    return cell
+end
+
+--- A warning's sound to pick. Each has a play button in the menu; picking one keeps it and plays it as well.
+local function SoundCell(key, get, set)
+    local cell = Cell(key, function() return GK.SoundChoices() end, get, set)
+    cell.scroll = true
+    cell.missing = "Missing sound"       -- one picked that is gone (a pack taken away): the default plays
+    function cell.picked(value) GK.PreviewSound(value) end
+    function cell.preview(value) GK.PreviewSound(value) end
+    function cell.enabled() return GK.db.warnSounds ~= false end
+    cell.lockedWords = "None"            -- Play sounds off: grey and None, the pick kept for when it is on again
+    return cell
+end
+
+-- What stands on a row after its label, x from the row's left.
+local function Drop(x, w, cell) return { kind = "drop", x = x, w = w, cell = cell } end
+local function Tick(x, w, check) return { kind = "tick", x = x, w = w, check = check } end
+
+local function Columns(...)
+    local row = { kind = "columns", at = {} }
+    for i = 1, select("#", ...), 2 do
+        local x, words = select(i, ...)
+        row.at[#row.at + 1] = { x = x, text = words }
     end
     return row
 end
 
--- How tall each kind of row is on the page, which holds 380 under its heading (the window, below): drawn
--- at these, and summed by tests/run.lua so that no chapter runs into the signature.
-local ROW_HEIGHT = { choice = 26, sound = 24, presets = 36, columns = 16, pair = 22, inline = 24 }
-function GK.SettingsRowHeight(r)
-    if r.kind == "check" then return r.help and 36 or (r.compact and 24 or 26) end
-    if r.kind == "pick" then return r.compact and 22 or 26 end
-    if r.kind == "head" then return r.compact and 24 or 28 end
-    return ROW_HEIGHT[r.kind] or 26
+local function Ruled() return { kind = "rule" } end
+local function Section(label) return { kind = "head", label = label } end
+
+--- A moment's sound box: locked, unticked and grey while its page's Play sounds is off, or while it doesn't show.
+local function SoundBox(label, key, master, shownBy)
+    local check = Check(key, "")         -- the column says Sound: the box needs no words beside it
+    check.name = label .. ": sound"
+    function check.enabled() return GK.db[master] ~= false and GK.db[shownBy] ~= "off" end
+    function check.why()
+        if GK.db[master] == false then return "Locked while Play sounds is off." end
+        return "It doesn't show, so it has no sound."
+    end
+    return check
 end
 
---- The chapters, in the order of the menu: { name, intro, rows }. Made anew at each
---- call, so a test reads it without a window.
+--- A row of Mine: splash, toast or off, and its sound.
+local function MineMoment(label, setting, sound)
+    return { kind = "line", label = label, stripe = true, parts = { Drop(268, 118, Cell(setting, STYLES)),
+        Tick(420, 52, SoundBox(label, sound, "mineSounds", setting)) } }
+end
+
+--- Mode (Core.lua, GK.Mode): on Guildies, as whose news is told, and on Sharing, as what goes out. One setting.
+local function ModeRow(help)
+    local cell = Cell("mode", MODES, function() return GK.Mode() end, function(value)
+        local was = GK.Mode()
+        GK.db.mode = value
+        if GK.ForgetFriends then GK.ForgetFriends() end
+        if was == "private" and value ~= "private" then GK.SendBoard() end     -- sharing again: the guild hears it
+        GK.Changed()
+    end)
+    return { kind = "line", label = "Mode", height = 54, help = help, parts = { Drop(268, 170, cell) } }
+end
+
+--- A setting of Sharing that Private turns off: unticked, grey and kept for when it is on again.
+local function Shared(check)
+    function check.enabled() return GK.Mode() ~= "private" end
+    function check.why() return "Private shares nothing." end
+    return check
+end
+
+--- A row of Guildies: a toast or nothing, its sound, and for sprees and titles from how many.
+local function GuildMoment(label, setting, sound, from)
+    local toast = { kind = "check", key = setting, label = "",
+        get = function() return GK.db[setting] ~= "off" end,
+        set = function(on)
+            GK.db[setting] = on and "toast" or "off"
+            GK.Changed()
+        end }
+    local parts = { Tick(230, 52, toast), Tick(298, 52, SoundBox(label, sound, "guildSounds", setting)) }
+    if from then parts[#parts + 1] = Drop(378, 182, from) end
+    return { kind = "line", label = label, stripe = true, parts = parts }
+end
+
+--- A page's own Play sounds, over the column of what it locks.
+local function PlaySounds(key, x, tip)
+    local check = Check(key, "")
+    check.name, check.tip = "Play sounds", tip
+    return { kind = "line", label = "Play sounds", height = 40, parts = { Tick(x, 52, check) } }
+end
+
+local function WarnRow(setting, label, sound, help)
+    local parts = { Drop(282, 106, Cell(setting, WARN_WAYS, function() return GK.WarnStyle(setting) end)) }
+    if sound then parts[#parts + 1] = Drop(404, 158, sound) end
+    return { kind = "line", label = label, help = help, stripe = true, height = help and 56 or 44, parts = parts }
+end
+
+-- How tall each kind of row is on the page, which holds PAGE_ROOM under its heading (the window, below):
+-- drawn at these, and summed by tests/run.lua so that no chapter runs past the frame.
+local PAGE_ROOM = 430
+local ROW_HEIGHT = { columns = 24, rule = 14, head = 28 }
+GK.SETTINGS_ROOM = PAGE_ROOM
+function GK.SettingsRowHeight(r)
+    if r.height then return r.height end
+    if r.kind == "check" then return r.help and 50 or 38 end
+    return ROW_HEIGHT[r.kind] or 37
+end
+
+--- The chapters, in the order of the menu: { group, name, title, intro, rows }. Made anew at each call, so a
+--- test reads it without a window.
 function GK.SettingsChapters()
-    local zoneOnly = Check("guildZoneOnly", "Guildies' only when they are in my zone")
-    zoneOnly.compact = true
-    local chapters = {
-        { name = "Notifications", intro = "Splashes and toasts: what shows up on your screen.",
+    local mine = {
+        PlaySounds("mineSounds", 420, "The sounds of your own splashes and toasts."),
+        Columns(10, "WHEN", 268, "SHOW AS", 426, "SOUND"),
+        MineMoment("Kill spree", "spreeMine", "spreeSound"),
+        MineMoment("New title", "rankMine", "rankSound"),
+        MineMoment("Kill order fulfilled", "orderMine", "orderSound"),
+        MineMoment("Revenge", "revengeMine", "revengeSound"),
+        -- yours alone: a guildie's score with an enemy is theirs (Announce.lua, GK_GRUDGE)
+        MineMoment("Grudge or Death list kill", "grudgeMine", "grudgeSound"),
+        MineMoment("Spree ended", "spreeEnded", "endedSound"),
+        MineMoment("Tormentor put down", "spreeTormentor", "tormentorSound"),
+        Ruled(),
+        -- each says what it sets: "Show them" read "Show the...", and said nothing whole either ("samme på flere
+        -- sider, gir ikke så mye mening", the owner, 2026-11-22)
+        { kind = "line", label = "Show my notifications", parts = {
+            Drop(268, 240, Cell("announceWhenMine", WHEN, function() return GK.db.announceWhenMine or "always" end)) } },
+        { kind = "line", label = "How long notifications stay", parts = {
+            Drop(268, 130, Cell("announceTime", TIMES, function() return GK.db.announceTime or 7 end)) } },
+    }
+
+    local spreesFrom = Cell("spreeGuildFrom", SPREES_FROM)
+    spreesFrom.enabled = function() return GK.db.spreeGuild ~= "off" end
+    local titlesFrom = Cell("rankGuildFrom", TITLES_FROM)
+    titlesFrom.enabled = function() return GK.db.rankGuild ~= "off" end
+    local guild = {
+        ModeRow("Streamer: nothing of theirs but your own kill orders, and never where you are. Private: only you."),
+        PlaySounds("guildSounds", 298, "The sounds of your guildies' toasts."),
+        Columns(10, "WHEN A GUILDIE HAS", 236, "TOAST", 304, "SOUND", 378, "ONLY FROM"),
+        GuildMoment("A kill spree", "spreeGuild", "spreeSoundGuild", spreesFrom),
+        GuildMoment("A new title", "rankGuild", "rankSoundGuild", titlesFrom),
+        GuildMoment("A kill order fulfilled", "orderDone", "orderSoundGuild"),
+        GuildMoment("A revenge", "revengeGuild", "revengeSoundGuild"),
+        GuildMoment("A spree ended", "spreeEndedGuild", "endedSoundGuild"),
+        GuildMoment("Put a tormentor down", "spreeTormentorGuild", "tormentorSoundGuild"),
+        Ruled(),
+        { kind = "line", label = "Show guildie notifications", parts = {
+            Drop(268, 240, Cell("announceWhenGuild", WHEN,
+                function() return GK.db.announceWhenGuild or "noCombat" end)) } },
+        Check("guildZoneOnly", "Only when they are in my zone"),
+    }
+
+    local warnings = {
+        PlaySounds("warnSounds", 398, "The sounds of the warnings on this page."),
+        Columns(10, "WARN ME WHEN", 282, "SHOW AS", 404, "SOUND"),
+        WarnRow("alertNear", "A kill order target is near",
+            SoundCell("near", function() return GK.db.nearSound end, function(value)
+                GK.db.nearSound = value
+                GK.Changed()
+            end),
+            "Also the sound for your Death list and the tracked guild."),
+        WarnRow("watchNearby", "A Shame player is near"),
+        WarnRow("watchGroup", "A Shame player joins my group",
+            SoundCell("shame", function() return GK.ShameSoundKey() end, function(value)
+                GK.db.shameSound = value
+                GK.Changed()
+            end)),
+        WarnRow("kudosGroup", "A Kudos player joins my group"),
+    }
+
+    return {
+        { group = "NOTIFICATIONS", name = "Mine", title = "My notifications",
+          intro = "What you see and hear when it happens to you.", rows = mine },
+        { group = "NOTIFICATIONS", name = "Guildies", title = "Guildie notifications",
+          intro = "What you see and hear when it happens to someone in your guild.", rows = guild },
+        { group = "NOTIFICATIONS", name = "Warnings", title = "Warnings",
+          intro = "Who is near, and who joins your group.", rows = warnings },
+        { group = "GENERAL", name = "Letters", title = "Letters", intro = "Sealed letters from the Grudgekeeper.",
           rows = {
-            { kind = "presets" },
-            { kind = "columns" },
-            Pair("Kill sprees", StyleCell("spreeMine"), ComboCell("spreeGuild", "spreeGuildFrom", GUILD_SPREES)),
-            Pair("A new title", StyleCell("rankMine"), ComboCell("rankGuild", "rankGuildFrom", GUILD_TITLES)),
-            Pair("A kill order fulfilled", StyleCell("orderMine"), StyleCell("orderDone")),
-            Pair("Revenge", StyleCell("revengeMine"), StyleCell("revengeGuild")),
-            -- yours alone: a guildie's score with an enemy is theirs (Announce.lua, GK_GRUDGE)
-            Pair("A grudge evened up", StyleCell("grudgeMine")),
-            Pair("A spree ended", StyleCell("spreeEnded"), StyleCell("spreeEndedGuild")),
-            Pair("A tormentor put down", StyleCell("spreeTormentor"), StyleCell("spreeTormentorGuild")),
-            zoneOnly,
-            { kind = "inline", parts = { "Show mine",
-                PickCell("announceWhenMine", WHEN, "always", function(v) return WHEN_SHORT[v] or v end),
-                "guildies'", PickCell("announceWhenGuild", WHEN, "noCombat", function(v) return WHEN_SHORT[v] or v end) } },
-            -- how long one shows ("legg settings så folk kan sette lengde selv", the owner, 2026-11-14)
-            { kind = "inline", parts = { "Show for",
-                PickCell("announceTime", TIMES, 7, function(v) return v .. " seconds" end) } },
-          } },
-        -- The warnings had the foot of Notifications until Revenge and a sixth warning made it taller than the
-        -- page (2026-11-20).
-        { name = "Warnings", intro = "Who is near, or joins your group.",
-          rows = {
-            Warning("alertNear", "A kill order target is near"),
-            Warning("watchNearby", "A Shame player is near"),
-            Warning("watchGroup", "A Shame player joins my group"),
-            Warning("kudosGroup", "A Kudos player joins my group"),
-          } },
-        { name = "Letters",
-          intro = "Letters from the Grudgekeeper, by the letter icon.",
-          rows = {
-            Check("anyLetters", "Letters", "News as small sealed letters by the letter icon.", false,
+            Check("anyLetters", "Letters", "News as small sealed letters.", false,
                 function() if GK.NoticeUpdate then GK.NoticeUpdate(false) end end),     -- the icon at once
-            Check("letters", "Kill orders", "A new order lands as a letter.", true),
-            Check("myLetters", "My own kills and deaths", "A new title, or a death that posted an order.", true),
-            Check("keepLetters", "Wait until read", "Off: an unread letter leaves the icon after two minutes.", true,
+            Check("letters", "Kill orders", "A new one with gold, from a friend or about you.", true),
+            Check("myLetters", "My own deaths", "A death that posted a kill order.", true),
+            Check("keepLetters", "Wait until read", "Off: an unread letter fades after two minutes.", true,
                 function(on) if not on and GK.FadeLetters then GK.FadeLetters() end end),   -- what waited fades
           } },
-        { name = "Guild",
-          intro = "What you share with your guild.",
+        { group = "GENERAL", name = "Sharing", title = "Sharing", intro = "What others get to see.",
           rows = {
-            Check("share", "Share my score with the guild", "Your kills, deaths and points on the leaderboard.",
-                false, function(on) if on then GK.SendBoard() end end),
-            Check("autoOrders", "Orders on enemies who keep killing us",
-                "Three of the guild in two hours: your death posts one."),
+            ModeRow("Normal shares as set below. Streamer never shares where you are. Private shares nothing."),
+            Shared(Check("share", "Share my score with the guild", "Your kills, deaths and points on the leaderboard.",
+                false, function(on) if on then GK.SendBoard() end end)),
             -- a player on your side outside the guild who opens your profile or inspects you (2026-11-20)
-            Check("shareOutside", "Share my profile outside the guild",
-                "Players on your side who ask see your title, points, kills and deaths."),
+            Shared(Check("shareOutside", "Share my profile outside the guild",
+                "Players on your side who ask see your title, points, kills and deaths.")),
+            -- each player's own: it is the victim's client that posts (Guild.lua, GK.AutoOrder). "dette er en
+            -- settings for deg selv personlig er det ikke. skrevet som om du bestemmer settingen for hele guilden"
+            -- (the owner, 2026-11-22)
+            Shared(Check("autoOrders", "My deaths can post kill orders",
+                "When someone kills you 3 times in half an hour, or 3 of the guild in two hours.")),
           } },
-        { name = "Around the game",
-          intro = "Tooltips, the right-click menu, nameplates and the map.",
+        { group = "GENERAL", name = "In the game", title = "In the game",
+          intro = "Tooltips, menus, nameplates and the map.",
           rows = {
-            Check("tooltip", "A line on enemy tooltips", "Only for enemies you have a history with."),
-            Check("unitMenu", "In the right-click menu", "An enemy: profile, kill order, Track. A friend: Shame, Kudos."),
-            Check("plateMarks", "A seal over a kill order target's nameplate",
-                "The eye over those you track, too. Needs enemy nameplates."),
-            Check("plateNotes", "Mark noted players' nameplates", "A medal for each tag over Kudos players, a small mark for Shame."),
+            Check("tooltip", "Line on enemy tooltips", "Only for enemies you have a history with."),
+            Check("unitMenu", "Right-click menu", "An enemy: Grudge file, kill order, Death list. A friend: Shame, Kudos."),
+            Check("plateMarks", "Seal over kill order targets", "And an eye over your Death list. Needs enemy nameplates."),
+            Check("plateNotes", "Mark over Shame and Kudos players", "A medal for each Kudos tag, out of combat. A small mark for Shame."),
             Check("mapPins", "Last seen on the map", "Where a guildie saw a target, for 15 minutes."),
-            Check("inspectTab", "A tab on the Inspect window", "A guildie's record, right there."),
-            { kind = "check", key = "guildButton", label = "A tab on the guild window",
-              help = "Your week, the kill orders, the leaderboard and guild chat on one page.",
+            Check("inspectTab", "Tab on the Inspect window", "A guildie's record, right there."),
+            { kind = "check", key = "guildButton", label = "Tab on the guild window",
+              help = "Your week, the kill orders, the leaderboard and guild chat.",
               get = function() return GK.db.guildButton ~= false end,
               set = function(on)
                   GK.db.guildButton = on and true or false
                   GK.RefreshGuildTab()
               end },
             { kind = "check", key = "minimap", label = "Minimap button",
-              help = "Left-click opens the ledger, right-click these pages.",
+              help = "Left-click opens the ledger, right-click the settings.",
               get = function() return not (GK.db.minimap and GK.db.minimap.hide) end,
               set = function(on) GK.SetMinimapShown(on) end },
-            Head("Screenshots"),
-            Check("shotFulfil", "When I fulfil a kill order"),
-            Check("shotEveryKill", "At every kill"),
           } },
-        { name = "Look",
-          intro = "Skin, portraits and the Reaper splash.",
+        { group = "GENERAL", name = "Appearance", title = "Appearance",
+          intro = "The ledger, portraits and screenshots.",
           rows = {
-            -- the skin dresses the ledger, the notes and these pages (GK.SetLook); the letters and the
+            -- the skin dresses the ledger and the notes (GK.SetLook), never these pages; the letters and the
             -- kill order's poster are the Grudgekeeper's paper in both
-            { kind = "choice", key = "look", label = "Skin",
-              options = { { "parchment", "Parchment" }, { "classic", "Classic" } },
-              get = function() return GK.db.look or "parchment" end,
-              set = function(value) GK.SetLook(value) end },
+            { kind = "line", label = "Ledger skin", height = 48, parts = {
+                Drop(212, 180, Cell("look", SKINS, function() return GK.db.look or "parchment" end,
+                    function(value) GK.SetLook(value) end)) } },
             -- the faces go with neither skin ("classic portraits no matter what ... en egen settings
             -- uavhengig av classic/parchment settings", the owner, 2026-11-11)
             Check("oldPortraits", "Old race portraits", "Faces from the old character screen. Off: today's icons."),
-            -- Reaper's splash had two we both liked (the Streak Lab, 2026-11-17); the scythe out of the box
-            -- since 2026-11-20 ("mye bedre enn reaper smoke", the owner)
-            { kind = "choice", key = "reaperEffect", label = "Reaper's splash",
-              options = { { "scythe", "Scythe" }, { "smoke", "Smoke" } },
-              get = function() return GK.db.reaperEffect or "scythe" end,
-              set = function(value) GK.db.reaperEffect = value end },
+            Check("sound", "Ledger and letter sounds", "Pages, tabs and letters. The notifications have their own."),
+            Ruled(),
+            Section("SCREENSHOTS"),
+            Check("shotFulfil", "When I fulfil a kill order"),
+            Check("shotEveryKill", "At every kill"),
           } },
     }
-    -- Sounds: every sound in one place, second (2026-11-20). One switch for them all, one for a guildie's, a
-    -- sound for each spree tier rising, then the three that are no tier (a spree ended, a tormentor, revenge),
-    -- then the warnings'. The voice lines are offered for the splashes and toasts only.
-    local rows = {
-        Check("sound", "Sounds", "Every sound Grudgekeeper plays."),
-        Check("guildSounds", "Sounds from guildies", "Their sprees, titles and kill orders play their sound when they show."),
-    }
-    if GK.SPREE_TIERS then
-        rows[#rows + 1] = Head("Splashes and toasts")
-        local function SpreeSound(key, label)
-            rows[#rows + 1] = Sound(key, label, function()
-                return (GK.db.spreeSounds or {})[key] or GK.SPREE_DEFAULT_SOUNDS[key]
-            end, function(picked)
-                GK.db.spreeSounds = GK.db.spreeSounds or {}
-                GK.db.spreeSounds[key] = picked
-            end, false, true)
-        end
-        for _, t in ipairs(GK.SPREE_TIERS) do SpreeSound(t.key, t.name) end
-        SpreeSound("ended", "Spree ended")
-        SpreeSound("tormentor", "Tormentor")
-        SpreeSound("revenge", "Revenge")
-    end
-    rows[#rows + 1] = Head("Warnings")
-    rows[#rows + 1] = Sound("near", "A kill order target is near", function() return GK.db.nearSound end,
-        function(key) GK.db.nearSound = key end)
-    rows[#rows + 1] = Sound("shame", "A Shame player joins my group", function() return GK.ShameSoundKey() end,
-        function(key) GK.db.shameSound = key end)
-    table.insert(chapters, 2, { name = "Sounds", intro = "Turn sounds on or off and choose them.", rows = rows })
-    return chapters
 end
 
 -- ---------------------------------------------------------------------------
 -- The window
 -- ---------------------------------------------------------------------------
-local W, H = 792, 544                    -- the open ledger's size
-local SIDE_X, SIDE_W, TOP = 30, 190, 44   -- the menu down the left: the chapters by name
-local PAGE_X = SIDE_X + SIDE_W + 40       -- the chapter's settings, right of the line between them
-local PAGE_W = W - PAGE_X - 30
-local MENU_H = 28
-local SPEAKER = "Interface\\Common\\VoiceChat-Speaker"
+-- The ledger open is 792 by 544; these are the mockup's own numbers (art/mockups/settings2), in points.
+local MENU_X, MENU_W, MENU_TOP, MENU_STEP = 16, 176, 44, 29
+local SPLIT_X = 198
+local PAGE_X, PAGE_W, PAGE_Y = 208, 570, 94
+local TEXT_X = 10                         -- where a row's words begin
+-- these pages' own colours, whatever the skin: the game's options' gold and white, and a quiet grey
+local GOLD, WHITE, QUIET = { 1, 0.82, 0 }, { 1, 1, 1 }, { 0.73, 0.68, 0.6 }
+local OFF_WORDS = "|cff8d8d8d%s|r"
+local CHECKBOX, DROPDOWN = "MinimalCheckboxTemplate", "WowStyle1DropdownTemplate"
 
 local win, chapters
 local current = 1
@@ -405,431 +388,193 @@ local pageTitle, pageIntro, host
 local reopen = false                     -- closed to move things on screen: open again when that is done
 local RefreshPage
 
-local function OpenMenu(owner, fill)
-    if not (MenuUtil and MenuUtil.CreateContextMenu) then return end
-    MenuUtil.CreateContextMenu(owner, function(_, root) fill(root) end)
+--- Words on these pages. Not GK.Ink: they keep their colours when the skin is switched.
+local function Words(parent, size, colour)
+    local fs = parent:CreateFontString(nil, "ARTWORK")
+    GK.SetFont(fs, GK.TEXT_FONT, size)        -- the font first: the game refuses text before it
+    fs:SetTextColor(colour[1], colour[2], colour[3])
+    fs:SetShadowColor(0, 0, 0, 1)
+    fs:SetShadowOffset(1, -1)
+    fs:SetJustifyH("LEFT")
+    fs:SetWordWrap(false)
+    return fs
 end
 
---- A string's width; where the client can't say yet, about what its letters take.
-local function TextWidth(fs, text)
-    local w = fs:GetStringWidth()
-    if type(w) ~= "number" or w < 1 then w = #text * 7 end
-    return math.ceil(w)
+local function Tip(owner, first, second)
+    GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
+    GameTooltip:AddLine(first, 1, 1, 1, true)
+    if second then GameTooltip:AddLine(second, nil, nil, nil, true) end
+    GameTooltip:Show()
 end
 
-local function SoundName(key, spree)
-    for _, c in ipairs(GK.SoundChoices(spree)) do
-        if c[1] == key then return c[2] end
-    end
-    return "The chime"                   -- what plays when the one picked is gone (a sound pack uninstalled)
-end
-
--- A setting on or off is a box to tick (the owner's pick A, 2026-11-20, art/mockups/grudges): on the parchment
--- a box drawn in ink with an ink tick, in the Classic skin the game's own checkbox. It was a red wax seal for
--- on and a faint ring for off: "settings med stemplene gjør at det er vanskelig å skjønne at det faktisk er
--- checkboxes" (the owner). The tick is the game's, its gold taken out and inked on the parchment.
-local GAME_BOX, GAME_TICK = "Interface\\Buttons\\UI-CheckBox-Up", "Interface\\Buttons\\UI-CheckBox-Check"
-local INK_BOX = 16                       -- the drawn box, across; its lines 2 thick
-local GAME_BOX_SIZE = 26                 -- the game's art has room round its box: about 16 of it is the box
-
---- A setting on or off: the box, ticked or not. The whole row is the click.
-local function CheckRow(parent, y, r)
-    local indent = r.child and 28 or 0
-    local height = GK.SettingsRowHeight(r)
+--- One of the game's checkboxes with its words. The whole of it is the click, and the box only shows it.
+local function TickBox(parent, r, width, height)
     local b = CreateFrame("Button", nil, parent)
-    b:SetSize(PAGE_W - indent, height)
-    b:SetPoint("TOPLEFT", indent, -y)
+    b:SetSize(width, height)
     b.wash = b:CreateTexture(nil, "BACKGROUND")
     b.wash:SetAllPoints()
+    b.wash:SetColorTexture(1, 1, 1, 0.05)
     b.wash:Hide()
-    -- the box's middle where the seal's was, 15 in and 13 down
-    b.fill = b:CreateTexture(nil, "BORDER")
-    b.fill:SetSize(INK_BOX, INK_BOX)
-    b.fill:SetPoint("CENTER", b, "TOPLEFT", 15, -13)
-    b.fill:SetColorTexture(1, 0.96, 0.85, 0.25)
-    b.edges = {}
-    for i, side in ipairs({ { "TOPLEFT", "TOPRIGHT" }, { "BOTTOMLEFT", "BOTTOMRIGHT" },
-                            { "TOPLEFT", "BOTTOMLEFT" }, { "TOPRIGHT", "BOTTOMRIGHT" } }) do
-        local t = b:CreateTexture(nil, "ARTWORK")
-        t:SetPoint(side[1], b.fill, side[1])
-        t:SetPoint(side[2], b.fill, side[2])
-        if i <= 2 then t:SetHeight(2) else t:SetWidth(2) end
-        b.edges[i] = t
-    end
-    b.box = b:CreateTexture(nil, "ARTWORK")
-    b.box:SetTexture(GAME_BOX)
-    b.box:SetSize(GAME_BOX_SIZE, GAME_BOX_SIZE)
-    b.box:SetPoint("CENTER", b.fill, "CENTER")
-    b.tick = b:CreateTexture(nil, "OVERLAY")
-    b.tick:SetTexture(GAME_TICK)
-    b.tick:SetSize(GAME_BOX_SIZE, GAME_BOX_SIZE)
-    b.tick:SetPoint("CENTER", b.fill, "CENTER", 1, 1)
-    b.label = b:CreateFontString(nil, "ARTWORK")
-    GK.Ink(b.label, GK.INK, GK.TEXT_FONT, 13)
-    b.label:SetPoint("TOPLEFT", 34, -4)
+    b.box = CreateFrame("CheckButton", nil, b, CHECKBOX)
+    b.box:SetPoint("TOPLEFT", 6, -2)
+    b.box:EnableMouse(false)
+    b.label = Words(b, 13, GOLD)
+    b.label:SetPoint("TOPLEFT", 40, -9)
+    b.label:SetWidth(width - 44)
     b.label:SetText(r.label)
     if r.help then
-        b.help = b:CreateFontString(nil, "ARTWORK")
-        GK.Ink(b.help, GK.FADED, GK.TEXT_FONT, 11)
-        b.help:SetPoint("TOPLEFT", b.label, "BOTTOMLEFT", 0, -3)
-        b.help:SetWidth(PAGE_W - indent - 40)
-        b.help:SetJustifyH("LEFT")
-        b.help:SetWordWrap(false)
+        b.help = Words(b, 11, QUIET)
+        b.help:SetPoint("TOPLEFT", 40, -28)
+        b.help:SetWidth(width - 44)
         b.help:SetText(r.help)
     end
     b:SetScript("OnEnter", function(self)
-        GK.Wash(self.wash, 0.06)
-        self.wash:Show()
+        local live = self.live ~= false
+        self.wash:SetShown(live)
+        if not live and r.why then Tip(self, r.name or r.label, r.why())
+        elseif r.tip then Tip(self, r.name or r.label, r.tip) end
     end)
-    b:SetScript("OnLeave", function(self) self.wash:Hide() end)
-    b:SetScript("OnClick", function()
+    b:SetScript("OnLeave", function(self)
+        self.wash:Hide()
+        GameTooltip:Hide()
+    end)
+    b:SetScript("OnClick", function(self)
+        if self.live == false then return end            -- locked: it keeps what it was
         local on = not r.get()
         r.set(on)
         GK.Sound(on and "IG_MAINMENU_OPTION_CHECKBOX_ON" or "IG_MAINMENU_OPTION_CHECKBOX_OFF")
         RefreshPage()
     end)
+    -- locked, it is unticked, grey and deaf to a click, and still says why under the mouse
     function b:Refresh()
-        local classic = GK.Classic and GK.Classic()
-        self.fill:SetShown(not classic)
-        for _, t in ipairs(self.edges) do
-            t:SetColorTexture(GK.INK[1], GK.INK[2], GK.INK[3], 0.9)
-            t:SetShown(not classic)
-        end
-        self.box:SetShown(classic and true or false)
-        self.tick:SetShown(r.get())
-        self.tick:SetDesaturated(not classic)
-        if classic then
-            self.tick:SetVertexColor(1, 1, 1)
-        else
-            self.tick:SetVertexColor(GK.INK[1], GK.INK[2], GK.INK[3])
-        end
+        local live = not r.enabled or r.enabled()
+        self.live = live and true or false
+        self.box:SetChecked(self.live and r.get() and true or false)
+        self.box:SetEnabled(self.live)
+        self:SetAlpha(self.live and 1 or 0.45)
     end
+    return b
+end
+
+--- One of the game's dropdowns. Its words are set here rather than read from its menu: the menu is longer
+--- ("Splash: big" for Splash), and a sound's holds every sound pack's.
+local function DropBox(parent, part)
+    local cell = part.cell
+    local d = CreateFrame("DropdownButton", nil, parent, DROPDOWN)
+    d:SetWidth(part.w)
+    d.cell = cell
+    d:SetupMenu(function(_, root) cell.fill(root, RefreshPage) end)
+    function d:Refresh()
+        local live = not cell.enabled or cell.enabled()
+        local words = not live and cell.lockedWords or cell.text()
+        if not live or words == "Off" or words == "None" then words = OFF_WORDS:format(words) end
+        self:OverrideText(words)
+        if cell.enabled then self:SetEnabled(live and true or false) end
+    end
+    return d
+end
+
+--- A setting on or off, a row of its own.
+local function CheckRow(parent, y, r)
+    local indent = r.child and 30 or 0
+    local height = GK.SettingsRowHeight(r)
+    local b = TickBox(parent, r, PAGE_W - indent, height)
+    b:SetPoint("TOPLEFT", indent, -y)
     return b, height
 end
 
---- A few words on the row, the one chosen in blood and underlined.
-local function ChoiceRow(parent, y, r)
-    local f = CreateFrame("Frame", nil, parent)
-    f:SetSize(PAGE_W, 26)
-    f:SetPoint("TOPLEFT", 0, -y)
-    f.label = f:CreateFontString(nil, "ARTWORK")
-    GK.Ink(f.label, GK.INK, GK.TEXT_FONT, 13)
-    f.label:SetPoint("LEFT", 6, 0)
-    f.label:SetText(r.label)
-    f.options = {}
-    local right = -6
-    for i = #r.options, 1, -1 do                         -- laid out from the page's right edge
-        local o = r.options[i]
-        local b = CreateFrame("Button", nil, f)
-        b.value = o[1]
-        b.text = b:CreateFontString(nil, "ARTWORK")
-        GK.Ink(b.text, GK.FADED, GK.TEXT_FONT, 12)
-        b.text:SetPoint("CENTER", 0, 1)
-        b.text:SetText(o[2])
-        local w = TextWidth(b.text, o[2]) + 4
-        b:SetSize(w, 20)
-        b:SetPoint("RIGHT", f, "RIGHT", right, 0)
-        right = right - w - 12
-        b.line = b:CreateTexture(nil, "ARTWORK")
-        GK.Paint(b.line, "blood")
-        b.line:SetHeight(2)
-        b.line:SetPoint("BOTTOMLEFT", 0, 0)
-        b.line:SetPoint("BOTTOMRIGHT", 0, 0)
-        b:SetScript("OnClick", function()
-            r.set(o[1])
-            GK.Sound("IG_MAINMENU_OPTION_CHECKBOX_ON")
-            RefreshPage()
-        end)
-        f.options[#f.options + 1] = b
-    end
-    function f:Refresh()
-        local value = r.get()
-        for _, b in ipairs(self.options) do
-            local chosen = b.value == value
-            GK.Ink(b.text, chosen and GK.BLOOD or GK.FADED, GK.TEXT_FONT, 12)
-            b.line:SetShown(chosen)
-        end
-    end
-    return f, 26
-end
-
---- The value of a row that opens a menu: its words over a thin line, in blood under the mouse.
-local function ValueButton(f, rightOffset)
-    local b = CreateFrame("Button", nil, f)
-    b:SetHeight(20)
-    b:SetPoint("RIGHT", f, "RIGHT", rightOffset, 0)
-    b.text = b:CreateFontString(nil, "ARTWORK")
-    GK.Ink(b.text, GK.INK, GK.TEXT_FONT, 12)
-    b.text:SetPoint("RIGHT", 0, 1)
-    b.line = b:CreateTexture(nil, "ARTWORK")
-    GK.Paint(b.line, "rule")
-    b.line:SetHeight(1)
-    b.line:SetPoint("BOTTOMLEFT", 0, 1)
-    b.line:SetPoint("BOTTOMRIGHT", 0, 1)
-    b:SetScript("OnEnter", function(self) GK.Ink(self.text, GK.BLOOD, GK.TEXT_FONT, 12) end)
-    b:SetScript("OnLeave", function(self) GK.Ink(self.text, GK.INK, GK.TEXT_FONT, 12) end)
-    function b:Set(text)
-        self.text:SetText(text)
-        self:SetWidth(TextWidth(self.text, text) + 2)
-    end
-    return b
-end
-
---- More words than a row holds: the one chosen, and a menu of them all on a click.
-local function PickRow(parent, y, r)
+--- A label and what stands after it.
+local function LineRow(parent, y, r, striped)
     local height = GK.SettingsRowHeight(r)
     local f = CreateFrame("Frame", nil, parent)
     f:SetSize(PAGE_W, height)
     f:SetPoint("TOPLEFT", 0, -y)
-    f.label = f:CreateFontString(nil, "ARTWORK")
-    GK.Ink(f.label, GK.INK, GK.TEXT_FONT, 13)
-    f.label:SetPoint("LEFT", 6, 0)
+    if striped then
+        f.stripe = f:CreateTexture(nil, "BACKGROUND")
+        f.stripe:SetAllPoints()
+        f.stripe:SetColorTexture(1, 1, 1, 0.035)
+    end
+    local middle = r.help and 20 or height / 2        -- from the row's top, where its controls stand
+    f.label = Words(f, 13, GOLD)
+    f.label:SetPoint("LEFT", f, "TOPLEFT", TEXT_X, -middle)
+    local first = r.parts[1]
+    if first then f.label:SetWidth(first.x - TEXT_X - 6) end
     f.label:SetText(r.label)
-    f.value = ValueButton(f, -6)
-    f.value:SetScript("OnClick", function(self) OpenMenu(self, function(root) r.menu(root, RefreshPage) end) end)
+    if r.help then
+        f.help = Words(f, 11, QUIET)
+        f.help:SetPoint("TOPLEFT", TEXT_X, -36)
+        f.help:SetWidth(PAGE_W - 2 * TEXT_X)
+        f.help:SetText(r.help)
+    end
+    f.parts = {}
+    for i, part in ipairs(r.parts) do
+        local c
+        if part.kind == "drop" then c = DropBox(f, part) else c = TickBox(f, part.check, part.w, 33) end
+        c:SetPoint("LEFT", f, "TOPLEFT", part.x, -middle)
+        f.parts[i] = c
+    end
     function f:Refresh()
-        local value, text = r.get(), nil
-        for _, o in ipairs(r.options) do
-            if o[1] == value then text = o[2] end
-        end
-        self.value:Set(text or tostring(value))
+        for _, c in ipairs(self.parts) do c:Refresh() end
     end
     return f, height
 end
 
---- A sound: its name opens the menu of them, and the speaker beside it plays the one picked.
-local function SoundRow(parent, y, r)
-    local indent = r.child and 28 or 0
-    local f = CreateFrame("Frame", nil, parent)
-    f:SetSize(PAGE_W - indent, 24)
-    f:SetPoint("TOPLEFT", indent, -y)
-    f.label = f:CreateFontString(nil, "ARTWORK")
-    GK.Ink(f.label, GK.FADED, GK.TEXT_FONT, 12)
-    f.label:SetPoint("LEFT", r.child and 34 or 6, 0)
-    f.label:SetText(r.label)
-    f.value = ValueButton(f, -28)
-    f.value:SetScript("OnClick", function(self) OpenMenu(self, function(root) r.menu(root, RefreshPage) end) end)
-    f.play = CreateFrame("Button", nil, f)
-    f.play:SetSize(18, 18)
-    f.play:SetPoint("RIGHT", -4, 0)
-    f.play.tex = f.play:CreateTexture(nil, "ARTWORK")
-    f.play.tex:SetAllPoints()
-    f.play.tex:SetTexture(SPEAKER)
-    f.play:SetScript("OnClick", function() GK.PlayChoice(r.get()) end)
-    f.play:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:AddLine("Play it", 1, 1, 1)
-        GameTooltip:Show()
-    end)
-    f.play:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    function f:Refresh()
-        self.value:Set(SoundName(r.get(), r.spree))
-        self.play.tex:SetVertexColor(GK.INK[1], GK.INK[2], GK.INK[3])
-    end
-    return f, 24
-end
-
---- A small heading inside a chapter, over a rule.
-local function HeadRow(parent, y, r)
-    local height = GK.SettingsRowHeight(r)
-    local f = CreateFrame("Frame", nil, parent)
-    f:SetSize(PAGE_W, height)
-    f:SetPoint("TOPLEFT", 0, -y)
-    f.label = f:CreateFontString(nil, "ARTWORK")
-    GK.Ink(f.label, GK.FADED, GK.TEXT_FONT, 10)
-    f.label:SetPoint("BOTTOMLEFT", 6, 7)
-    f.label:SetText(r.label:upper())
-    f.rule = f:CreateTexture(nil, "ARTWORK")
-    GK.Paint(f.rule, "rule")
-    f.rule:SetHeight(1)
-    f.rule:SetPoint("BOTTOMLEFT", 6, 3)
-    f.rule:SetPoint("BOTTOMRIGHT", -6, 3)
-    function f:Refresh() end
-    return f, height
-end
-
--- The Notifications page's own rows (2026-11-20): the presets over it, the Yours and Guildies' columns, a pair
--- of cells on a row, and a line of words with cells among them.
-local COL_MINE, COL_GUILD = 236, 352      -- where a pair row's two cells start, and their headings over them
-
---- A cell's value on the page (a pair's, an inline row's): its words over a thin line, in blood under the
---- mouse, Off faded; a click opens its menu.
-local function CellButton(parent, cell)
-    local b = CreateFrame("Button", nil, parent)
-    b:SetHeight(20)
-    b.text = b:CreateFontString(nil, "ARTWORK")
-    GK.Ink(b.text, GK.INK, GK.TEXT_FONT, 12)
-    b.text:SetPoint("LEFT", 0, 1)
-    b.line = b:CreateTexture(nil, "ARTWORK")
-    GK.Paint(b.line, "rule")
-    b.line:SetHeight(1)
-    b.line:SetPoint("BOTTOMLEFT", 0, 1)
-    b.line:SetPoint("BOTTOMRIGHT", 0, 1)
-    b.cell = cell
-    function b:Refresh()
-        local text = cell.text()
-        self.text:SetText(text)
-        self:SetWidth(TextWidth(self.text, text) + 2)
-        GK.Ink(self.text, text == "Off" and GK.FADED or GK.INK, GK.TEXT_FONT, 12)
-    end
-    b:SetScript("OnEnter", function(self) GK.Ink(self.text, GK.BLOOD, GK.TEXT_FONT, 12) end)
-    b:SetScript("OnLeave", function(self) self:Refresh() end)
-    b:SetScript("OnClick", function(self)
-        OpenMenu(self, function(root)
-            for _, o in ipairs(cell.options) do
-                root:CreateRadio(o[1], o[2], function()
-                    o[3]()
-                    RefreshPage()
-                end)
-            end
-        end)
-    end)
-    return b
-end
-
---- The presets over the page, as the ledger's ink tabs: the one the page matches in blood and underlined,
---- Custom lit when it matches none (and not to be clicked: it is what you made); under them what it means.
-local function PresetsRow(parent, y, r)
-    local height = GK.SettingsRowHeight(r)
-    local f = CreateFrame("Frame", nil, parent)
-    f:SetSize(PAGE_W, height)
-    f:SetPoint("TOPLEFT", 0, -y)
-    f.tabs = {}
-    local list = {}
-    for _, p in ipairs(GK.NOTIFY_PRESETS) do list[#list + 1] = { key = p.key, name = p.name } end
-    list[#list + 1] = { key = "custom", name = "Custom" }
-    local x = 6
-    for _, p in ipairs(list) do
-        local b = CreateFrame("Button", nil, f)
-        b.key = p.key
-        b.text = b:CreateFontString(nil, "ARTWORK")
-        GK.Ink(b.text, GK.FADED, GK.TEXT_FONT, 11)
-        b.text:SetPoint("TOPLEFT", 0, -2)
-        local words = p.name:upper()
-        b.text:SetText(words)
-        local w = TextWidth(b.text, words) + 2
-        b:SetSize(w, 18)
-        b:SetPoint("TOPLEFT", x, 0)
-        x = x + w + 16
-        b.line = b:CreateTexture(nil, "ARTWORK")
-        GK.Paint(b.line, "blood")
-        b.line:SetHeight(2)
-        b.line:SetPoint("BOTTOMLEFT", 0, 0)
-        b.line:SetPoint("BOTTOMRIGHT", 0, 0)
-        if p.key ~= "custom" then
-            b:SetScript("OnClick", function()
-                GK.ApplyNotifyPreset(p.key)
-                GK.Sound("IG_MAINMENU_OPTION_CHECKBOX_ON")
-                RefreshPage()
-            end)
-        end
-        f.tabs[#f.tabs + 1] = b
-    end
-    f.hint = f:CreateFontString(nil, "ARTWORK")
-    GK.Ink(f.hint, GK.FADED, GK.TEXT_FONT, 11)
-    f.hint:SetPoint("TOPLEFT", 6, -22)
-    f.hint:SetWidth(PAGE_W - 12)
-    f.hint:SetJustifyH("LEFT")
-    f.hint:SetWordWrap(false)
-    function f:Refresh()
-        local now = GK.NotifyPreset()
-        for _, b in ipairs(self.tabs) do
-            local chosen = b.key == now
-            GK.Ink(b.text, chosen and GK.BLOOD or GK.FADED, GK.TEXT_FONT, 11)
-            b.line:SetShown(chosen)
-        end
-        self.hint:SetText(GK.NotifyPresetHint(now))
-    end
-    return f, height
-end
-
---- YOURS and GUILDIES' over the pair rows' two cells.
+--- The small words over a page's columns.
 local function ColumnsRow(parent, y, r)
     local height = GK.SettingsRowHeight(r)
     local f = CreateFrame("Frame", nil, parent)
     f:SetSize(PAGE_W, height)
     f:SetPoint("TOPLEFT", 0, -y)
-    for i, x in ipairs({ COL_MINE, COL_GUILD }) do
-        local fs = f:CreateFontString(nil, "ARTWORK")
-        GK.Ink(fs, GK.FADED, GK.TEXT_FONT, 10)
-        fs:SetPoint("BOTTOMLEFT", x, 2)
-        fs:SetText(i == 1 and "YOURS" or "GUILDIES'")
+    for _, at in ipairs(r.at) do
+        local fs = Words(f, 11, QUIET)
+        fs:SetPoint("BOTTOMLEFT", at.x, 4)
+        fs:SetText(at.text)
     end
     function f:Refresh() end
     return f, height
 end
 
---- What is told, yours and a guildie's: the label, then each cell under its column.
-local function PairRow(parent, y, r)
+local function Divider(parent, width)
+    local t = parent:CreateTexture(nil, "ARTWORK")
+    t:SetAtlas("Options_HorizontalDivider")
+    t:SetSize(width, 1)
+    return t
+end
+
+local function RuleRow(parent, y, r)
     local height = GK.SettingsRowHeight(r)
     local f = CreateFrame("Frame", nil, parent)
     f:SetSize(PAGE_W, height)
     f:SetPoint("TOPLEFT", 0, -y)
-    f.label = f:CreateFontString(nil, "ARTWORK")
-    GK.Ink(f.label, GK.INK, GK.TEXT_FONT, 13)
-    f.label:SetPoint("LEFT", 6, 0)
+    Divider(f, PAGE_W - 4):SetPoint("LEFT", 2, 0)
+    function f:Refresh() end
+    return f, height
+end
+
+local function SectionRow(parent, y, r)
+    local height = GK.SettingsRowHeight(r)
+    local f = CreateFrame("Frame", nil, parent)
+    f:SetSize(PAGE_W, height)
+    f:SetPoint("TOPLEFT", 0, -y)
+    f.label = Words(f, 11, QUIET)
+    f.label:SetPoint("BOTTOMLEFT", TEXT_X, 4)
     f.label:SetText(r.label)
-    f.mine = CellButton(f, r.mine)
-    f.mine:SetPoint("LEFT", COL_MINE, 0)
-    -- a row of yours alone has no guildie's cell (A grudge evened up)
-    if r.guild then
-        f.guild = CellButton(f, r.guild)
-        f.guild:SetPoint("LEFT", COL_GUILD, 0)
-    end
-    function f:Refresh()
-        self.mine:Refresh()
-        if self.guild then self.guild:Refresh() end
-    end
+    function f:Refresh() end
     return f, height
 end
 
---- A line of words with cells among them ("Show mine [Always] guildies' [Not in combat]"), laid out from the
---- left as each cell's words are now.
-local function InlineRow(parent, y, r)
-    local height = GK.SettingsRowHeight(r)
-    local f = CreateFrame("Frame", nil, parent)
-    f:SetSize(PAGE_W, height)
-    f:SetPoint("TOPLEFT", 0, -y)
-    f.parts = {}
-    for _, part in ipairs(r.parts) do
-        if type(part) == "string" then
-            local fs = f:CreateFontString(nil, "ARTWORK")
-            GK.Ink(fs, GK.INK, GK.TEXT_FONT, 13)
-            fs:SetText(part)
-            f.parts[#f.parts + 1] = { words = fs, text = part }
-        else
-            f.parts[#f.parts + 1] = { button = CellButton(f, part) }
-        end
-    end
-    function f:Refresh()
-        local x = 6
-        for _, p in ipairs(self.parts) do
-            if p.words then
-                p.words:ClearAllPoints()
-                p.words:SetPoint("LEFT", x, 0)
-                x = x + TextWidth(p.words, p.text) + 6
-            else
-                p.button:Refresh()
-                p.button:ClearAllPoints()
-                p.button:SetPoint("LEFT", x, 0)
-                x = x + p.button:GetWidth() + 14
-            end
-        end
-    end
-    return f, height
-end
+local ROW = { check = CheckRow, line = LineRow, columns = ColumnsRow, rule = RuleRow, head = SectionRow }
 
-local ROW = { check = CheckRow, choice = ChoiceRow, pick = PickRow, sound = SoundRow, head = HeadRow,
-    presets = PresetsRow, columns = ColumnsRow, pair = PairRow, inline = InlineRow }
-
---- A chapter's page, made the first time it is turned to: its rows under one another.
+--- A chapter's page, made the first time it is turned to: its rows under one another, every other one of
+--- a table's shaded.
 local function BuildPage(i)
     local page = CreateFrame("Frame", nil, host)
     page:SetAllPoints(host)
     page.rows = {}
-    local y = 0
+    local y, n = 0, 0
     for _, r in ipairs(chapters[i].rows) do
-        local row, height = ROW[r.kind](page, y, r)
+        if r.stripe then n = n + 1 else n = 0 end
+        local row, height = ROW[r.kind](page, y, r, n % 2 == 1)
         row.setting = r
         page.rows[#page.rows + 1] = row
         y = y + height
@@ -849,13 +594,13 @@ local function Select(i)
     current = chapters[i] and i or 1
     for n, b in ipairs(buttons) do
         local chosen = n == current
-        if chosen then GK.Wash(b.wash, 0.1) end
-        b.wash:SetShown(chosen)
-        b.edge:SetShown(chosen)
-        GK.Ink(b.name, chosen and GK.BLOOD or GK.INK, GK.TEXT_FONT, 14)
+        b.lit:SetShown(chosen)
+        b.glow:Hide()
+        local c = chosen and WHITE or GOLD
+        b.name:SetTextColor(c[1], c[2], c[3])
     end
     local ch = chapters[current]
-    pageTitle:SetText(ch.name)
+    pageTitle:SetText(ch.title)
     pageIntro:SetText(ch.intro)
     for n, page in pairs(pages) do page:SetShown(n == current) end
     if not pages[current] then BuildPage(current) end
@@ -884,102 +629,86 @@ function GK.MoverClosed()
     if not InCombatLockdown() then GK.OpenOptions() end
 end
 
+--- The menu down the left: the two groups over their chapters' names, in the game's options' own lit and
+--- hover strips. Names and nothing else: with seals and lines it read as a list of things ("fjern ikoner og
+--- gjør det mer som ordentlig settings", the owner, 2026-11-13).
+local function BuildMenu()
+    local y, group = MENU_TOP, nil
+    for i, ch in ipairs(chapters) do
+        if ch.group ~= group then
+            if group then y = y + 20 end
+            group = ch.group
+            local head = Words(win, 11, QUIET)
+            head:SetPoint("TOPLEFT", MENU_X + 6, -y)
+            head:SetText(group)
+            y = y + 20
+        end
+        local b = CreateFrame("Button", nil, win)
+        b:SetSize(MENU_W, 25)
+        b:SetPoint("TOPLEFT", MENU_X, -y)
+        b.lit = b:CreateTexture(nil, "BACKGROUND")
+        b.lit:SetAtlas("Options_List_Active")
+        b.lit:SetAllPoints()
+        b.lit:Hide()
+        b.glow = b:CreateTexture(nil, "BORDER")
+        b.glow:SetAtlas("Options_List_Hover")
+        b.glow:SetAllPoints()
+        b.glow:Hide()
+        b.name = Words(b, 14, GOLD)
+        b.name:SetPoint("LEFT", 18, 0)
+        b.name:SetText(ch.name)
+        b:SetScript("OnClick", function()
+            GK.Sound("IG_MAINMENU_OPTION_CHECKBOX_ON")
+            Select(i)
+        end)
+        b:SetScript("OnEnter", function(self) self.glow:SetShown(i ~= current) end)
+        b:SetScript("OnLeave", function(self) self.glow:Hide() end)
+        buttons[i] = b
+        y = y + MENU_STEP
+    end
+end
+
 local function Build()
     chapters = GK.SettingsChapters()
     win = GK.LedgerSettingsPage()            -- the ledger's frame, X and tabs round these pages
+    BuildMenu()
 
-    -- The menu down the left: the chapters by name and nothing else, as a settings window has them. The
-    -- first build gave each a seal and a line of its own, half the window wide, and it read as a list of
-    -- things rather than as tabs: "det er litt vanskelig faktisk å skjønne at det er settings tabs. så
-    -- fjern ikoner og gjør det mer som ordentlig settings" (the owner, 2026-11-13).
-    local title = win:CreateFontString(nil, "ARTWORK")
-    GK.Ink(title, GK.BLOOD, GK.TITLE_FONT, 26)
-    title:SetPoint("TOPLEFT", SIDE_X, -TOP)
-    title:SetText("Settings")
-    local version = win:CreateFontString(nil, "ARTWORK")
-    GK.Ink(version, GK.FADED, GK.TEXT_FONT, 11)
-    version:SetPoint("BOTTOMLEFT", title, "BOTTOMRIGHT", 8, 3)
+    local split = win:CreateTexture(nil, "ARTWORK")
+    split:SetColorTexture(0.67, 0.53, 0.31, 0.45)
+    split:SetSize(1, 492)
+    split:SetPoint("TOPLEFT", SPLIT_X, -34)
+
+    -- The foot of the menu: the version, and Arrange on screen. Back to the ledger stood under it ("men det
+    -- er ikke noe 'back'?", the owner, 2026-11-13) until the ledger's tabs stayed under these pages: any of
+    -- them is the way back, and the Settings button pressed in on the title bar.
+    local version = Words(win, 11, QUIET)
+    version:SetPoint("BOTTOMLEFT", 28, 62)
     version:SetText("v" .. GK.addonVersion)
-    local rule = win:CreateTexture(nil, "ARTWORK")
-    GK.Paint(rule, "rule")
-    rule:SetSize(SIDE_W, 1)
-    rule:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -10)
-    for i, ch in ipairs(chapters) do
-        local b = CreateFrame("Button", nil, win)
-        b:SetSize(SIDE_W, MENU_H - 2)
-        b:SetPoint("TOPLEFT", rule, "BOTTOMLEFT", 0, -8 - (i - 1) * MENU_H)
-        b.wash = b:CreateTexture(nil, "BACKGROUND")
-        b.wash:SetAllPoints()
-        b.wash:Hide()
-        b.edge = b:CreateTexture(nil, "BORDER")
-        GK.Paint(b.edge, "blood")
-        b.edge:SetSize(3, MENU_H - 2)
-        b.edge:SetPoint("LEFT")
-        b.edge:Hide()
-        b.name = b:CreateFontString(nil, "ARTWORK")
-        GK.Ink(b.name, GK.INK, GK.TEXT_FONT, 14)
-        b.name:SetPoint("LEFT", 12, 0)
-        b.name:SetText(ch.name)
-        b:SetScript("OnClick", function()
-            GK.Sound("IG_ABILITY_PAGE_TURN")
-            Select(i)
-        end)
-        b:SetScript("OnEnter", function(self)
-            if i ~= current then
-                GK.Wash(self.wash, 0.06)
-                self.wash:Show()
-            end
-        end)
-        b:SetScript("OnLeave", function(self) self.wash:SetShown(i == current) end)
-        buttons[i] = b
-    end
-    -- the line between the menu and the chapter's settings
-    local divide = win:CreateTexture(nil, "ARTWORK")
-    GK.Paint(divide, "rule")
-    divide:SetSize(1, H - TOP - 66)
-    divide:SetPoint("TOPLEFT", SIDE_X + SIDE_W + 20, -TOP)
-
-    -- The foot of the menu, one of the game's buttons: Arrange on screen. Back to the ledger stood under it
-    -- ("men det er ikke noe 'back'?", the owner, 2026-11-13) until the ledger's tabs stayed under these
-    -- pages: any of them is the way back, and the Settings button pressed in on the title bar.
-    local move = GK.MakeButton(win, SIDE_W, 22)
-    move:SetPoint("BOTTOMLEFT", SIDE_X, 26)
+    local move = CreateFrame("Button", nil, win, GK.BUTTON)
+    move:SetSize(158, 26)
+    move:SetPoint("BOTTOMLEFT", 26, 28)
     move:SetText("Arrange on screen")
     move:SetScript("OnClick", MoveThings)
-    move:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:AddLine("Closes these pages and shows the letter icon, the spree splash and its toasts: drag "
-            .. "each where you want it. Done opens the pages again.", 1, 1, 1, true)
-        GameTooltip:Show()
+    move:HookScript("OnEnter", function(self)
+        Tip(self, "Closes the settings and shows the splash, the toasts and the letter icon.",
+            "Drag each where you want it. Done opens the settings again.")
     end)
-    move:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    move:HookScript("OnLeave", function() GameTooltip:Hide() end)
     win.move = move
 
-    -- the chapter chosen, right of the line: its name, what it is about, its settings, and his name under them
-    pageTitle = win:CreateFontString(nil, "ARTWORK")
-    GK.Ink(pageTitle, GK.BLOOD, GK.TITLE_FONT, 22)
-    pageTitle:SetPoint("TOPLEFT", PAGE_X, -TOP - 4)
-    pageIntro = win:CreateFontString(nil, "ARTWORK")
-    GK.Ink(pageIntro, GK.FADED, GK.TEXT_FONT, 12)
-    pageIntro:SetPoint("TOPLEFT", pageTitle, "BOTTOMLEFT", 0, -4)
-    pageIntro:SetWidth(PAGE_W)
-    pageIntro:SetJustifyH("LEFT")
-    pageIntro:SetWordWrap(false)
-    local rule2 = win:CreateTexture(nil, "ARTWORK")
-    GK.Paint(rule2, "rule")
-    rule2:SetSize(PAGE_W, 1)
-    rule2:SetPoint("TOPLEFT", pageIntro, "BOTTOMLEFT", 0, -8)
+    -- the chapter chosen, right of the line: its name, what it is about, and its settings
+    pageTitle = Words(win, 20, GOLD)
+    pageTitle:SetPoint("TOPLEFT", PAGE_X + 6, -40)
+    pageIntro = Words(win, 12, QUIET)
+    pageIntro:SetPoint("TOPLEFT", PAGE_X + 6, -66)
+    pageIntro:SetWidth(PAGE_W - 12)
+    Divider(win, PAGE_W - 4):SetPoint("TOPLEFT", PAGE_X + 2, -88)
     host = CreateFrame("Frame", nil, win)
-    host:SetSize(PAGE_W, 380)
-    host:SetPoint("TOPLEFT", rule2, "BOTTOMLEFT", 0, -6)
-    local sign = win:CreateFontString(nil, "ARTWORK")
-    GK.Ink(sign, GK.INK, GK.TITLE_FONT, 14)
-    sign:SetPoint("BOTTOMRIGHT", win, "BOTTOMLEFT", PAGE_X + PAGE_W, 28)
-    sign:SetText("- the Grudgekeeper")
+    host:SetSize(PAGE_W, PAGE_ROOM)
+    host:SetPoint("TOPLEFT", PAGE_X, -PAGE_Y)
 
-    win.chapters, win.pages = buttons, pages
-    -- another skin, or a setting changed from somewhere else (the minimap button's own menu): drawn again
-    GK.OnLook(function() if win:IsShown() then Select(current) end end)
+    win.chapters, win.pages, win.title = buttons, pages, pageTitle
+    -- a setting changed from somewhere else (the minimap button's own menu): drawn again
     LIB.Listen("GRUDGEKEEPER_CHANGED", function() if win:IsShown() then RefreshPage() end end)
 end
 

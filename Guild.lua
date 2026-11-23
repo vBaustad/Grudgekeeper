@@ -16,7 +16,7 @@
 --                                                              I killed someone (avenging a guildie;
 --                                                              times: how often I have, in all; raceFile
 --                                                              and sex: the target's, for their race's face;
---                                                              spree: my kills worth points in a row, with
+--                                                              spree: my kills in a row (GK.CountsInStreak), with
 --                                                              this one, so a guildie sees a milestone)
 --   D;1;name;class;race;level;zone;times;raceFile;sex          someone killed me (times in all; raceFile
 --                                                              and sex: the killer's, for their race's face)
@@ -42,7 +42,10 @@
 --                                                              row of whoever asked goes back to them
 --   S;1;poster;id;zone;level;map;x;y                           I saw an order's target, standing here
 --                                                              (x and y in thousandths of the map)
---   T;1;poster;id;copper                                       my share of an order's pot is this
+--   T;1;poster;id;copper                                       my share of an order's pot is this (0: I
+--                                                              took it out). With my open and withdrawn
+--                                                              orders' C also a little after my own login
+--                                                              (SayOwnAtLogin)
 --   U;1;name                                                   forget my kills, deaths and news about
 --                                                              this player (a grudge that was wrong)
 --   Y;1;poster;id                                              I paid my share of a fulfilled order
@@ -50,11 +53,13 @@
 -- The pot: the poster's own reward, plus what anyone else puts in (T). Each backer owns their share,
 -- owes it to whoever fulfils the order, and says when they paid it (Y); the poster's own part is
 -- paid with the order's state (p), as before the pot existed.
--- Worst case a guild can make us keep: 150 orders (10 open per poster), 500 board rows (6 parts each), 200 wanted,
+-- Worst case a guild can make us keep: 1000 open orders (10 per poster), 400 closed ones of others and 500 we
+-- got, the keys of 2000 let go (Trim), 1200 board rows (6 parts each), 2000 names heard talking (GK.GuildOnline),
 -- 200 wanted (50 guildies each), 200 slain (enemies the guild has killed, 20 killers each), 200 tormentors
 -- (enemies and their count of us killed, Core.lua), 500 guildies' last sprees (in memory only), 80 feed
--- lines and 20 backers per order (a share passed on, P, counts against the same 20). Every sender is
--- also held to LibForever's 30 messages / 10 s.
+-- lines and 20 backers per order (a share passed on, P, counts against the same 20) with the names of 20 more
+-- who took theirs out (TookOut), and 20 fights against the guild on watch, kept as they leave the feed's 80
+-- (KeepFight). Every sender is also held to LibForever's 30 messages / 10 s.
 local ADDON, GK = ...
 local LIB = GK.Lib or LibStub("LibForever-1.0")      -- names by themselves (Core.lua, GK.Lib)
 
@@ -62,8 +67,10 @@ local PREFIX = "Grudgekeeper"
 GK.PREFIX = PREFIX
 local PROTO = 1
 local MAX_OPEN_PER_POSTER = 10
-local MAX_ORDERS = 150
-local MAX_BOARD = 500
+-- Open orders are counted by themselves: at 149 open a guild's closed ones were all dropped, the player's own
+-- unpaid ones with them (a guild of 700 simulated, 2026-11-22). Ours are never let go to make room.
+local MAX_OPEN, MAX_CLOSED, MAX_HUNTED, MAX_SHUT = 1000, 400, 500, 2000
+local MAX_BOARD = 1200                   -- a guild's thousand members, and some who have left
 local MAX_SPREES = 500
 local MAX_WANTED = 200
 local MAX_SLAIN = 200
@@ -71,6 +78,7 @@ local MAX_SLAYERS = 20
 -- Twice the forty it was: a kill is a line for its blow and one for each who helped, shown as one
 -- (Window.lua, KillGroups), so forty lines kept could be ten on the page.
 local MAX_FEED = 80
+local MAX_FIGHTS = 20          -- against the guild on watch, kept as they leave the feed (KeepFight)
 local MAX_VICTIMS = 50
 local MAX_BACKERS = 20
 local MAX_REWARD = 1000 * 10000          -- 1000 gold, in copper
@@ -138,6 +146,18 @@ local function Send(text)
     return LIB.Send(PREFIX, text, "GUILD")
 end
 
+--- A zone as it may be sent: none outside Normal (GK.SharesPlace).
+local function Place(zone)
+    if GK.SharesPlace() then return zone end
+    return nil
+end
+
+--- Where we fulfilled an order, as it may be sent: never one fulfilled outside Normal, said again later on.
+local function DonePlace(o)
+    if o.doneHid then return nil end
+    return Place(o.doneZone)
+end
+
 local function Count(t)
     local n = 0
     for _ in pairs(t) do n = n + 1 end
@@ -150,10 +170,44 @@ local function Int(v, lo, hi)
     return v
 end
 
+--- Is this line of the feed a fight against that guild: a kill of one of theirs, or a death to one?
+local function IsFight(e, guild)
+    return type(e) == "table" and (e.kind == "K" or e.kind == "D") and e.who ~= nil and e.n ~= nil
+        and GK.SameGuild(GK.EnemyGuild(e.n), guild)
+end
+
+--- A line leaving the feed is kept if it is a fight against the guild on watch, the newest first: the feed
+--- holds the last 80 of everything, and the versus page shows their latest fights (GK.LatestFights).
+local function KeepFight(s, e)
+    local guild = GK.WatchedGuild and GK.WatchedGuild()
+    if not (guild and IsFight(e, guild)) then return end
+    s.fights = s.fights or {}
+    table.insert(s.fights, 1, e)
+    for i = #s.fights, MAX_FIGHTS + 1, -1 do s.fights[i] = nil end
+end
+
 local function AddFeed(e)
-    local feed = GK.Store().feed
+    local s = GK.Store()
+    local feed = s.feed
     table.insert(feed, 1, e)
-    for i = #feed, MAX_FEED + 1, -1 do feed[i] = nil end
+    for i = #feed, MAX_FEED + 1, -1 do
+        KeepFight(s, feed[i])
+        feed[i] = nil
+    end
+end
+
+--- The latest fights against that guild, the newest first, at most `most`: what is still in the feed, then
+--- what was kept as it left (KeepFight). { kind = "K" we killed them | "D" they killed us, who, n, c, l, z, t }.
+function GK.LatestFights(guild, most)
+    local s, out = GK.Store(), {}
+    if not guild then return out end
+    for _, list in ipairs({ s.feed, s.fights or {} }) do
+        for _, e in ipairs(list) do
+            if #out >= most then return out end
+            if IsFight(e, guild) then out[#out + 1] = e end
+        end
+    end
+    return out
 end
 
 -- ---------------------------------------------------------------------------
@@ -646,12 +700,21 @@ function GK.PayShare(o, to)
     GK.Changed()
 end
 
+--- Who took their share out of o's pot, kept with it: an empty place in the pot looks like never having backed
+--- it, so a backer could not say it again, and a guildie's old copy (P) put the share back (2026-11-22). At most
+--- as many as a pot has backers.
+local function TookOut(o, who)
+    o.tookOut = o.tookOut or {}
+    if Count(o.tookOut) < MAX_BACKERS then o.tookOut[who] = true end
+end
+
 --- Put my share into an order's pot (0 takes it out again). Only while the order is open.
 function GK.Contribute(o, copper)
     local me = LIB.Me()
     if not me or o.state ~= "o" or o.by == me then return end
     copper = math.max(0, math.min(math.floor(tonumber(copper) or 0), MAX_REWARD))
     o.pot = o.pot or {}
+    if copper == 0 and o.pot[me] then TookOut(o, me) end
     o.pot[me] = copper > 0 and copper or nil
     Send(Msg("T", PROTO, o.by, o.id, copper))
     AddFeed({ t = time(), who = me, kind = "T", n = o.n, c = o.c, l = o.l, p = copper })
@@ -666,22 +729,88 @@ end
 
 local function SendOrder(o) Send(OrderText(o)) end
 
--- Too many orders: drop the closed ones that closed longest ago.
-local function Trim(store)
-    local n = Count(store.orders)
-    if n <= MAX_ORDERS then return end
-    local closed = {}
-    for key, o in pairs(store.orders) do
-        if o.state ~= "o" then closed[#closed + 1] = { key = key, at = o.doneAt or o.exp or o.t or 0 } end
+--- An order we posted or put gold in: what we owe is on it, so room is never made of it. Only we write either
+--- (no relay is ours), so a peer can't grow these.
+local function IsOurs(o, me)
+    return o.by == me or (o.pot ~= nil and o.pot[me] ~= nil)
+end
+
+--- The keys of closed orders let go: an old copy of one doesn't bring it back as open (ApplyOrder).
+local function Shut(store, key, at)
+    local shut = store.shut or {}
+    store.shut = shut
+    shut[key] = at
+    if Count(shut) <= MAX_SHUT then return end
+    local oldest, oldKey
+    for k, t in pairs(shut) do
+        if not oldest or t < oldest then oldest, oldKey = t, k end
     end
-    table.sort(closed, function(a, b) return a.at < b.at end)
-    for i = 1, math.min(#closed, n - MAX_ORDERS) do store.orders[closed[i].key] = nil end
+    if oldKey then shut[oldKey] = nil end
+end
+
+--- The oldest past a tenth under the limit go, so the sort is not at every message.
+local function Shed(store, list, most)
+    if #list <= most then return end
+    table.sort(list, function(a, b) return a.at < b.at end)
+    for i = 1, #list - math.floor(most * 0.9) do
+        store.orders[list[i].key] = nil
+        Shut(store, list[i].key, list[i].at)
+    end
     Touched()
+end
+
+-- Too many closed orders: those closed longest ago go. Others' and the ones we got each have their room - a
+-- poster's word alone makes one ours to have got, so those are not kept without a limit.
+local function Trim(store)
+    if Count(store.orders) <= math.min(MAX_CLOSED, MAX_HUNTED) then return end
+    local me = LIB.Me()
+    local closed, hunted = {}, {}
+    for key, o in pairs(store.orders) do
+        if o.state ~= "o" and not IsOurs(o, me) then
+            local list = o.doneBy == me and hunted or closed
+            list[#list + 1] = { key = key, at = o.doneAt or o.exp or o.t or 0 }
+        end
+    end
+    Shed(store, closed, MAX_CLOSED)
+    Shed(store, hunted, MAX_HUNTED)
+end
+
+--- Room for one more open order of a guildie's: at MAX_OPEN the oldest with no gold in it goes, never ours.
+--- False when every one has gold.
+local function OpenRoom(store)
+    local n, me, out, outAt = 0, LIB.Me(), nil, nil
+    for key, o in pairs(store.orders) do
+        if o.state == "o" then
+            n = n + 1
+            local free = (o.reward or 0) == 0 and not (o.pot and next(o.pot)) and not IsOurs(o, me)
+            if free and (not outAt or (o.t or 0) < outAt) then out, outAt = key, o.t or 0 end
+        end
+    end
+    if n < MAX_OPEN then return true end
+    if not out then return false end
+    store.orders[out] = nil
+    Touched()
+    return true
 end
 
 --- Write a kill order. t = { key, guid, c, r, l }, reward in copper. Posting again on the same target
 --- changes the order you already have on them. auto: "r" or "c" for an order your death posted
 --- (GK.AutoOrder) - it runs three days, not seven. Returns the order, or nil and why not.
+GK.MAX_OPEN_PER_POSTER = MAX_OPEN_PER_POSTER
+
+--- Your open orders, the oldest first: those a new one waits on when there are MAX_OPEN_PER_POSTER (Post.lua).
+function GK.MyOpenOrders()
+    local me, list = LIB.Me(), {}
+    for _, o in pairs(GK.Store().orders) do
+        if o.by == me and o.state == "o" then list[#list + 1] = o end
+    end
+    table.sort(list, function(a, b)
+        if (a.t or 0) ~= (b.t or 0) then return (a.t or 0) < (b.t or 0) end
+        return a.key < b.key
+    end)
+    return list
+end
+
 function GK.PostOrder(t, reward, note, auto)
     local s, me, now = GK.Store(), LIB.Me(), time()
     if not me then return nil, "The game hasn't said who you are yet - try again in a moment." end
@@ -723,11 +852,139 @@ function GK.PostOrder(t, reward, note, auto)
     return o
 end
 
+-- ---------------------------------------------------------------------------
+-- Whom you hear from
+-- ---------------------------------------------------------------------------
+-- A guild of 700: "må være mulig å #1 mute guild eller sette en personal only eller only personal and from bnet
+-- friends" and "kill orders kan bli 200 folk liksom" (the owner, 2026-11-22). The mode (GK.Mode) is whose news is
+-- told: everyone's in Normal, your friends' and group's in Streamer, nobody's but yours in Private. And an order is loud - a letter, a warning, a
+-- pin - only with gold on it, from a friend, or about you. All of it is still kept and listed: it is the telling
+-- that is turned down. In a block: the file's locals.
+do
+    local READ_AGAIN, REMEMBER, MAX_REMEMBERED = 30, 30 * GK.DAY, 500
+    local near, readAt = {}, nil
+
+    local function NameKey(v)
+        if type(v) ~= "string" or GK.Secret(v) or v == "" then return nil end
+        local name = GK.Clean(v, 64)
+        return name and GK.PlayerKey(name) or nil
+    end
+
+    --- A Battle.net account's character, where it could be a guildie: in this game, as FriendsFrame.lua tells it
+    --- (wowProjectID), this region and our faction. Without that a friend on retail named "Kari" made a friend of
+    --- every "Kari Something" in the guild.
+    local function GuildiesOwn(info)
+        local program, project, region, faction = info.clientProgram, info.wowProjectID, info.isInCurrentRegion,
+            info.factionName
+        if GK.Secret(program) or GK.Secret(project) or GK.Secret(region) or GK.Secret(faction) then return false end
+        if program ~= "WoW" or project ~= WOW_PROJECT_ID or region == false then return false end
+        return type(faction) ~= "string" or faction == UnitFactionGroup("player")
+    end
+
+    --- Your friends and your group, by name. A Battle.net friend's character is named only while they are online,
+    --- so one seen so is remembered a month: their order is a friend's the next day too.
+    local function Read()
+        local now, set = time(), {}
+        local kept = type(GK.db.gameFriends) == "table" and GK.db.gameFriends or {}
+        GK.db.gameFriends = kept
+        local count, oldest, oldKey = 0, nil, nil
+        for key, at in pairs(kept) do
+            if type(at) ~= "number" or now - at > REMEMBER then
+                kept[key] = nil
+            else
+                set[key] = true
+                count = count + 1
+                if not oldest or at < oldest then oldest, oldKey = at, key end
+            end
+        end
+        if count >= MAX_REMEMBERED and oldKey then kept[oldKey], count = nil, count - 1 end
+        -- each list by itself: one the client won't read leaves the others
+        pcall(function()
+            if not (C_FriendList and C_FriendList.GetNumFriends and C_FriendList.GetFriendInfoByIndex) then return end
+            for i = 1, math.min(tonumber(C_FriendList.GetNumFriends()) or 0, 200) do
+                local info = C_FriendList.GetFriendInfoByIndex(i)
+                local key = info and NameKey(info.name)
+                if key then set[key] = true end
+            end
+        end)
+        pcall(function()
+            if not (BNGetNumFriends and C_BattleNet and C_BattleNet.GetFriendNumGameAccounts
+                and C_BattleNet.GetFriendGameAccountInfo) then return end
+            for i = 1, math.min(tonumber((BNGetNumFriends())) or 0, 400) do
+                for j = 1, math.min(tonumber(C_BattleNet.GetFriendNumGameAccounts(i)) or 0, 8) do
+                    local info = C_BattleNet.GetFriendGameAccountInfo(i, j)
+                    local key = info and GuildiesOwn(info) and NameKey(info.characterName) or nil
+                    if key then
+                        set[key] = true
+                        if kept[key] or count < MAX_REMEMBERED then
+                            if not kept[key] then count = count + 1 end
+                            kept[key] = now
+                        end
+                    end
+                end
+            end
+        end)
+        pcall(function()
+            if not GK.UnitPlayerKey then return end
+            local raid = IsInRaid and IsInRaid()
+            if not (raid or (IsInGroup and IsInGroup())) then return end
+            for i = 1, raid and 40 or 4 do
+                local key = NameKey(GK.UnitPlayerKey((raid and "raid" or "party") .. i))
+                if key then set[key] = true end
+            end
+        end)
+        return set
+    end
+
+    --- A friend - Battle.net or the friends list - or in your group. By the whole name alone: every character has
+    --- a surname and Battle.net gives it (the owner's 18 friends in Forever, 2026-11-22: all first name and surname,
+    --- as a guild's messages name them), so a first name by itself is nobody's. GK.SameName took it for every
+    --- namesake's.
+    function GK.IsFriend(key)
+        if type(key) ~= "string" or not GK.db then return false end
+        local now = GetTime()
+        if not readAt or now < readAt or now - readAt > READ_AGAIN then
+            near, readAt = Read(), now
+        end
+        return near[key] == true
+    end
+
+    --- The friends read again at the next question.
+    function GK.ForgetFriends() readAt = nil end
+
+    --- Is this guildie's news told here?
+    function GK.Hears(who)
+        if GK.Mode() == "normal" then return true end
+        -- Streamer and Private: yours alone. Streamer heard friends and the group until 2026-11-22: "streamer mode
+        -- skal vel helst ikke få noe spesielt fra guildies egentlig. ikke notifications om kill orders osv."
+        return type(who) == "string" and LIB.IsMyStoredName(who) or false
+    end
+
+    --- Yours, backed by you, on someone on your Death list or on one who killed you: about you, whatever is heard.
+    --- Streamer: yours and backed by you alone - your gold - and no guildie's order on one who killed you.
+    function GK.OrderConcerns(o)
+        local me = LIB.Me()
+        if o.by == me or (o.pot and o.pot[me]) then return true end
+        if GK.Mode() == "streamer" then return false end
+        if type(o.n) ~= "string" then return false end
+        if GK.IsTracked and GK.IsTracked(o.n) then return true end
+        local f = GK.char and GK.char.foes and GK.char.foes[o.n]
+        return f ~= nil and (f.d or 0) > 0
+    end
+
+    --- Does the order come as a letter, a warning and a pin?
+    function GK.OrderLoud(o)
+        if GK.OrderConcerns(o) then return true end
+        if not GK.Hears(o.by) then return false end
+        return (GK.Pot(o)) > 0 or GK.IsFriend(o.by) == true
+    end
+end
+
 --- My death to v: does it make an order that posts itself (see AUTO_DAYS)? Posts it and returns the
 --- order, or nil. Only with sharing on - a client that keeps your deaths to itself doesn't announce
 --- them this way either.
 function GK.AutoOrder(v)
-    if not (GK.db.autoOrders and GK.db.share) or not (v and v.key) then return nil end
+    if not (GK.db.autoOrders and GK.SharesScore()) or not (v and v.key) then return nil end
     local me, now = LIB.Me(), time()
     if not me or GK.OrderOn(v.key, v.guid) then return nil end
     -- one automatic order per enemy a day, whoever's death posted it
@@ -828,6 +1085,7 @@ function GK.Fulfil(o, zone)
     if o.state ~= "o" then return end
     local me = LIB.Me()
     o.state, o.doneBy, o.doneAt, o.doneZone = "d", me, time(), zone
+    o.doneHid = not GK.SharesPlace() or nil
     Touched()
     -- For the profile: orders fulfilled, and the bounties they carried when the kill was made. Not your
     -- own order: getting its target yourself closes it, but you fulfilled nobody's order ("hvis jeg
@@ -838,8 +1096,9 @@ function GK.Fulfil(o, zone)
         GK.char.done = (GK.char.done or 0) + 1
         GK.char.won = (GK.char.won or 0) + GK.DueTo(o, me)        -- our part, the bounty shared (GK.Part)
     end
-    -- Sent whatever "share" says: fulfilling an order is the one thing the order exists for.
-    Send(Msg("F", PROTO, o.by, o.id, zone, HelpersText(o)))
+    -- Sent whatever "share" and the mode say: fulfilling an order is the one thing the order exists for. Where, only
+    -- in Normal.
+    Send(Msg("F", PROTO, o.by, o.id, DonePlace(o), HelpersText(o)))
     if own then SendOrder(o) end
     AddFeed({ t = o.doneAt, who = me, kind = "F", n = o.n, c = o.c, l = o.l, p = o.reward, z = zone,
         own = own or nil, h = o.helpers })
@@ -934,12 +1193,12 @@ end
 --- Where we saw an order's target: o.seen as Sightings.lua filled it in, our own spot included.
 function GK.SendSighting(o)
     local s = o.seen
-    if not s then return end
+    if not s or not (GK.SharesScore() and GK.SharesPlace()) then return end      -- our spot, and when we were there
     Send(Msg("S", PROTO, o.by, o.id, s.z, s.l, s.m, s.x, s.y))
 end
 
 local function SendBoardNow()
-    if not GK.db.share then return end
+    if not GK.SharesScore() then return end
     local _, class = UnitClass("player")
     local w, c = GK.Week(), GK.char
     local nemesis, f = GK.Nemesis()
@@ -953,7 +1212,7 @@ end
 
 --- Our row, a moment after the last change - or at once (now), as the login's does, ahead of its Q.
 function GK.SendBoard(now)
-    if not GK.db.share then return end
+    if not GK.SharesScore() then return end
     if now then SendBoardNow() else LIB.Debounce("GrudgekeeperBoard", 2, SendBoardNow) end
 end
 
@@ -982,7 +1241,7 @@ end
 -- kept, per enemy, the latest word winning (a player can change guilds), and a K or a D carries the enemy's
 -- guild when its sender knows it. The score is the guild's own tally of each of them - every guildie's kills
 -- of them (slain) and deaths to them (wanted), each as its own client last counted it - so it reaches back as
--- far as those do, from whenever we first learn which guild they are in. As Most wanted, it is what this client
+-- far as those do, from whenever we first learn which guild they are in. As Killed us, it is what this client
 -- heard: a guildie offline when a kill was made has it from their next one.
 local MAX_ENEMY_GUILDS = 400
 
@@ -1056,6 +1315,24 @@ function GK.GuildScore(guild)
     return us, them, rows
 end
 
+--- The top killer of each side, out of the score's rows (GK.GuildScore): ours by all their kills of that guild's,
+--- theirs by their kills of us. { key, n, c } each, nil for a side with no kill; a tie goes A to Z.
+function GK.GuildTopKillers(rows)
+    local slain, totals = GK.Store().slain, {}
+    local ours, theirs
+    for _, r in ipairs(rows) do
+        local e = slain[r.key]
+        for who, n in pairs(e and e.by or {}) do totals[who] = (totals[who] or 0) + (tonumber(n) or 0) end
+        if r.d > 0 and (not theirs or r.d > theirs.n or (r.d == theirs.n and r.key < theirs.key)) then
+            theirs = { key = r.key, n = r.d, c = r.c }
+        end
+    end
+    for who, n in pairs(totals) do
+        if n > 0 and (not ours or n > ours.n or (n == ours.n and who < ours.key)) then ours = { key = who, n = n } end
+    end
+    return ours, theirs
+end
+
 --- Our kill, to the guild. revenge: they had killed us since we last got them (Kills.lua), and deaths how
 --- often they have killed us: fields 14 and 15 since 2026-11-20, for a guildie's Revenge (GK_REVENGE). An
 --- older client sends neither, and then there is no Revenge to tell. Field 16 since 2026-11-22: their guild,
@@ -1064,17 +1341,17 @@ function GK.SendKill(v, zone, points, avenged, times, spree, revenge, deaths)
     local me = LIB.Me()
     AddFeed({ t = time(), who = me, kind = "K", n = v.key, c = v.c, l = v.l, p = points, z = zone, av = avenged })
     GK.NoteSlain(me, v.key, v.c, v.r, v.l, times)
-    if not GK.db.share then return end
+    if not GK.SharesScore() then return end
     local rf, sx = LookOf(v.key, v.rf, v.sx)
-    Send(Msg("K", PROTO, v.key, v.c, v.r, v.l, zone, points, avenged, times, rf, sx, spree,
+    Send(Msg("K", PROTO, v.key, v.c, v.r, v.l, Place(zone), points, avenged, times, rf, sx, spree,
         revenge and 1 or 0, deaths, GK.EnemyGuild(v.key)))
 end
 
 --- Our assist: the news only. The guild's tally of who killed whom stays with the killer's K.
 function GK.SendAssist(v, zone, points)
     AddFeed({ t = time(), who = LIB.Me(), kind = "H", n = v.key, c = v.c, l = v.l, p = points, z = zone })
-    if not GK.db.share then return end
-    Send(Msg("H", PROTO, v.key, v.c, v.r, v.l, zone, points))
+    if not GK.SharesScore() then return end
+    Send(Msg("H", PROTO, v.key, v.c, v.r, v.l, Place(zone), points))
 end
 
 --- A guildie this player killed within the last few minutes (by the guild's feed): we'd be avenging
@@ -1107,10 +1384,10 @@ function GK.SendDeath(v, zone, times)
     -- Our own deaths count in the guild's wanted list too.
     GK.NoteWanted(LIB.Me(), v.key, v.c, v.r, v.l, times)
     GK.OrderLevel(v.key, v.guid, v.l)              -- and we saw their level
-    if not GK.db.share then return end
+    if not GK.SharesScore() then return end
     local rf, sx = LookOf(v.key, v.rf, v.sx)
     -- field 11 since 2026-11-22: their guild, when we know it (GK.EnemyGuild)
-    Send(Msg("D", PROTO, v.key, v.c, v.r, v.l, zone, times, rf, sx, GK.EnemyGuild(v.key)))
+    Send(Msg("D", PROTO, v.key, v.c, v.r, v.l, Place(zone), times, rf, sx, GK.EnemyGuild(v.key)))
 end
 
 -- ---------------------------------------------------------------------------
@@ -1120,7 +1397,7 @@ end
 -- Unc we had seen, and a hunter's Arcane Shot was written down as a shaman's (Kills.lua) - and nothing could
 -- take it back ("hvordan fjerner jeg", the owner, 2026-11-07). Forgetting removes MY record of a player: my
 -- grudge with them and its lines in my log, and my part of what the guild keeps on them - their kills of me
--- (Most wanted), my kills of them, my news about them - and asks the guild to do the same (U). Only ever the
+-- (Killed us), my kills of them, my news about them - and asks the guild to do the same (U). Only ever the
 -- sender's own part: a peer may only change their own records. The score stays: those kills and deaths
 -- happened, whoever they were to.
 
@@ -1156,6 +1433,10 @@ local function ForgetIn(who, key)
         -- the kills, deaths and assists, and what was made of them: a milestone, a spree ended, a tormentor
         if n.who == who and n.n == key and FORGOTTEN[n.kind] then table.remove(feed, i) end
     end
+    local fights = s.fights or {}
+    for i = #fights, 1, -1 do
+        if fights[i].who == who and fights[i].n == key then table.remove(fights, i) end
+    end
 end
 
 --- Forget my grudge with this player (their key, as my grudges have it), and tell the guild.
@@ -1168,7 +1449,7 @@ function GK.ForgetGrudge(key)
         if log[i].n == key then table.remove(log, i) end
     end
     ForgetIn(me, key)
-    if GK.db.share then Send(Msg("U", PROTO, key)) end
+    if GK.SharesScore() then Send(Msg("U", PROTO, key)) end
     GK.Changed()
     return true
 end
@@ -1178,7 +1459,7 @@ local function OnForget(sender, f)
     if key then ForgetIn(sender, key) end
 end
 
---- The guild's most wanted: who killed us, how often, and whom.
+--- Grudges' Killed us: who killed us, how often, and whom.
 function GK.NoteWanted(victim, key, c, r, l, times)
     if not (victim and key) then return end
     local wanted = GK.Store().wanted
@@ -1249,7 +1530,7 @@ function GK.AutoReason(key, victim, now)
     return nil
 end
 
---- Most wanted, the most kills on the guild first: { { key, total, w } }.
+--- Killed us, the most kills on the guild first: { { key, total, w } }.
 function GK.MostWanted()
     local list = {}
     for key, w in pairs(GK.Store().wanted) do
@@ -1280,8 +1561,10 @@ local function Owing(o)
     end
     if #parts == 0 then return end
     local list = #parts == 1 and parts[1] or (table.concat(parts, ", ", 1, #parts - 1) .. " and " .. parts[#parts])
-    print(("%s: %s fulfilled the kill order on %s - mail or trade %s."):format(GK.TAG,
-        GK.WhoGotThem(o.doneBy, o.helpers), GK.Show(o.n), list))
+    local line = ("%s: %s fulfilled the kill order on %s - mail or trade %s."):format(GK.TAG,
+        GK.WhoGotThem(o.doneBy, o.helpers), GK.Show(o.n), list)
+    if GK.probe then return GK.probe("chat", line) end
+    print(line)
 end
 
 --- A guildie a relay names, in our spelling. Every guildie reaches us without a realm and is filed under
@@ -1321,14 +1604,26 @@ local function ReadHelpers(field, sender)
     return #out > 0 and out or nil
 end
 
+--- A full board makes room for a guildie's own word: whoever was heard of longest ago goes, never us.
+local function BoardRoom(board)
+    local me, out, outAt = LIB.Me(), nil, nil
+    for who, r in pairs(board) do
+        if who ~= me and (not outAt or (r.t or 0) < outAt) then out, outAt = who, r.t or 0 end
+    end
+    if not out then return false end
+    board[out] = nil
+    return true
+end
+
 --- A guildie's row on the board from a B (their own word, base 0) or an R (another guildie's copy of it,
 --- base 1: the guildie's name comes first). Returns the row, or nil for a message that isn't one.
 local function ApplyBoard(who, f, base)
     local function Field(i) return f[base + i] end
     local board = GK.Store().board
-    if not board[who] and Count(board) >= MAX_BOARD then return nil end
     local p, k, d = Int(Field(3), 0, 1e7), Int(Field(4), 0, 1e6), Int(Field(5), 0, 1e6)
     if not (p and k and d) then return nil end
+    -- their own word makes room; a copy passed on never puts anyone out
+    if not board[who] and Count(board) >= MAX_BOARD and not (base == 0 and BoardRoom(board)) then return nil end
     -- This week's score came later: an older client sends none, and then has none this week.
     local wp, wk, wd, wid = Int(Field(8), 0, 1e7), Int(Field(9), 0, 1e6), Int(Field(10), 0, 1e6), Int(Field(11), 0, 2 ^ 31)
     -- The same guildie sends this after every kill and death: fill their row in, don't make a new one.
@@ -1542,6 +1837,8 @@ local function ApplyOrder(by, f, base, relayed)
                 if x.by == by and x.state == "o" then open = open + 1 end
             end
             if open >= MAX_OPEN_PER_POSTER then return end
+            if s.shut and s.shut[key] then return end     -- closed, and let go since: never open again
+            if not OpenRoom(s) then return end
         end
         o = { key = key, id = id, by = by, state = state }
         s.orders[key] = o
@@ -1580,7 +1877,7 @@ local function ApplyOrder(by, f, base, relayed)
         local last = resaid[o.key]
         if not last or GetTime() - last > RESAY_GAP then
             resaid[o.key] = GetTime()
-            Send(Msg("F", PROTO, o.by, o.id, o.doneZone, HelpersText(o)))
+            Send(Msg("F", PROTO, o.by, o.id, DonePlace(o), HelpersText(o)))
         end
     end
     if fresh and o.state == "o" then
@@ -1588,11 +1885,7 @@ local function ApplyOrder(by, f, base, relayed)
         if not relayed then
             AddFeed({ t = now, who = by, kind = "C", n = o.n, c = o.c, l = o.l, p = o.reward, au = o.auto and true or nil })
         end
-        if GK.db.letters then GK.OrderLetter(o) end
-    elseif not relayed and was ~= o.state and o.state == "p" and o.doneBy == LIB.Me() and (o.reward or 0) > 0
-        and not (o.paidTo and o.paidTo[o.by] and o.paidTo[o.by][o.doneBy]) then
-        -- the poster's whole, from a client that pays it so (a newer one said our part with Y already)
-        GK.PaidLetter(o, nil, GK.Part(o, o.reward, o.doneBy))
+        if GK.db.letters and GK.OrderLoud(o) then GK.OrderLetter(o) end
     elseif was == "o" and (o.state == "d" or o.state == "p") and o.doneBy and o.doneBy ~= LIB.Me()
         and o.pot and (o.pot[LIB.Me()] or 0) > 0 then
         -- a share of ours in an order fulfilled while we were away: the letter its F would have brought
@@ -1634,7 +1927,7 @@ local function OnFulfil(sender, f)
     -- for whatever tells it as it happens (Announce.lua). A guildie's, always: the F of our own kill finds
     -- the order closed already (GK.Fulfil), and so does one said a second time. Got with you there: yours
     -- too (mine), as it is on your profile below.
-    LIB.Fire("GK_ORDER_DONE", sender, o.helpers, o.n, (GK.Pot(o)), Helped(o) or nil, o.c, o.doneZone)
+    LIB.Fire("GK_ORDER_DONE", sender, o.helpers, o.n, (GK.Pot(o)), Helped(o) or nil, o.c, o.doneZone, GK.OrderConcerns(o) or nil)
     local me = LIB.Me()
     local share = (o.by == me and (o.reward or 0)) or (o.pot and o.pot[me]) or 0
     if o.by == me then SendOrder(o) end               -- the poster's word settles who was first
@@ -1656,6 +1949,7 @@ local function OnPot(sender, f)
     -- A share stays as it was promised once the order has closed: the kill was made for that pot.
     if o.state ~= "o" and o.pot and o.pot[sender] then return end
     o.pot = o.pot or {}
+    if copper == 0 then TookOut(o, sender) end          -- also of a share we never heard of: a P may bring it yet
     if not o.pot[sender] and Count(o.pot) >= MAX_BACKERS then return end
     heard["t:" .. o.key .. ":" .. sender] = GetTime()
     local was = o.pot[sender]
@@ -1668,8 +1962,9 @@ end
 --- A guildie's share of an open order's pot, passed on by another while that backer is away (P). The
 --- poster's own answer brings the order but not what others put in it, so a bounty read 50s that was 70s
 --- once the backer of the other 20s had logged out. Only a share we have none of, on an open order we
---- have: never over what we have - the backer's own word or a copy as good - and never ours, the
---- poster's or the sender's own, which come as the order and as a T. Not news: it was before our time.
+--- have: never over what we have - the backer's own word or a copy as good, their taking it out included
+--- (TookOut) - and never ours, the poster's or the sender's own, which come as the order and as a T. Not news:
+--- it was before our time.
 local function OnRelayedPot(sender, f)
     local o = OrderNamed(GK.Clean(f[3], 64), Int(f[4], 1, 2 ^ 31))
     local backer = GuildieKey(GK.Clean(f[5], 64))
@@ -1678,6 +1973,7 @@ local function OnRelayedPot(sender, f)
     if backer == sender or backer == o.by or LIB.IsMyStoredName(backer) then return end
     heard["t:" .. o.key .. ":" .. backer] = GetTime()
     o.pot = o.pot or {}
+    if o.tookOut and o.tookOut[backer] then return end
     if o.pot[backer] or Count(o.pot) >= MAX_BACKERS then return end
     o.pot[backer] = copper
 end
@@ -1699,12 +1995,10 @@ local function OnSharePaid(sender, f)
             o.paid = o.paid or {}
             o.paid[sender] = true
         end
-        if LIB.IsMyStoredName(hunter) then GK.PaidLetter(o, sender, part) end
     else
         if sender == o.by or (o.paid and o.paid[sender]) then return end
         o.paid = o.paid or {}
         o.paid[sender] = true
-        if o.doneBy == LIB.Me() then GK.PaidLetter(o, sender, given) end
     end
     GK.Changed()
 end
@@ -1720,6 +2014,7 @@ local function OnSighting(sender, f)
     o.seen = { by = sender, z = zone, t = time(), l = GK.ValidLevel(f[6]), m = m, x = x, y = y }
     GK.OrderLevel(o.n, o.guid, o.seen.l)           -- and the level they were seen at, on every order on them
     -- Everyone hears where: nobody takes an order, every guildie is the hunter (the owner, 2026-11-07).
+    if not GK.OrderLoud(o) then return end
     GK.WarnAs("alertNear", ("%s saw %s%s"):format(GK.Show(sender), GK.Show(o.n), zone and (" in " .. zone) or ""), false)
 end
 
@@ -1727,7 +2022,8 @@ end
 -- The answer to a login
 -- ---------------------------------------------------------------------------
 -- A guildie who logs in asks (Q), and everyone answers with what is theirs: their score, their orders,
--- what they put in others' pots. That alone lost what belonged to someone who was away: an order whose
+-- what they put in others' pots (SayOwn; a little after, whoever asked says theirs too, SayOwnAtLogin).
+-- That alone lost what belonged to someone who was away: an order whose
 -- poster had logged out never reached a guildie who logged in after it was posted, and neither did the
 -- poster's score ("påse at ... informasjon ikke blir borte om en person logger ut", the owner,
 -- 2026-11-07). So an answer also passes on the open orders, the shares in their pots and the board's
@@ -1740,8 +2036,10 @@ end
 local PACE = 0.5               -- seconds between two messages of an answer
 local MAX_PACED = 120
 local RELAY_ORDERS, RELAY_SHARES, RELAY_ROWS = 30, 30, 25
+local RELAY_ORDERS_FEW = 60      -- where only a few of us pass them on (GK.GuildOnline), each more
 local RELAY_CLOSED = 2 * GK.DAY  -- a closed order is passed on this long, so an open copy elsewhere closes
 local REPLY_GAP = 30           -- one answer per this long, however many log in
+local OWN_AFTER = REPLY_GAP + 15        -- after our ask, when we say ours: the answers are in by then
 
 local paced, pacing = {}, false
 local function Drain()
@@ -1775,6 +2073,54 @@ local function Shuffle(list)
 end
 
 local askedAt, replyAfter, replyDue = 0, 0, false
+local ownAfter, ownDue = 0, false
+-- Everyone online answered every login: 561 messages for one with 80 online, 158 of them in one second (simulated,
+-- 2026-11-22). Over SMALL_GUILD online about RELAYERS of us pass the guild's on, and each says their own - which
+-- only they can say - at most once in two seconds for every one online.
+local SMALL_GUILD, RELAYERS = 25, 8
+local TALKED_FOR, MAX_TALKERS = 600, 2000
+local talked, talkers = {}, 0
+
+local function Talked(sender)
+    if not talked[sender] then
+        if talkers >= MAX_TALKERS then return end
+        talkers = talkers + 1
+    end
+    talked[sender] = GetTime()
+end
+
+--- About how many of the guild are online: the client's count (as the guild tab reads it, GuildTab.lua), or
+--- whoever has talked here in ten minutes where that is more (the count can be 0 until the client has a roster,
+--- and nobody asks the game for one). GK.Lib's roster can't be counted: it answers by name.
+function GK.GuildOnline()
+    local now, heardOf, online = GetTime(), 0, 0
+    for who, at in pairs(talked) do
+        if now - at > TALKED_FOR then
+            talked[who] = nil
+            talkers = talkers - 1
+        else
+            heardOf = heardOf + 1
+        end
+    end
+    if GetNumGuildMembers then
+        local ok, _, n = pcall(GetNumGuildMembers)
+        if ok and type(n) == "number" and not GK.Secret(n) then online = n end
+    end
+    return math.max(heardOf, online)
+end
+
+--- How long after an answer of our own the next may come, and over how long the answers to one ask spread.
+--- A spread of its own for each, or the guild would answer in waves.
+function GK.AnswerGap()
+    local online = GK.GuildOnline()
+    if online <= SMALL_GUILD then return 30 end
+    return math.max(30, online * 2) * (0.75 + math.random() * 0.5)
+end
+function GK.AnswerSpread()
+    local online = GK.GuildOnline()
+    if online <= SMALL_GUILD then return 4 end
+    return math.max(8, math.min(60, online / 4))
+end
 local askers = {}               -- who asked since the last answer: each gets their own row back, first
 
 local function RowText(who, r)
@@ -1782,9 +2128,61 @@ local function RowText(who, r)
         r.nm, r.nt, r.rf, r.sx, r.t, r.a, r.wa, PartsText(r.parts) or (r.via and "~" or ""))
 end
 
-local function Answer()
+--- Whether this is the one PC this character is played on, as far as the guild knows: their other PCs come back
+--- with our row in the answers ("One character, more than one PC"). A PC that has another beside it may hold
+--- bounties from before they were changed there, and said unasked they undid the change for the whole guild. With
+--- sharing off no mark of ours goes out, so nobody could tell us.
+local function OnlyPC()
+    return GK.SharesScore() and type(GK.char.parts) == "table" and not next(GK.char.parts)
+end
+
+--- What only we may say: the orders we posted, our shares in others' pots or that we took one out, what we
+--- fulfilled and what we have paid. In every answer, and at our own login: a relay never changes what a guildie
+--- has, so one who was away when we changed a bounty, and back while we were away, learns it from us or not at
+--- all. Until 2026-11-22 we said it only when somebody else logged in ("ok, fiks den andre feilen også").
+--- atLogin: only where a bounty changes, an open order or a withdrawn one. A kill said again is told as it
+--- happens (toast, News), so it stays the answer's.
+local function SayOwn(atLogin)
+    local me, now, s = LIB.Me(), time(), GK.Store()
+    for _, o in pairs(s.orders) do
+        local recent = o.state == "o" or now - (o.doneAt or o.t or 0) < ORDER_DAYS * GK.DAY
+        if atLogin and o.state ~= "o" and o.state ~= "x" then recent = false end
+        if recent then
+            if o.by == me then Paced(function() return OrderText(o) end) end
+            -- an order of someone else's that our kill fulfilled, said again while it is unpaid: its poster
+            -- or a backer may have been away when it happened, and only we may say it (ApplyOrder)
+            if o.doneBy == me and o.by ~= me and o.state == "d" then
+                Paced(function() return o.state == "d" and Msg("F", PROTO, o.by, o.id, DonePlace(o), HelpersText(o)) or nil end)
+            end
+            local mine = o.pot and o.pot[me]
+            if mine or (o.state == "o" and o.tookOut and o.tookOut[me] and OnlyPC()) then
+                Paced(function()
+                    -- as it stands when it leaves: changed while this waited, the old amount went out last
+                    local copper = o.pot and o.pot[me]
+                    return Msg("T", PROTO, o.by, o.id, copper or 0)
+                end)
+            end
+            if mine and o.paid and o.paid[me] then Paced(function() return Msg("Y", PROTO, o.by, o.id) end) end
+            -- what we have paid each hunter, while not all of it is: the whole goes as T's Y above, or
+            -- as the poster's state
+            if (mine or o.by == me) and not (o.paid and o.paid[me]) and not (o.by == me and o.state == "p") then
+                for h in pairs(o.paidTo and o.paidTo[me] or {}) do
+                    Paced(function() return Msg("Y", PROTO, o.by, o.id, h) end)
+                end
+            end
+        end
+    end
+end
+
+--- Ours at our login, unasked: once the answers have told us of any other PC.
+local function SayOwnAtLogin()
+    if OnlyPC() then SayOwn(true) end
+end
+
+--- passOnly: in a big guild what is others' alone; ours goes by itself (SayOwnSoon).
+local function Answer(passOnly)
     local me, now, s, since = LIB.Me(), time(), GK.Store(), askedAt
-    GK.SendBoard()
+    if not passOnly then GK.SendBoard() end
     -- whoever asked, their own row with its parts: what their other PCs made, which this PC of theirs may
     -- never have heard ("One character, more than one PC"). Once, by whoever answers first.
     local asking = askers
@@ -1799,30 +2197,7 @@ local function Answer()
             end)
         end
     end
-    -- ours: the orders we posted, and what we put in others' pots and whether we've paid it
-    for _, o in pairs(s.orders) do
-        local recent = o.state == "o" or now - (o.doneAt or o.t or 0) < ORDER_DAYS * GK.DAY
-        if recent then
-            if o.by == me then Paced(function() return OrderText(o) end) end
-            -- an order of someone else's that our kill fulfilled, said again while it is unpaid: its poster
-            -- or a backer may have been away when it happened, and only we may say it (ApplyOrder)
-            if o.doneBy == me and o.by ~= me and o.state == "d" then
-                Paced(function() return o.state == "d" and Msg("F", PROTO, o.by, o.id, o.doneZone, HelpersText(o)) or nil end)
-            end
-            local mine = o.pot and o.pot[me]
-            if mine then
-                Paced(function() return Msg("T", PROTO, o.by, o.id, mine) end)
-                if o.paid and o.paid[me] then Paced(function() return Msg("Y", PROTO, o.by, o.id) end) end
-            end
-            -- what we have paid each hunter, while not all of it is: the whole goes as T's Y above, or
-            -- as the poster's state
-            if (mine or o.by == me) and not (o.paid and o.paid[me]) and not (o.by == me and o.state == "p") then
-                for h in pairs(o.paidTo and o.paidTo[me] or {}) do
-                    Paced(function() return Msg("Y", PROTO, o.by, o.id, h) end)
-                end
-            end
-        end
-    end
+    if not passOnly then SayOwn() end
     -- others' orders, open or lately closed, for whoever asked: in a shuffled order, so two of us
     -- answering at once rarely say the same one at the same moment
     local orders = {}
@@ -1832,7 +2207,7 @@ local function Answer()
         end
     end
     Shuffle(orders)
-    for i = 1, math.min(#orders, RELAY_ORDERS) do
+    for i = 1, math.min(#orders, passOnly and RELAY_ORDERS_FEW or RELAY_ORDERS) do
         local o = orders[i]
         Paced(function()
             if (heard[o.key] or 0) >= since or GK.Store().orders[o.key] ~= o then return nil end
@@ -1884,18 +2259,38 @@ local function Answer()
     end
 end
 
+--- Ours, in a big guild: after the ask, and no oftener than GK.AnswerGap.
+local function SayOwnSoon()
+    if ownDue then return end
+    ownDue = true
+    C_Timer.After(math.max(0, ownAfter - GetTime()) + 2 + math.random() * GK.AnswerSpread(), function()
+        ownDue = false
+        ownAfter = GetTime() + GK.AnswerGap()
+        GK.SendBoard()
+        SayOwn()
+    end)
+end
+
 local function OnAsk(sender)
     -- Everyone logging in at once asks at once: one answer, a few seconds later. An ask inside the gap
     -- after an answer waits for the gap to end; it used to get no answer at all, so a guildie who logged
     -- in half a minute after another heard nothing.
     askedAt = GetTime()
     if Count(askers) < 50 then askers[sender] = true end
+    local online = GK.GuildOnline()
+    if online > SMALL_GUILD then
+        SayOwnSoon()
+        if not replyDue and math.random() * online >= RELAYERS then
+            askers[sender] = nil                    -- others pass it on this time
+            return
+        end
+    end
     if replyDue then return end
     replyDue = true
     C_Timer.After(math.max(0, replyAfter - GetTime()) + 2 + math.random() * 4, function()
         replyDue = false
         replyAfter = GetTime() + REPLY_GAP
-        Answer()
+        Answer(GK.GuildOnline() > SMALL_GUILD)
     end)
 end
 
@@ -1907,6 +2302,7 @@ local function OnMessage(_, text, dist, sender)
     if dist ~= "GUILD" or type(text) ~= "string" or #text > 600 or not GK.char then return end
     sender = GK.PlayerKey(sender)                  -- by name alone, whatever realm the lib gave it (GK.Lib)
     if not sender then return end
+    Talked(sender)
     local f = Split(text)
     if Int(f[2], 1, 1000) ~= PROTO then return end
     local fn = HANDLERS[f[1]]
@@ -1958,6 +2354,7 @@ local function Ask()
     -- had, and passes the whole back to us
     GK.SendBoard(true)
     Send(Msg("Q", PROTO))
+    C_Timer.After(OWN_AFTER, SayOwnAtLogin)
 end
 
 function GK.StartGuild()

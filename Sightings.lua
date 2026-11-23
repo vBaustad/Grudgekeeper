@@ -18,7 +18,7 @@ local seen, byGuid, count = {}, {}, 0      -- [key] = { key, guid, c, r, rf, l, 
 local alerted, shared = {}, {}             -- [order key] = GetTime() of the last warning / report (and
                                            -- of the last time we noted where we stood)
 local plates = {}                          -- nameplate units on screen
-local trackedAt = {}                       -- [key] = GetTime() of the last "Tracked: ... is near"
+local trackedAt = {}                       -- [key] = GetTime() of the last "Death list: ... is near"
 
 function GK.SeenCount() return count end
 
@@ -234,12 +234,15 @@ local function Mark(unit, tracked)
 end
 
 -- ---------------------------------------------------------------------------
--- Tracked: enemies you keep an eye on, yours alone - nothing about them is ever sent. At the top of
+-- The Death list, Track until 2026-11-22 and kept as it was saved (char.tracked): enemies you put there
+-- yourself, "KUN de han selv har lagt på lista, ikke randoms" (a streamer, by the owner). It is a page of its
+-- own, and nothing but your own click takes anyone off it.
+-- The Death list (Track, until 2026-11-22): enemies you keep an eye on, yours alone - nothing about them is ever sent. Until then at the top of
 -- your Grudges, an eye over their plate and a warning when they are near: "egen watch list ... øverst på
 -- grudges ... Tracking eller Nemesises eller whatever", with the warning and the plate mark (the owner,
 -- 2026-11-12). Not "Nemesis": the board already names the one who killed you most so.
 -- ---------------------------------------------------------------------------
-local MAX_TRACKED = 25
+local MAX_TRACKED = 100
 local trackVersion = 0                     -- moves at every change, for the plates and the name index
 local trackIndex, trackIndexed = {}, -1    -- [name without realm] = the key it is tracked under
 
@@ -266,6 +269,28 @@ local function TrackedOf(key, s)
 end
 
 function GK.IsTracked(key) return TrackedOf(key) ~= nil end
+
+-- A note on one on the Death list ("han ønsket også å kunne sette note på death list targets", the owner, of the
+-- streamer, 2026-11-22): in the player's own file and never sent.
+GK.DEATH_NOTE_MAX = 80
+
+--- Your note on one on your Death list, or nil. The saved file is data: cleaned as it is read.
+function GK.DeathNote(key)
+    local _, e = TrackedOf(key)
+    local note = e and type(e.note) == "string" and GK.Clean(e.note, GK.DEATH_NOTE_MAX) or nil
+    if note == "" then return nil end
+    return note
+end
+
+--- Write it, or with nothing written take it off. False when they are not on the list.
+function GK.SetDeathNote(key, text)
+    local _, e = TrackedOf(key)
+    if not e then return false end
+    local note = type(text) == "string" and GK.Clean(strtrim(text), GK.DEATH_NOTE_MAX) or nil
+    e.note = note ~= "" and note or nil
+    GK.Changed()
+    return true
+end
 
 --- Track an enemy: t = { key, c, r, l }. False, and why, when it can't be: yourself, a guildie, or a full list.
 function GK.Track(t)
@@ -297,9 +322,9 @@ end
 function GK.TrackSaying(t)
     local ok, why = GK.Track(t)
     if why == "full" then
-        print(("%s: you track %d already - stop tracking one of them first."):format(GK.TAG, MAX_TRACKED))
+        print(("%s: your Death list is full at %d - remove one of them first."):format(GK.TAG, MAX_TRACKED))
     elseif why == "guildie" then
-        print(GK.TAG .. ": that's a guildie. Tracking is for enemies.")
+        print(GK.TAG .. ": that's a guildie. The Death list is for enemies.")
     end
     return ok
 end
@@ -320,7 +345,7 @@ local function TrackedNear(key, e, s)
     local now = GetTime()
     if trackedAt[key] and now - trackedAt[key] < ALERT_GAP then return end
     trackedAt[key] = now
-    GK.Warn(("Tracked: %s is near!"):format(GK.Show(key)), true, nil, key, key)
+    GK.Warn(("Death list: %s is near!"):format(GK.Show(key)), true, nil, key, key)
 end
 
 -- One who leads over you in sight warned you until you stood even, from 2026-11-20 until 2026-11-22: "leads over
@@ -404,9 +429,17 @@ end
 -- The target of an open order is in sight: warn, and tell the guild where. Every order, whoever posted
 -- it: there is no taking an order any more - "hey, we put out an order, kill this one" is the whole of
 -- it (the owner, 2026-11-07). Before, only orders you took or posted warned you.
+--- Returns whether an order on them is loud: a quiet one leaves a Death list's warning to Track (GK.See).
 local function Spotted(order, s)
     local now = GetTime()
-    if GK.WarnStyle("alertNear") ~= "off" then
+    -- another order on them may be the loud one (GK.OrderLoud); a quiet one still has its seal
+    local loud = not GK.OrderLoud or GK.OrderLoud(order)
+    if not loud then
+        for _, o in ipairs(GK.OrdersOn(order.n, order.guid)) do
+            if GK.OrderLoud(o) then loud = true break end
+        end
+    end
+    if loud and GK.WarnStyle("alertNear") ~= "off" then
         if not alerted[order.key] or now - alerted[order.key] > ALERT_GAP then
             alerted[order.key] = now
             GK.WarnAs("alertNear", ("%s is near!"):format(GK.Show(order.n)), true, nil, order.n, order.key)
@@ -435,8 +468,9 @@ local function Spotted(order, s)
         else
             last.m, last.x, last.y = nil, nil, nil       -- indoors: no spot, rather than an old one
         end
-        if GK.db.share then GK.SendSighting(order) end
+        GK.SendSighting(order)                   -- by the mode and Share my score (Guild.lua)
     end
+    return loud
 end
 
 --- An order just posted on someone we saw a moment ago - our target, or whoever killed us for an order a
@@ -516,8 +550,7 @@ function GK.See(unit)
     local f = GK.char.foes[key]
     if f then f.l, f.c, f.r = s.l or f.l, s.c or f.c, s.r or f.r end
     local order = GK.OrderOn(key, s.guid)
-    local trackedKey, tracked
-    if not order then trackedKey, tracked = TrackedOf(key, s) end
+    local trackedKey, tracked = TrackedOf(key, s)
     if plates[unit] then
         if order then Mark(unit) elseif tracked then Mark(unit, true) else Unmark(unit) end
     end
@@ -529,7 +562,21 @@ function GK.See(unit)
             s.keptRf, s.keptSx = s.rf, s.sx
         end
     end
-    if order then Spotted(order, s) elseif tracked then TrackedNear(trackedKey, tracked, s) end
+    -- an order's warning, or the Death list's where no order on them is loud (a guildie's, in Streamer)
+    if order then
+        if not Spotted(order, s) and tracked then TrackedNear(trackedKey, tracked, s) end
+    elseif tracked then
+        TrackedNear(trackedKey, tracked, s)
+    end
+end
+
+--- Whether Tracked's eye is over this unit's plate, where no order's seal is: an enemy on your list, with the
+--- marks on. The kudos medals give way to it (NotesUI.lua), as they do to the seal.
+function GK.EyeOn(unit)
+    if not (GK.db and GK.db.plateMarks and GK.char) then return false end
+    if not (GK.char.tracked and next(GK.char.tracked)) then return false end
+    local key = GK.UnitIdentity(unit)
+    return key ~= nil and TrackedOf(key, seen[key]) ~= nil
 end
 
 function GK.StartSightings()

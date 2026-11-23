@@ -131,6 +131,7 @@ function M.boot(opts)
     env.wipe = function(t) for k in pairs(t) do t[k] = nil end return t end
     env.IsInGuild = function() return M.inGuild end
     env.UnitFactionGroup = function() return "Alliance" end
+    env.InCombatLockdown = function() return false end      -- always there in the game
     env.print = function(...)
         local parts = {}
         for i = 1, select("#", ...) do parts[i] = tostring((select(i, ...))) end

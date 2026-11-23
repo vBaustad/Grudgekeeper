@@ -132,7 +132,7 @@ local function Fill()
 
     -- What happened, oldest first: every news line is put back to when it happened.
     -- Each enemy's last kill on us, the guild's deaths (Died) and your own (SendDeath): heard all in one
-    -- second, every one read "just now" on Most wanted and the poster (the store pictures, 2026-11-10). Set
+    -- second, every one read "just now" on Killed us and the poster (the store pictures, 2026-11-10). Set
     -- once all is in (below), as a death of yours heard later puts its own "now" over the guild's.
     local lastAt, slainAt = {}, {}
     local function LastKill(foe, ago) lastAt[foe.key] = math.max(lastAt[foe.key] or 0, now - ago) end
@@ -214,8 +214,8 @@ local function Fill()
         c.foes[p.key] = { n = p.name, c = p.c, r = p.r, l = p.l, k = f[2], d = f[3], last = at,
             lastKill = f[2] > 0 and at or nil, lastDeath = f[3] > 0 and at - 600 or nil, hits = {} }
     end
-    -- Two you track (Sightings.lua), first on Grudges with the eye on their face: one you have never fought, and
-    -- one who leads over you (Grudges as one list, 2026-11-20)
+    -- Two on your Death list (Sightings.lua): one you have never fought, and one who leads over you, who has
+    -- the eye on Grudges' Killed me as well
     c.tracked = {}
     for _, p in ipairs({ e.grimbold, e.vexmora }) do
         c.tracked[p.key] = { t = now - 2 * DAY, c = p.c, r = p.r, l = p.l }
@@ -253,6 +253,8 @@ local function Fill()
     Note(g.brannoc, "N", 1, e.grimbold.key, now - DAY, now - DAY, nil, nil, e.grimbold.c, e.grimbold.r, e.grimbold.l,
         "Ganks anyone under 40 at the flight master.")
     Note(g.brannoc, "W", 1, RIVALS, now - DAY, nil, g.brannoc.key)
+    -- four of theirs, for the versus page's picture (Window.lua, 2026-11-22): a close score, and fights both ways
+    for _, p in ipairs({ e.bramm, e.nyx, e.vexmora, e.kethra }) do GK.NoteEnemyGuild(p.key, RIVALS) end
 
     -- Letters: a kill order from the guild, and the title your last kill earned - only these two, not the
     -- ones the orders above brought on their way in.
@@ -263,12 +265,9 @@ local function Fill()
         c.letters[#c.letters + 1] = data
         return #c.letters
     end
-    local m, rank, of = e.mordrek, GK.MyRank()
+    local m = e.mordrek
     cast.orderLetter = Letter("order", { n = m.key, c = m.c, r = m.r, l = m.l, rf = m.rf, sx = m.sx,
         by = g.brannoc.key, reward = bounty.reward, note = bounty.note, o = bounty.key, times = 9 }, 5 * H)
-    local b = e.bramm
-    cast.titleLetter = Letter("kill", { n = b.key, c = b.c, r = b.r, l = b.l, rf = b.rf, sx = b.sx, z = zones[1],
-        title = GK.Title(c.points), rank = rank, of = of, total = c.points }, 3 * H)
 
     cast.bounty, cast.top, cast.wanted = bounty.key, g.brannoc.key, e.mordrek.key
     cast.shame, cast.kudos = x.pellam.key, x.tamsin.key
@@ -381,8 +380,9 @@ local function ClearScreen()
     if GameTooltip then GameTooltip:Hide() end
 end
 
-local function Ledger(page, row, folded, weekly)
+local function Ledger(page, row, folded, weekly, view)
     return function()
+        if view then GK.OpenLedgerView(page, view) end
         GK.ShowLedgerPage(page, row and ("%s:%s"):format(row[1], cast[row[2]]) or nil, folded, weekly)
         return GK.LedgerFrames()
     end
@@ -392,9 +392,11 @@ end
 local SHOTS = {
     { "orders", "Kill orders", Ledger("Kill orders", { "o", "bounty" }, false) },
     { "leaderboard", "Leaderboard", Ledger("Leaderboard", { "b", "top" }, false, true) },
-    { "most-wanted", "Most wanted", Ledger("Most wanted", { "w", "wanted" }, false) },
-    -- the one you owe most on the card: Grudges is who you owe first since 2026-11-20
-    { "grudges", "Grudges", Ledger("Grudges", { "f", "wanted" }, false) },
+    { "death-list", "Death list", Ledger("Death list", nil, false) },
+    -- the one you owe most on the card: Killed me is who you owe first
+    { "grudges", "Grudges", Ledger("Grudges", { "f", "wanted" }, false, nil, "me") },
+    { "killed-us", "Killed us", Ledger("Grudges", { "w", "wanted" }, false, nil, "killed") },
+    { "versus", "Versus", Ledger("Grudges", nil, false, nil, "guild") },
     { "news", "News", Ledger("News", nil, false) },
     { "shame", "Shame", Ledger("Shame", { "p", "shame" }, false) },
     { "kudos", "Kudos", Ledger("Kudos", { "p", "kudos" }, false) },
@@ -403,23 +405,24 @@ local SHOTS = {
         GK.ShowLetter(cast.orderLetter)
         return { _G.GrudgekeeperLetter }
     end, 1.8 },
-    { "title-letter", "Title letter", function()
-        GK.ShowLetter(cast.titleLetter)
-        return { _G.GrudgekeeperLetter }               -- one window for every letter (Letters.lua)
-    end },
     -- the poster as the right-click menu opens it: the ledger on them (GK.ShowInLedger)
     { "poster", "Wanted poster", function()
         GK.ShowPoster(cast.poster)
         return GK.LedgerFrames()
     end },
     { "you", "You", Ledger("You", nil, false) },
-    -- the settings: every splash and toast on one page, the warnings on a page of their own (2026-11-20)
-    { "settings-notifications", "Settings: Notifications", function()
-        GK.OpenOptions("Notifications")
+    -- the settings: yours with their sounds, and the warnings (the dark pages, 2026-11-22)
+    { "settings-notifications", "Settings: Mine", function()
+        GK.OpenOptions("Mine")
         return GK.LedgerFrames()
     end },
     { "settings-warnings", "Settings: Warnings", function()
         GK.OpenOptions("Warnings")
+        return GK.LedgerFrames()
+    end },
+    -- Mode, and what you share (2026-11-23): Normal, Streamer or Private
+    { "settings-sharing", "Settings: Sharing", function()
+        GK.OpenOptions("Sharing")
         return GK.LedgerFrames()
     end },
     -- a guildie's profile, in its own window (Profile.lua)

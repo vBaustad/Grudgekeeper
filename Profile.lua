@@ -340,14 +340,17 @@ function GK.PosterCard(t, inLedger)
             GK.OpenPost({ key = key, guid = guid, c = c, r = r, l = l })
         end }
     end
-    -- The second button, beside the kill order's (two fit): Stop tracking for one you track (Sightings.lua);
-    -- else Forget grudge for a grudge of yours; else Track. Track someone you have a grudge with from the
-    -- top of your Grudges or the right-click menu.
+    -- The second button, beside the kill order's: on your Death list or off it (Sightings.lua) - one who killed
+    -- you goes on it from their poster, a click from Grudges. Forget grudge is the third, under the two, for a
+    -- grudge of yours; a card with room for two (the Inspect tab's) leaves it to the ledger.
     -- A grudge of yours can be forgotten (GK.ForgetGrudge, Guild.lua): a wrong one stayed for good before.
     -- It asks twice - the first click readies it for a few seconds and the button says so.
     if GK.IsTracked and GK.IsTracked(key) then
-        d.buttons[#d.buttons + 1] = { "Stop tracking", function() GK.Untrack(key) end }
-    elseif f and fkey and (f.k or 0) + (f.d or 0) + (f.a or 0) > 0 then
+        d.buttons[#d.buttons + 1] = { "Remove from list", function() GK.Untrack(key) end }
+    elseif GK.TrackSaying then
+        d.buttons[#d.buttons + 1] = { "Add to Death list", function() GK.OpenDeathNote({ key = key, c = c, r = r, l = l }) end }
+    end
+    if f and fkey and (f.k or 0) + (f.d or 0) + (f.a or 0) > 0 then
         local armed = forgetArmed == fkey and GetTime() < forgetUntil
         d.buttons[#d.buttons + 1] = { armed and "Really forget?" or "Forget grudge", function()
             if forgetArmed == fkey and GetTime() < forgetUntil then
@@ -359,8 +362,6 @@ function GK.PosterCard(t, inLedger)
             C_Timer.After(FORGET_ARMED_FOR + 0.1, GK.Changed)        -- back to Forget grudge
             GK.Changed()
         end }
-    elseif GK.TrackSaying then
-        d.buttons[#d.buttons + 1] = { "Track", function() GK.TrackSaying({ key = key, c = c, r = r, l = l }) end }
     end
     if not d.big and killedUs > 0 then d.big, d.caption = tostring(killedUs), "killed us" end
     if o then
@@ -377,6 +378,13 @@ function GK.PosterCard(t, inLedger)
     rich.tiles[#rich.tiles + 1] = deaths
     rich.tiles[#rich.tiles + 1] = seenTile
     rich.sections[#rich.sections + 1] = { head = "History", kind = "facts", rows = history }
+    -- one on your Death list: your note first, so no longer card puts it out, and Edit on its heading
+    if GK.IsTracked and GK.IsTracked(key) and GK.DeathNote then
+        local note = GK.DeathNote(key)
+        table.insert(rich.sections, 1, { head = "Your note", kind = "facts",
+            edit = { note and "Edit" or "Write one", function() GK.OpenDeathNote({ key = key, c = c, r = r, l = l }) end },
+            rows = { { nil, note or "None yet." } } })
+    end
     d.blood = f ~= nil and (f.d or 0) > 0       -- they have killed you
     return d
 end
@@ -522,13 +530,14 @@ function GK.RecordCard(key, unit)
     end
     if r.nm then
         highlights[#highlights + 1] = { "Nemesis", GK.Show(r.nm),
-            r.nt and ("has killed %s %s"):format(me and "you" or "them", Times(r.nt)) or nil }
+            r.nt and (me and "killed you" or "killed them") or nil,
+            who = r.nm, times = r.nt and (r.nt .. "\195\151") or nil }
     end
     if (r.od or 0) > 0 then
         highlights[#highlights + 1] = { "Orders fulfilled", tostring(r.od),
             (r.ow or 0) > 0 and (GK.Coins(r.ow) .. " in bounties") or nil }
     end
-    if #highlights > 0 then rich.sections[1] = { head = "Highlights", kind = "facts", rows = highlights } end
+    if #highlights > 0 then rich.sections[1] = { head = "Highlights", kind = "highlights", rows = highlights } end
     local news = Lately(key, me, 3)
     if #news > 0 then rich.sections[#rich.sections + 1] = { head = "Lately", kind = "events", rows = news } end
     d.rich = rich
@@ -703,7 +712,7 @@ local function OnProfileMessage(prefix, text, channel, sender)
         -- asked: answered when we share outside the guild, once a minute to each, a few a minute to all
         local nonce = f[3]
         if not (nonce and nonce:match("^%d+$") and #nonce <= 10) then return end
-        if GK.db.shareOutside == false or GK.testMode then return end
+        if not GK.SharesOutside() or GK.testMode then return end
         local now = GetTime()
         if answeredTo[sender] and now - answeredTo[sender] < ASK_GAP then return end
         local recent = {}
@@ -874,8 +883,8 @@ local function OnEnemyMenu(_, root, ctx)
     -- Tracked (Sightings.lua): yours alone, one line that says which way it goes
     if GK.IsTracked then
         local on = GK.IsTracked(t.key)
-        root:CreateButton(on and "Stop tracking" or "Track", function()
-            if on then GK.Untrack(t.key) else GK.TrackSaying(t) end
+        root:CreateButton(on and "Remove from Death list" or "Add to Death list", function()
+            if on then GK.Untrack(t.key) else GK.OpenDeathNote(t) end
         end)
     end
     -- Their guild on watch, or off it, for an officer (Notes.lua): the right spelling comes from the game,
@@ -885,9 +894,9 @@ local function OnEnemyMenu(_, root, ctx)
         and GK.CanWatchGuild() then
         local current = GK.WatchedGuild()
         local same = GK.SameGuild(current, guild)        -- the one on watch, if typed in another case
-        local label = (same and ("Stop watching <%s>"):format(guild))
-            or (current and ("Watch <%s> instead of <%s>"):format(guild, current))
-            or ("Watch their guild <%s>"):format(guild)
+        local label = (same and ("Stop tracking <%s>"):format(guild))
+            or (current and ("Track <%s> instead of <%s>"):format(guild, current))
+            or ("Track their guild <%s>"):format(guild)
         root:CreateButton(label, function() GK.WatchGuild(same and current or guild, not same) end)
     end
 end

@@ -1,12 +1,14 @@
--- Grudgekeeper - writing a kill order: a WANTED poster with whom it is about in its window, the bounty, a line
--- about why. "Seal it" sends it to the guild. No gold changes hands now: whoever fulfils the order is paid by
--- you, by mail (Mail.lua fills the letter in).
--- It was a scroll between two rolls, its parts drawn in hairlines - "føles så tynt og skrøpelig ut ... de tynne
--- strekene for skille og text input ... så stusselig" (the owner, 2026-11-21). From the sketches in
--- art/mockups/postsheet the owner took F, a printed bill: the poster a fulfilled order is crossed out on
--- (fx_poster, FxOrders.lua), its boxes in heavy ink with a hard shadow, its headings between thick bars. And a
--- face of our own for every race in its window ("et portrait for hver av rasene ... kun for de wanted posters"):
--- Media/wanted_<race>, painted for it (art/codex_race_portraits.ps1).
+-- Grudgekeeper - writing a kill order: the who-picker's right half (Pick.lua), a short WANTED poster with whom it
+-- is about in its window, the bounty and a line about why. "Seal it" sends it to the guild and the window stays,
+-- for the next one. No gold changes hands now: whoever fulfils the order is paid by you, by mail (Mail.lua fills
+-- the letter in). With the Death list's picker the same half holds your note.
+-- It was a poster of its own that took the search's place: "litt kleint at den switcher til wanted posteren helt
+-- ... vi utvider søkevinduet til dobbelt så bredt og har deler av designet for wanted posteren på høyre side. da
+-- kan man trykke seg igjennom flere ... kan ha litt av assetsa men ikke alt, for det må passe inn med ramma og
+-- burde bruke wow knapper isteden" (the owner, 2026-11-22), drawn first (art/mockups/round8). The paper is the
+-- poster a fulfilled order is crossed out on (fx_poster, FxOrders.lua), with a face of our own for every race in
+-- its window ("et portrait for hver av rasene ... kun for de wanted posters"): Media/wanted_<race>, painted for
+-- it (art/codex_race_portraits.ps1).
 local ADDON, GK = ...
 local LIB = GK.Lib or LibStub("LibForever-1.0")      -- names by themselves (Core.lua, GK.Lib)
 
@@ -14,43 +16,37 @@ local MEDIA = "Interface\\AddOns\\Grudgekeeper\\Media\\"
 local TEXT_FONT = "Fonts\\FRIZQT__.TTF"
 local CLASS_ICONS = "Interface\\TargetingFrame\\UI-Classes-Circles"
 local PORTRAIT_MASK = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
-local INK = { 0.18, 0.10, 0.03 }                 -- darker than the letters' ink: a printed bill
-local INK2 = { 0.29, 0.17, 0.07 }                -- the small print and LEVEL
-local BLOOD = { 0.47, 0.06, 0.04 }
+local INK, FADED, BLOOD = GK.INK, GK.FADED, GK.BLOOD     -- the skin's, as the picker's left half
 local BACKING = { 0.59, 0.44, 0.27 }             -- behind the face, as on the fulfilled poster
 
--- The poster: fx_poster's paper, u 62-449 of its 512, all of its height. Cut in three down its height - the top
--- with WANTED and the window at its own shape, the plain band under the window stretched, the torn foot at its
--- own shape - so it is as tall as what is written on it without stretching the window.
-local W, H = 300, 500
+-- The half, and the poster in it: fx_poster's paper, u 62-449 of its 512, its top with WANTED and the window, and
+-- its torn foot right under that. The plain band between is left out: the window's own paper does that job.
+local W, H = 312, 426
+local POSTER_W, POSTER_Y = 170, 14
 local PAPER_U0, PAPER_U1 = 62 / 512, 449 / 512
-local NAT = W / (PAPER_U1 - PAPER_U0)            -- 397: the poster's own height at this width
-local CUT_TOP, CUT_FOOT = 0.70, 0.88             -- of the texture's height
+local NAT = POSTER_W / (PAPER_U1 - PAPER_U0)     -- the poster's own height at this width
+local CUT_TOP, CUT_FOOT = 0.70, 0.875            -- of the texture's height
 -- The window, as parts of the texture's side (printed by the import; FxOrders.lua has the same four), in the
--- poster's units. The face a little over the window's frame, under the paper, as on the fulfilled poster.
-local WIN_L = (0.305 - PAPER_U0) / (PAPER_U1 - PAPER_U0) * W
-local WIN_R = (0.688 - PAPER_U0) / (PAPER_U1 - PAPER_U0) * W
-local WIN_T, WIN_B = 0.273 * NAT, 0.660 * NAT
+-- half's units. The face a little over the window's frame, under the paper, as on the fulfilled poster.
+local POSTER_X = (W - POSTER_W) / 2
+local WIN_L = POSTER_X + (0.305 - PAPER_U0) / (PAPER_U1 - PAPER_U0) * POSTER_W
+local WIN_R = POSTER_X + (0.688 - PAPER_U0) / (PAPER_U1 - PAPER_U0) * POSTER_W
+local WIN_T, WIN_B = POSTER_Y + 0.273 * NAT, POSTER_Y + 0.660 * NAT
 local FACE_K = 1.04
 
--- Where the writing stands, down from the top: the name under the window, LEVEL under it, the bounty's heading,
--- its boxes, the why box, the small print (higher where there is no why box: a share of someone's pot).
--- box: a box's height; gold, silver: the bounty boxes' widths, gap between them; whyIn: the why box this far in
--- from either side. border, shadow: the boxes' ink and their print shadow; bar: the heading's bars, barIn from
--- the sides and barGap from its words.
-local L = { nameY = WIN_B + 8, name = 22, levelGap = 5, level = 11, head = 316, money = 336, why = 374,
-    small = 410, smallPot = 366, box = 26, gold = 78, silver = 54, gap = 10, whyIn = 40, border = 2.5, shadow = 3,
-    shadowA = 0.6, bar = 4, barIn = 40, barGap = 8, heading = 14 }
+-- Where the writing stands, down from the half's top: the name under the poster, LEVEL under it, the heading, the
+-- game's boxes, the small print (higher where there is no why box: a share of someone's pot), the button.
+local L = { nameY = 208, name = 18, levelGap = 4, level = 10, head = 262, money = 282, why = 314,
+    small = 344, smallPot = 314, gold = 84, silver = 56, gap = 18, whyIn = 30,
+    bar = 2, barIn = 24, barGap = 8, heading = 12,
+    fullHead = 26, fullSay = 44, fullTop = 84, fullRow = 31, fullIn = 22, withdraw = 84 }
 
 local frame
 local target            -- { key, guid, c, r, rf, l }
 local plan              -- GK.PostPlan of the target: pot is set when the sheet adds to someone else's open order
 
-local function Ink(fs, colour, font, size)
-    GK.SetFont(fs, font, size)                   -- a family: names in Cyrillic too (Core.lua)
-    fs:SetTextColor(colour[1], colour[2], colour[3])
-    fs:SetShadowOffset(0, 0)
-end
+local mode = "order"    -- what the half is for: "order" or "track"
+local function Ink(fs, colour, font, size) GK.Ink(fs, colour, font, size) end
 
 -- ---------------------------------------------------------------------------
 -- The faces on a WANTED poster
@@ -98,62 +94,33 @@ end
 -- ---------------------------------------------------------------------------
 -- The printed parts
 -- ---------------------------------------------------------------------------
---- A box printed in heavy ink: a faint fill, a border, and a hard shadow down its right and along its foot,
---- outside it only. box:Edge(colour) inks the border (blood while it is written in).
-local function Box(parent, w, h)
-    local b = CreateFrame("Frame", nil, parent)
-    b:SetSize(w, h)
-    local function Tex(layer, c, a)
-        local t = b:CreateTexture(nil, layer)
-        t:SetColorTexture(c[1], c[2], c[3], a)
-        return t
-    end
-    local right = Tex("BACKGROUND", INK, L.shadowA)
-    right:SetPoint("TOPLEFT", b, "TOPRIGHT", 0, -L.shadow)
-    right:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", L.shadow, -L.shadow)
-    local foot = Tex("BACKGROUND", INK, L.shadowA)
-    foot:SetPoint("TOPLEFT", b, "BOTTOMLEFT", L.shadow, 0)
-    foot:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", 0, -L.shadow)
-    local fill = Tex("BORDER", { 1, 0.94, 0.78 }, 0.28)
-    fill:SetAllPoints()
-    b.edges = {}
-    for i, side in ipairs({ { "TOPLEFT", "TOPRIGHT" }, { "BOTTOMLEFT", "BOTTOMRIGHT" }, { "TOPLEFT", "BOTTOMLEFT" },
-        { "TOPRIGHT", "BOTTOMRIGHT" } }) do
-        local t = Tex("ARTWORK", INK, 1)
-        t:SetPoint(side[1])
-        t:SetPoint(side[2])
-        if i <= 2 then t:SetHeight(L.border) else t:SetWidth(L.border) end
-        b.edges[i] = t
-    end
-    function b:Edge(c)
-        for _, t in ipairs(self.edges) do t:SetColorTexture(c[1], c[2], c[3], 1) end
-    end
-    return b
-end
-
---- A box to write in: the sheets' own line (Letters.lua, GK.SheetLine) filling a printed box, its rule left out.
---- size: the type's; coin: a coin's icon inside on the right (a bounty's box). Returns the edit box; e.box is
---- the box.
-local function WriteBox(parent, w, letters, hint, numeric, size, coin)
-    local box = Box(parent, w, L.box)
-    local e = GK.SheetLine(box, w, letters, hint, numeric)
-    e:ClearAllPoints()
-    e:SetPoint("TOPLEFT", L.border, -L.border)
-    e:SetPoint("BOTTOMRIGHT", -L.border, L.border)
-    e.rule:Hide()
-    GK.SetFont(e, TEXT_FONT, size)
-    e:SetTextInsets(5, coin and 22 or 5, 0, 0)
-    e.hint:ClearAllPoints()
-    e.hint:SetPoint("LEFT", 6, 0)
+--- A box of the game's to write in (Letters.lua, GK.FrameBox). coin: a coin's icon inside on the right (a
+--- bounty's). A box for a number is selected whole as it is clicked into, so what is typed replaces what stood
+--- there: the sheet opens with your bounty in it, and a 1 typed at a 1 sealed 11g (a guildie's report, 2026-11-22).
+local function WriteBox(parent, w, letters, hint, numeric, coin)
+    local e = GK.FrameBox(parent, w, letters, hint)
     if coin then
-        local c = box:CreateTexture(nil, "OVERLAY")
+        e:SetTextInsets(0, 20, 0, 0)
+        local c = e:CreateTexture(nil, "OVERLAY")
         c:SetTexture(coin)
-        c:SetSize(15, 15)
-        c:SetPoint("RIGHT", -6, 0)
+        c:SetSize(14, 14)
+        c:SetPoint("RIGHT", -4, 0)
     end
-    e:HookScript("OnEditFocusGained", function() box:Edge(BLOOD) end)
-    e:HookScript("OnEditFocusLost", function() box:Edge(INK) end)
-    e.box = box
+    if numeric then
+        e:SetNumeric(true)
+        e:SetJustifyH("RIGHT")
+        -- selected as focus comes, and again as that click lets go: the click sets the cursor, which can come
+        -- after the focus and takes the selection with it. A later click in the box sets the cursor as usual.
+        e:HookScript("OnEditFocusGained", function(self)
+            self.fresh = true
+            self:HighlightText()
+        end)
+        e:HookScript("OnMouseUp", function(self)
+            if not self.fresh then return end
+            self.fresh = nil
+            self:HighlightText()
+        end)
+    end
     return e
 end
 
@@ -172,6 +139,7 @@ local function Heading(f, y)
     fs.left, fs.right = Bar(), Bar()
     function fs:Label(words)
         self:SetText(words:upper())
+        for _, bar in ipairs({ self.left, self.right }) do bar:SetColorTexture(INK[1], INK[2], INK[3], 1) end
         local half = math.ceil((self:GetStringWidth() or 60) / 2) + L.barGap
         local mid = -(y + L.heading / 2)
         self.left:ClearAllPoints()
@@ -182,29 +150,6 @@ local function Heading(f, y)
         self.right:SetPoint("RIGHT", f, "TOPRIGHT", -L.barIn, mid)
     end
     return fs
-end
-
---- Cancel: a printed box at the poster's foot on the left, blood under the mouse. Hides the poster.
-local function CancelButton(f)
-    local b = CreateFrame("Button", nil, f)
-    b:SetSize(76, 24)
-    b:SetPoint("BOTTOMLEFT", 30, 28)
-    local box = Box(b, 76, 24)
-    box:SetAllPoints()
-    b.text = box:CreateFontString(nil, "OVERLAY")
-    Ink(b.text, INK, TEXT_FONT, 13)
-    b.text:SetPoint("CENTER")
-    b.text:SetText(CANCEL or "Cancel")
-    b:SetScript("OnEnter", function()
-        box:Edge(BLOOD)
-        b.text:SetTextColor(BLOOD[1], BLOOD[2], BLOOD[3])
-    end)
-    b:SetScript("OnLeave", function()
-        box:Edge(INK)
-        b.text:SetTextColor(INK[1], INK[2], INK[3])
-    end)
-    b:SetScript("OnClick", function() f:Hide() end)
-    return b
 end
 
 -- ---------------------------------------------------------------------------
@@ -227,35 +172,106 @@ function GK.PostSubmit(t, copper, note, plan)
     return true
 end
 
+local Dress     -- the half filled for a target (below)
+
+--- What was done, where the small print stood.
+local function Said(words)
+    frame.small:SetText(words)
+    Ink(frame.small, BLOOD, TEXT_FONT, 11)
+end
+
+-- ---------------------------------------------------------------------------
+-- Full: your ten, each to withdraw
+-- ---------------------------------------------------------------------------
+--- The half's poster and its boxes, shown or not: your full list takes their place.
+local function ShowSheet(on)
+    for _, part in ipairs(frame.sheetParts) do part:SetShown(on) end
+end
+
+local function FullRow(i)
+    local f = frame.full
+    local r = CreateFrame("Frame", nil, f)
+    r:SetSize(W - 2 * L.fullIn, L.fullRow)
+    r:SetPoint("TOPLEFT", L.fullIn, -(L.fullTop + (i - 1) * L.fullRow))
+    r.name = r:CreateFontString(nil, "ARTWORK")
+    Ink(r.name, INK, TEXT_FONT, 12)
+    r.name:SetPoint("TOPLEFT", 0, -3)
+    r.name:SetWidth(W - 2 * L.fullIn - L.withdraw - 8)
+    r.name:SetJustifyH("LEFT")
+    r.name:SetWordWrap(false)
+    r.what = r:CreateFontString(nil, "ARTWORK")
+    Ink(r.what, FADED, TEXT_FONT, 10)
+    r.what:SetPoint("TOPLEFT", r.name, "BOTTOMLEFT", 0, -2)
+    r.what:SetWidth(W - 2 * L.fullIn - L.withdraw - 8)
+    r.what:SetJustifyH("LEFT")
+    r.what:SetWordWrap(false)
+    r.withdraw = GK.FrameButton(r, "Withdraw", L.withdraw, function()
+        local o = r.order
+        if not o then return end
+        GK.Withdraw(o)
+        if GK.PickRefill then GK.PickRefill() end
+        Dress(target)
+        if not plan.full then Said(("%s withdrawn. Now seal the new one."):format(GK.Show(o.n))) end
+    end)
+    r.withdraw:SetPoint("RIGHT", 0, 0)
+    f.rows[i] = r
+    return r
+end
+
+--- Your open orders in the poster's place, with why there is no poster.
+local function ShowFull(t, mine)
+    local f = frame.full
+    f.head:Label(("Your %d kill orders"):format(#mine))
+    f.say:SetText(("That is as many as you can have. Withdraw one to post on %s."):format(GK.Show(t.key)))
+    for i, o in ipairs(mine) do
+        local r = f.rows[i] or FullRow(i)
+        r.order = o
+        r.name:SetText(GK.Show(o.n))
+        local pot = (GK.Pot(o))
+        local what = o.auto and "your death posted it" or (pot > 0 and GK.MoneyText(pot) or "no gold")
+        r.what:SetText(what .. " - " .. GK.Ago(o.t))
+        r:Show()
+    end
+    for i = #mine + 1, #f.rows do f.rows[i]:Hide() end
+    f:Show()
+end
+
 local function Seal()
-    local gold = tonumber(frame.gold:GetText()) or 0
-    local silver = tonumber(frame.silver:GetText()) or 0
-    local copper = gold * 10000 + silver * 100
-    if not GK.PostSubmit(target, copper, frame.note:GetText(), plan) then return end
-    frame:Hide()
-    GK.OpenWindow(1)
+    if not target then return end
+    if mode == "track" then
+        if not GK.IsTracked(target.key) and not GK.TrackSaying(target) then return end
+        GK.SetDeathNote(target.key, frame.tnote:GetText())
+        frame.tnote:ClearFocus()
+        Dress(target)
+        Said("On your Death list. Pick the next one, or Close.")
+    else
+        local gold = tonumber(frame.gold:GetText()) or 0
+        local silver = tonumber(frame.silver:GetText()) or 0
+        local copper = gold * 10000 + silver * 100
+        if not GK.PostSubmit(target, copper, frame.note:GetText(), plan) then return end
+        frame.note:ClearFocus()
+        Dress(target)
+        Said("Sealed. Pick the next one, or Close.")
+    end
+    if GK.PickRefill then GK.PickRefill() end         -- the seal or the eye on their row
 end
 
 -- ---------------------------------------------------------------------------
 -- The poster
 -- ---------------------------------------------------------------------------
-local function Build()
-    frame = GK.MakeSheet("GrudgekeeperPost", W, H)
-    -- the paper in three, over the face: the window is a hole in it
-    local top, mid, foot = frame:CreateTexture(nil, "BORDER"), frame:CreateTexture(nil, "BORDER"),
-        frame:CreateTexture(nil, "BORDER")
-    for _, t in ipairs({ top, mid, foot }) do t:SetTexture(MEDIA .. "fx_poster") end
+local function Build(parent)
+    frame = CreateFrame("Frame", "GrudgekeeperPost", parent)
+    frame:SetSize(W, H)
+    frame:SetPoint("TOPLEFT", parent, "TOPLEFT", 304, -22)
+    -- the paper over the face: the window is a hole in it
+    local top, foot = frame:CreateTexture(nil, "BORDER"), frame:CreateTexture(nil, "BORDER")
+    for _, t in ipairs({ top, foot }) do t:SetTexture(MEDIA .. "fx_poster") end
     top:SetTexCoord(PAPER_U0, PAPER_U1, 0, CUT_TOP)
-    top:SetPoint("TOPLEFT")
-    top:SetPoint("TOPRIGHT")
-    top:SetHeight(NAT * CUT_TOP)
+    top:SetSize(POSTER_W, NAT * CUT_TOP)
+    top:SetPoint("TOPLEFT", POSTER_X, -POSTER_Y)
     foot:SetTexCoord(PAPER_U0, PAPER_U1, CUT_FOOT, 1)
-    foot:SetPoint("BOTTOMLEFT")
-    foot:SetPoint("BOTTOMRIGHT")
-    foot:SetHeight(NAT * (1 - CUT_FOOT))
-    mid:SetTexCoord(PAPER_U0, PAPER_U1, CUT_TOP, CUT_FOOT)
-    mid:SetPoint("TOPLEFT", top, "BOTTOMLEFT")
-    mid:SetPoint("BOTTOMRIGHT", foot, "TOPRIGHT")
+    foot:SetSize(POSTER_W, NAT * (1 - CUT_FOOT))
+    foot:SetPoint("TOPLEFT", top, "BOTTOMLEFT")
     frame.paper = top
 
     -- the face in the window, on the paper's colour (a crest has corners of its own)
@@ -270,8 +286,8 @@ local function Build()
     frame.face:SetPoint("CENTER", frame, "TOPLEFT", cx, -cy)
     -- their class, a crest in the bronze ring on the window's corner, as on the ledger's faces
     frame.crest = frame:CreateTexture(nil, "ARTWORK", nil, 2)
-    frame.crest:SetSize(26, 26)
-    frame.crest:SetPoint("CENTER", frame, "TOPLEFT", WIN_R - 4, -(WIN_B - 4))
+    frame.crest:SetSize(20, 20)
+    frame.crest:SetPoint("CENTER", frame, "TOPLEFT", WIN_R - 3, -(WIN_B - 3))
     frame.crest:SetTexture(CLASS_ICONS)
     local mask = frame:CreateMaskTexture()
     mask:SetTexture(PORTRAIT_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
@@ -280,38 +296,53 @@ local function Build()
     frame.crestRing = frame:CreateTexture(nil, "ARTWORK", nil, 3)
     frame.crestRing:SetTexture(MEDIA .. "portrait_ring")
     frame.crestRing:SetDesaturation(0.35)
-    frame.crestRing:SetSize(32, 32)
+    frame.crestRing:SetSize(25, 25)
     frame.crestRing:SetPoint("CENTER", frame.crest, "CENTER")
 
     frame.name = frame:CreateFontString(nil, "ARTWORK")
     Ink(frame.name, INK, TEXT_FONT, L.name)
     frame.name:SetPoint("TOP", frame, "TOP", 0, -L.nameY)
-    frame.name:SetWidth(W - 40)
+    frame.name:SetWidth(W - 32)
     frame.name:SetWordWrap(false)
     frame.level = frame:CreateFontString(nil, "ARTWORK")
-    Ink(frame.level, INK2, TEXT_FONT, L.level)
+    Ink(frame.level, FADED, TEXT_FONT, L.level)
     frame.level:SetPoint("TOP", frame.name, "BOTTOM", 0, -L.levelGap)
 
     frame.bounty = Heading(frame, L.head)
     local x = (W - L.gold - L.gap - L.silver) / 2
-    frame.gold = WriteBox(frame, L.gold, 4, nil, true, 17, "Interface\\MoneyFrame\\UI-GoldIcon")
-    frame.gold.box:SetPoint("TOPLEFT", x, -L.money)
-    frame.silver = WriteBox(frame, L.silver, 2, nil, true, 17, "Interface\\MoneyFrame\\UI-SilverIcon")
-    frame.silver.box:SetPoint("TOPLEFT", x + L.gold + L.gap, -L.money)
-    frame.note = WriteBox(frame, W - 2 * L.whyIn, 80, "what did they do?", false, 14)
-    frame.note.box:SetPoint("TOPLEFT", L.whyIn, -L.why)
-    frame.noteBox = frame.note.box
+    frame.gold = WriteBox(frame, L.gold, 4, nil, true, "Interface\\MoneyFrame\\UI-GoldIcon")
+    frame.gold:SetPoint("TOPLEFT", x, -L.money)
+    frame.silver = WriteBox(frame, L.silver, 2, nil, true, "Interface\\MoneyFrame\\UI-SilverIcon")
+    frame.silver:SetPoint("TOPLEFT", x + L.gold + L.gap, -L.money)
+    frame.note = WriteBox(frame, W - 2 * L.whyIn, 80, "what did they do?")
+    frame.note:SetPoint("TOPLEFT", L.whyIn, -L.why)
+    frame.noteBox = frame.note
+    -- the Death list's: your note, where the bounty is
+    frame.tnote = WriteBox(frame, W - 2 * L.whyIn, GK.DEATH_NOTE_MAX or 80, "Optional. Only you see it.")
+    frame.tnote:SetPoint("TOPLEFT", L.whyIn, -L.money)
 
     frame.small = frame:CreateFontString(nil, "ARTWORK")
-    Ink(frame.small, INK2, TEXT_FONT, 11)
-    frame.small:SetWidth(W - 60)
+    Ink(frame.small, FADED, TEXT_FONT, 11)
+    frame.small:SetWidth(W - 44)
     frame.small:SetSpacing(2)
     if frame.small.SetMaxLines then frame.small:SetMaxLines(4) end
 
-    frame.seal = GK.SheetSeal(frame, Seal)
-    frame.seal:ClearAllPoints()
-    frame.seal:SetPoint("BOTTOMRIGHT", -22, 20)
-    frame.cancel = CancelButton(frame)
+    frame.seal = GK.FrameButton(frame, "Seal it", 140, Seal)
+    frame.seal:SetPoint("BOTTOMRIGHT", -16, 14)
+    -- what gives way to your list of ten (ShowFull)
+    frame.sheetParts = { top, foot, back, frame.face, frame.crest, frame.crestRing, frame.name, frame.level,
+        frame.bounty, frame.bounty.left, frame.bounty.right, frame.gold, frame.silver, frame.note, frame.small,
+        frame.seal }
+    frame.full = CreateFrame("Frame", nil, frame)
+    frame.full:SetAllPoints(frame)
+    frame.full.rows = {}
+    frame.full.head = Heading(frame.full, L.fullHead)
+    frame.full.say = frame.full:CreateFontString(nil, "ARTWORK")
+    Ink(frame.full.say, FADED, TEXT_FONT, 11)
+    frame.full.say:SetPoint("TOP", 0, -L.fullSay)
+    frame.full.say:SetWidth(W - 2 * L.fullIn)
+    frame.full.say:SetSpacing(2)
+    frame.full:Hide()
 end
 
 --- The face for a target, in the window: our painting of their race, else their class's crest, else our seal
@@ -371,6 +402,12 @@ function GK.PostPlan(t)
             backers > 0 and (" from %d backer%s and them"):format(backers, backers == 1 and "" or "s") or "")
         p.button = "Add it"
         p.amount = pot.pot and pot.pot[me] or 0
+        if p.amount > 0 then
+            -- a share is set, never added to (GK.Contribute): with one in already the sheet says so
+            p.small = ("%s already has an order on them: %s in all. Your share is %s now. A new amount replaces it.")
+                :format(GK.Show(pot.by), GK.MoneyText(total), GK.MoneyText(p.amount))
+            p.button = "Change it"
+        end
     else
         p.case = mine and "change" or "new"
         p.title, p.bounty = "KILL ORDER", "Bounty"
@@ -378,39 +415,86 @@ function GK.PostPlan(t)
         p.small = "You pay it by mail when it's fulfilled - runs 7 days"
         p.button = mine and "Change it" or "Seal it"
         p.amount = mine and mine.reward or 0
+        -- a new one where you have as many open as there can be: your list, to withdraw one (ShowFull)
+        if not mine then
+            p.open = GK.MyOpenOrders and GK.MyOpenOrders() or {}       -- Guild.lua's, where it is loaded
+            p.full = #p.open >= (GK.MAX_OPEN_PER_POSTER or 10)
+        end
     end
     p.asksWhy = not pot
     p.note = mine and mine.note or ""
     return p
 end
 
---- Open the sheet for a target: { key, guid, c, r, rf, l }. Three ways it can go (see GK.PostPlan).
-function GK.OpenPost(t)
-    if not (t and t.key) then return end
-    if not frame then Build() end
+--- The half filled for a target { key, guid, c, r, rf, l }: an order (GK.PostPlan's three ways), or your Death
+--- list's note. Nothing is focused: the keys stay the player's until a box is clicked.
+Dress = function(t)
     target = t
-    plan = GK.PostPlan(t)
+    frame.full:Hide()
+    ShowSheet(true)
     DressFace(t)
     -- a long name steps down a size or two before the game cuts it short
     for _, size in ipairs({ L.name, L.name - 3, L.name - 6 }) do
         Ink(frame.name, INK, TEXT_FONT, size)
         frame.name:SetText(GK.Show(t.key))
-        if (frame.name:GetStringWidth() or 0) <= W - 40 then break end
+        if (frame.name:GetStringWidth() or 0) <= W - 32 then break end
     end
     frame.level:SetText(t.l and ("LEVEL " .. (t.l == -1 and "??" or t.l)) or "")
+    Ink(frame.small, FADED, TEXT_FONT, 11)
+    frame.small:ClearAllPoints()
+    -- out of the boxes first: one still being written in gets no new focus when clicked, so no selection
+    frame.gold:ClearFocus()
+    frame.silver:ClearFocus()
+    local order = mode ~= "track"
+    frame.gold:SetShown(order)
+    frame.silver:SetShown(order)
+    frame.tnote:SetShown(not order)
+    if not order then
+        frame.noteBox:Hide()
+        local on = GK.IsTracked(t.key)
+        frame.bounty:Label("Your note")
+        frame.tnote:SetText(on and GK.DeathNote(t.key) or "")
+        frame.small:SetText(on and "On your Death list." or "A warning and an eye over them when they are near.")
+        frame.small:SetPoint("TOP", 0, -L.smallPot)
+        frame.seal:SetText(on and "Save the note" or "Add to Death list")
+        return
+    end
+    plan = GK.PostPlan(t)
+    if plan.full then
+        ShowSheet(false)
+        ShowFull(t, plan.open)
+        return
+    end
     frame.bounty:Label(plan.bounty)
     frame.small:SetText(plan.small)
-    frame.small:ClearAllPoints()
     frame.small:SetPoint("TOP", 0, -(plan.asksWhy and L.small or L.smallPot))   -- into the why's room when it has none
-    frame.seal:Set(plan.button)
-    local amount = plan.amount
+    frame.seal:SetText(plan.button)
     frame.noteBox:SetShown(plan.asksWhy)
+    local amount = plan.amount
     frame.gold:SetText(amount >= 10000 and tostring(math.floor(amount / 10000)) or "")
     frame.silver:SetText(amount % 10000 >= 100 and tostring(math.floor(amount / 100) % 100) or "")
     frame.note:SetText(plan.note)
-    GK.PlaceSheet(frame)
-    frame:Show()
-    frame:Raise()
+end
+
+--- The picker's right half (Pick.lua): for "order" or "track", on t; none chosen, none shown. The half's frame.
+function GK.ShowPostHalf(parent, kind, t)
+    local on = (kind == "order" or kind == "track") and t ~= nil and t.key ~= nil
+    if not frame then
+        if not on then return nil end
+        Build(parent)
+    end
+    frame:SetShown(on)
+    if on then
+        mode = kind
+        Dress(t)
+    end
+    return frame
+end
+
+--- Open the kill order window on a target: { key, guid, c, r, rf, l } - the search, with them chosen.
+function GK.OpenPost(t)
+    if not (t and t.key) then return end
+    GK.OpenPicker("order", t)
 end
 
 --- /grudge post: an order on your target, if that is an enemy player - else the who-picker (Pick.lua),

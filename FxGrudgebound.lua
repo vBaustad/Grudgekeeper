@@ -77,7 +77,11 @@ GK.FX.grudgebound_repeat = {
     -- the number slams in the boom with a heavy rock (FX_RockImpact_Heavy_Short_01) and the tribal bell. The old
     -- fanfare, the iron's clang, the rattle and the number's whoosh went.
     voice = 0.08,
-    cues = { { 0.3, 1305196 }, { 0.55, 1362383 }, { 1.0, "boom" }, { 1.0, 1345549 }, { 1.0, 566027 } },
+    -- Since 2026-11-23 the owner's new picks, less than Grudgebound's own ("føler også grudgebound/20/100 har litt
+    -- motsatt hype lyd. at den første er kulest"): the earthquake and Echeyakee's horn as the crown comes, the chains'
+    -- sigil as it lands, a big whoosh (FX_Whoosh_Large_Revamp_03) and a body falling to the ground
+    -- (mDeathImpactLargeDirtA) as the number slams in; no whoosh for the crown, no fanfare.
+    cues = { { 0, 568874 }, { 0, 567084 }, { 0.55, 1362383 }, { 0.82, 1305191 }, { 1.0, 567195 } },
     build = function(splash, P)
         local st = State(splash, "repeat")
         local H = 0.55 + 0.45            -- when the number slams in, after the crown lands
@@ -122,7 +126,9 @@ GK.FX.hundred = {
     -- beat (EarthquakeCameraShake), and as time snaps back the boom, the chains' sigil (Spell_DH_Sigil_Chain_Cast) and
     -- the tribal bell, then the voice. The swelling fanfare went.
     voice = false,                      -- its own call instead of the tier's
-    cues = { { 0, 568874 }, { HUNDRED.R, "boom" }, { HUNDRED.R, 1362383 }, { HUNDRED.R, 566027 },
+    -- Since 2026-11-23 the owner's new picks: Echeyakee's horn with the earthquake, and the bronze strike
+    -- (Magic_Bronze_Impact_Large_03) in the boom's place.
+    cues = { { 0, 568874 }, { 0, 567084 }, { HUNDRED.R, 4565238 }, { HUNDRED.R, 1362383 }, { HUNDRED.R, 566027 },
         { HUNDRED.R + 0.5, "vo_one_hundred" } },
     build = function(splash, P)
         local st, R = State(splash, "hundred"), HUNDRED.R

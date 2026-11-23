@@ -1057,9 +1057,11 @@ local function OnAsk()
     -- logged in a little after another heard none of our notes (2026-11-07, as Guild.lua's).
     if replyDue then return false end
     replyDue = true
-    C_Timer.After(math.max(0, replyAfter - GetTime()) + 2 + math.random() * 4, function()
+    -- wider apart the more are online (Guild.lua, GK.GuildOnline): notes are each author's own to say
+    local spread = GK.AnswerSpread and GK.AnswerSpread() or 4
+    C_Timer.After(math.max(0, replyAfter - GetTime()) + 2 + math.random() * spread, function()
         replyDue = false
-        replyAfter = GetTime() + 30
+        replyAfter = GetTime() + (GK.AnswerGap and GK.AnswerGap() or 30)
         GK.NotesBroadcast()
     end)
     return false

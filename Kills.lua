@@ -113,10 +113,14 @@ function GK.RecordKill(v)
     f.lastKill = now
     c.kills = c.kills + 1
     c.points = c.points + points
-    c.streak = (c.streak or 0) + 1
-    c.bestStreak = math.max(c.bestStreak or 0, c.streak)
-    -- The spree counts the kills worth points only: a grey kill or a farmed one is in the streak, not here.
-    if points > 0 then c.spree = (c.spree or 0) + 1 end
+    -- The streak and the spree are one count (2026-11-22): a grey kill or a farmed one neither adds to it nor
+    -- ends it, bonus points or not. A best from before that stands.
+    local counts = GK.CountsInStreak(UnitLevel("player"), v.l, today)
+    if counts then
+        c.spree = (c.spree or 0) + 1
+        c.streak = c.spree
+        c.bestStreak = math.max(c.bestStreak or 0, c.streak)
+    end
     local week = GK.Week()
     week.p, week.k = week.p + points, week.k + 1
     local zone = GK.Zone()
@@ -127,7 +131,7 @@ function GK.RecordKill(v)
     -- What the kill made of it, for whatever shows it (GK_SPREE, GK_TORMENTOR). Only after the send: the
     -- guild hears the kill first.
     -- Each is a line in the guild's news as well (GK.SpreeNews), after the kill's own.
-    if points > 0 then
+    if counts then
         local tier, key = GK.SpreeTier(c.spree)
         if tier then
             LIB.Fire("GK_SPREE", LIB.Me(), c.spree, tier, true, key)
@@ -141,23 +145,20 @@ function GK.RecordKill(v)
     end
     -- Revenge, told (Announce.lua): the kill that earns the revenge point, with where you stand now
     if revenge then LIB.Fire("GK_REVENGE", LIB.Me(), GK.Show(v.key), f.k, f.d or 0, true, v.key, v.c)
+    -- One on your Death list: a toast of yours, no letter and nothing of it to the guild ("kanskje en toast? men
+    -- ikke brev osv? kanskje revenge? bare sånn for info", the owner, 2026-11-22). A revenge is told as one, and
+    -- a kill order's fulfilment as that.
+    elseif #orders == 0 and GK.IsTracked and GK.IsTracked(v.key) then
+        LIB.Fire("GK_GRUDGE", GK.Show(v.key), f.k, f.d or 0, v.key, v.c, true)
     -- One who still led over you, got again with no revenge in it (you got them last as well): where you stand
     -- now, or even - "en sånn notification om du dreper noen du har grudge mot? jevner ut score" (the owner,
     -- 2026-11-22). Revenge's splash already says where you stand, so never both.
     elseif ledOver then LIB.Fire("GK_GRUDGE", GK.Show(v.key), f.k, f.d or 0, v.key, v.c) end
     GK.SendBoard()
-    -- A new title, told on screen as a spree is (GK_RANKUP, Announce.lua): the letter below waits for the
-    -- fight to end, and says where you stand
+    -- A new title, told on screen as a spree is (GK_RANKUP, Announce.lua). Its letter went on 2026-11-22: "siden vi
+    -- har rankup splash osv, så trenger vi vel ikke brev om rankup" (the owner). No kill has a letter now.
     if GK.Title(c.points) ~= titleBefore then LIB.Fire("GK_RANKUP", LIB.Me(), GK.Title(c.points), c.points, true) end
     if (#orders > 0 and GK.db.shotFulfil) or GK.db.shotEveryKill then GK.Shot(0.3) end
-    -- A letter only for the kill that earns a new title. One for every kill was one after every fight ("den
-    -- kan bli litt spam"), and a narrower rule - above your level, revenge, a streak - still sent too many:
-    -- "kanskje for kills så kommer melding bare når man ranker opp?" (the owner, 2026-11-07). Every kill
-    -- still counts, and the ledger's Grudges and News have them all.
-    if #orders == 0 and GK.db.myLetters then
-        local title = GK.Title(c.points)
-        if title ~= titleBefore then GK.KillLetter(v, zone, title) end
-    end
     GK.Changed()
 end
 
@@ -187,12 +188,8 @@ function GK.RecordAssist(v)
         rv = revenge or nil, av = avenged })
     GK.SendAssist(v, zone, points)
     GK.SendBoard()
+    -- the points of an assist can cross a title as well as a kill's: told the same, with no letter
     if GK.Title(c.points) ~= titleBefore then LIB.Fire("GK_RANKUP", LIB.Me(), GK.Title(c.points), c.points, true) end
-    -- the points of an assist can cross a title as well as a kill's
-    if GK.db.myLetters then
-        local title = GK.Title(c.points)
-        if title ~= titleBefore then GK.KillLetter(v, zone, title) end
-    end
     GK.Changed()
 end
 

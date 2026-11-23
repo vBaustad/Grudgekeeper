@@ -56,10 +56,19 @@ local function Prune()
     for i = #list, 1, -1 do
         if list[i].read and not reading then table.remove(list, i) end
     end
-    -- the oldest go past MAX_LETTERS, and the open letter keeps its place in what is left
+    -- Past MAX_LETTERS a guildie's order goes first, the oldest: the ledger lists those, and 29 of them pushed
+    -- out the letter that said your own was fulfilled (simulated, 2026-11-22). Never the letter that is open.
     while #list > MAX_LETTERS do
-        table.remove(list, 1)
-        if index then index = math.max(1, index - 1) end
+        local out, first
+        for i, L in ipairs(list) do
+            if not (reading and i == index) then
+                first = first or i
+                if L.kind == "order" then out = i break end
+            end
+        end
+        out = out or first
+        table.remove(list, out)
+        if index and out < index then index = index - 1 end
     end
 end
 
@@ -164,6 +173,11 @@ local function Add(kind, data, silent, hold)
     -- letters off: nothing arrives as one ("tillat å skru av letters", the owner, 2026-11-09) - the ledger,
     -- the warnings and the mailbox's card still say what matters
     if GK.db.anyLetters == false then return data end
+    -- the test panel asking what would come (Debug.lua): said, and no letter made
+    if GK.probe then
+        GK.probe("letter", kind, (hold or GK.InBattleground()) and true or nil)
+        return data
+    end
     GK.char.letterId = (GK.char.letterId or 0) + 1
     data.id, data.kind, data.t, data.read = GK.char.letterId, kind, time(), false
     local list = GK.char.letters
@@ -222,41 +236,24 @@ function GK.CompleteLetter(o)
         helpers = o.helpers }, ours, ours)
 end
 
---- Somebody paid you for an order you fulfilled: the poster (their reward) or a backer (their share).
-function GK.PaidLetter(o, payer, amount)
-    Add("paid", { n = o.n, c = o.c, r = o.r, l = o.l, by = payer or o.by, reward = amount or o.reward, o = o.key })
-end
+-- A bounty paid to you has no letter since 2026-11-22: "bounty paid trengs vel ikke, de får jo mail?" (the owner) -
+-- or a trade, which they see. One in the pile from before is still read as it was (FillLetter's "paid").
 
 function GK.ExpiredLetter(o)
     Add("expired", { n = o.n, c = o.c, r = o.r, l = o.l, guid = o.guid, reward = o.reward, o = o.key })
 end
 
---- A kill of ours that earned a new title: the one kind of kill with a letter (Kills.lua). An unread one
---- is written over by the next rather than stacked, so two titles before you look are one letter, the
---- newest. Silent: you were there.
-function GK.KillLetter(v, zone, title)
-    local rank, of = GK.MyRank()
-    local list = GK.char.letters
-    local last = list[#list]
-    local L
-    if last and last.kind == "kill" and not last.read then
-        L = last
-        L.t, L.faded = time(), nil                  -- news again, faded or not
-        Hold(L)                                     -- the minute starts again from this kill
-    else
-        L = Add("kill", {}, true, true)
-    end
-    L.n, L.c, L.r, L.l, L.z = v.key, v.c, v.r, v.l, zone
-    L.rank, L.of, L.total, L.title = rank, of, GK.char.points, title
-    GK.NoticeUpdate(false)
-    GK.Changed()
-end
+-- A new title has no letter since 2026-11-22: its splash says it (Announce.lua). One in the pile from before is still
+-- read as it was (FillLetter's "kill"), and the store pictures still draw one (Shots.lua).
 
 --- autoOrder: this death posted a kill order on them (GK.AutoOrder), and the letter says so.
 function GK.SlainLetter(v, times, zone, autoOrder)
     Add("slain", { n = v.key, guid = v.guid, c = v.c, r = v.r, l = v.l, times = times, z = zone, spell = v.spell,
         autoOrder = autoOrder or nil })
 end
+
+--- The test panel's What's new: a real letter's way in, for nobody's news (Debug.lua).
+function GK.NewsForTest() return Add("news", { sample = true }, true) end
 
 --- /grudge test: one of each, so the look can be judged without a fight. Marked as samples: their
 --- buttons do nothing and they count for nothing.
@@ -272,11 +269,9 @@ function GK.SampleLetters()
     end
     Add("order", S({ by = "Edvard", reward = 2000, note = "Camps the flight master in Tarren Mill.", times = 24 }))
     Add("complete", S({ by = me, reward = 2000, doneBy = "Vebjørn", z = "Hillsbrad Foothills" }))
-    Add("kill", S({ n = "Gærd Balle", c = "HUNTER", r = horde and "Night Elf" or "Troll", l = 27,
-        z = "Hillsbrad Foothills", title = "Bloodhound", rank = 4, of = 12, total = 31 }))
     Add("slain", S({ times = 24, z = "Hillsbrad Foothills", spell = "Ambush" }))
     Add("news", { sample = true })                 -- about no one: no enemy's class on it
-    print(GK.TAG .. ": five sample letters are in your pile - click the letter icon to read them.")
+    print(GK.TAG .. ": four sample letters are in your pile - click the letter icon to read them.")
 end
 
 -- What's new: one small letter after an update with something worth a word. Once per account, to the
@@ -286,7 +281,7 @@ end
 -- of its own. Someone who skipped a release gets each letter they missed, oldest first: 1.5.0's came the
 -- same day as 1.4.0's (the owner, 2026-11-12: "må vel ha enda en what's new da"). The next one: its id at
 -- the end of NEWS, and its words in NEWS_WORDS.
-local NEWS = { "1.4.0", "1.5.0", "1.6.0", "1.7.0", "1.9.0" }
+local NEWS = { "1.4.0", "1.5.0", "1.6.0", "1.7.0", "1.9.0", "1.12.0" }
 local LATEST = NEWS[#NEWS]
 
 -- Each letter in his voice: two short paragraphs with air between and no numbers, and a button to where
@@ -300,15 +295,15 @@ local NEWS_WORDS = {
         "Avenging a fallen guildie pays when you come back for the killer - not in the fight where they fell.",
     }, "seal_red", "Leaderboard", function() GK.OpenWindow(2) end },
     ["1.5.0"] = { "Eyes on them", {
-        "Track an enemy, and I'll tell you when they come near. You'll know them by the eye over their head.",
+        "Put an enemy on your Death list, and I'll tell you when they come near. You'll know them by the eye over their head.",
         "",
-        "They wait at the top of your Grudges, and nobody else reads that page.",
-    }, "seal_black", "Grudges", function() GK.OpenLedgerPage("Grudges") end },
+        "They wait on that list, and nobody else reads that page.",
+    }, "seal_black", "Death list", function() GK.OpenLedgerPage("Death list") end },
     ["1.6.0"] = { "Blood in a row", {
         "String your kills together and I'll call it out - louder, the longer you last.",
         "",
         "My settings have pages of their own now: have it shouted, shown small, or not at all.",
-    }, "seal_red", "Settings", function() GK.OpenOptions("Notifications") end },
+    }, "seal_red", "Settings", function() GK.OpenOptions("Mine") end },
     -- The button goes to the tab's switch, not to the guild window: opening the game's window from an
     -- addon would run its opening as ours, and its roster asks the game for things only the game may ask.
     -- A first draft said what is on the page ("your week, the orders, the board"): "nja prøv annen tekst
@@ -320,7 +315,7 @@ local NEWS_WORDS = {
         "A tab on your guild window puts my ledger beside guild chat. Now everyone sees who's working, and who's slacking.",
         "",
         "Brag if you've earned it. And if all you do is die - maybe try killing someone, for a change.",
-    }, "seal_black", "Settings", function() GK.OpenOptions("Around the game") end },
+    }, "seal_black", "Settings", function() GK.OpenOptions("In the game") end },
     -- 1.8.0 went out without one. 1.9.0's: the spree splashes and the longer title ladder, what a player
     -- hears and reaches for ("lage en liten 'what's new'?", the owner, 2026-11-18, who said ok to these words).
     ["1.9.0"] = { "Louder now", {
@@ -328,6 +323,13 @@ local NEWS_WORDS = {
         "",
         "I've added rungs to the ladder as well. The last ones are further off than they were - you'll have to earn them.",
     }, "seal_red", "Leaderboard", function() GK.OpenLedgerPage("Leaderboard") end },
+    -- From 1.12.0 an update's letter opens its patch notes (GK.OpenPatchNotes, below) in place of a scroll: these
+    -- words stand only where a scroll is drawn anyway (a picture of it, a test).
+    ["1.12.0"] = { "Patch notes", {
+        "A new version of Grudgekeeper is here, with a Death list of your own and a Mode for streaming.",
+        "",
+        "The patch notes say what is new.",
+    }, "seal_red", "Patch notes", function() GK.OpenPatchNotes("1.12.0") end },
 }
 
 --- The news letters not seen yet, oldest first: all of them when none was, those after the one seen last,
@@ -354,6 +356,137 @@ function GK.DeliverNews(fresh)
         GK.db.newsSeen = LATEST
         for _, id in ipairs(due) do Add("news", { news = id }, true) end
     end)
+end
+
+
+-- ---------------------------------------------------------------------------
+-- Patch notes: a window in the game's bronze frame, in the ledger's skin
+-- ---------------------------------------------------------------------------
+-- "isteden for parchment for nye endringer i addonen, lag en standard frame som følger stilen valgt i settings, med
+-- bronze rammen osv fra spillet (samme som add to kill order) med fin punkliste osv og mer som vanlig patch notes ...
+-- jeg vil ha Patch notes og noe mer forklarende under noen punkter om det trengs" (the owner, 2026-11-23). An update's
+-- letter by the icon still says there is news; opening it opens these. /grudge news opens the latest.
+-- { version, date, { { heading, { { lead, text, more } ... } } ... } }: more is the line under a point, when it needs one.
+local PATCH_NOTES = {
+    ["1.12.0"] = { "23 November 2026", {
+        { "New", {
+            { "Death list", "Your own list of the enemies you want dead. Add them, and you are warned when they come near." },
+            { "Mode", "Normal, Streamer or Private, under Settings.",
+              "Streamer hides your guildies' notifications and never shares where you are." },
+            { "Versus", "A tab under Grudges for the enemy guild your officers track." },
+            { "Kudos medals", "On nameplates, one for each tag." },
+        } },
+        { "Changed", {
+            { "Settings", "A full overhaul. It should make more sense now, and notifications and sounds are easier to turn on and off." },
+            { "Kill orders", "Posting one is a single window: find them, set the bounty, seal it. Orders with no gold are quieter." },
+            { "Grudges", "Replaces Most wanted. Marked is gone." },
+            { "Kill streaks", "Grey and farmed kills no longer count." },
+        } },
+    } },
+}
+local PATCH_LATEST = "1.12.0"
+GK.PATCH_NOTES, GK.PATCH_LATEST = PATCH_NOTES, PATCH_LATEST       -- for tools/smoke_grudgekeeper.py
+
+local NOTES_W, NOTES_H, NOTES_TEXT_W = 460, 520, 392      -- the notes scroll when they run past about 390
+local notes
+
+--- A colour of the skin's as a |c code, for a point's lead word in the line it opens.
+local function Hex(c) return ("|cff%02x%02x%02x"):format(math.floor(c[1] * 255 + 0.5), math.floor(c[2] * 255 + 0.5),
+    math.floor(c[3] * 255 + 0.5)) end
+
+local function BuildNotes()
+    local f = GK.MakeFrameSheet("GrudgekeeperPatchNotes", NOTES_W, NOTES_H, "Grudgekeeper")
+    f.head = f:CreateFontString(nil, "ARTWORK")
+    f.head:SetPoint("TOPLEFT", 26, -34)
+    f.sub = f:CreateFontString(nil, "ARTWORK")
+    f.sub:SetPoint("TOPLEFT", f.head, "BOTTOMLEFT", 1, -4)
+    -- the notes scroll: the game's own bar where the client has it, else the wheel alone
+    f.scroll = CreateFrame("ScrollFrame", nil, f)
+    f.scroll:SetPoint("TOPLEFT", 24, -84)
+    f.scroll:SetPoint("BOTTOMRIGHT", -34, 48)
+    f.body = CreateFrame("Frame", nil, f.scroll)
+    f.body:SetSize(NOTES_TEXT_W, 10)
+    f.scroll:SetScrollChild(f.body)
+    local barMade = false
+    if ScrollUtil and ScrollUtil.InitScrollFrameWithScrollBar then
+        local ok, bar = pcall(CreateFrame, "EventFrame", nil, f, "MinimalScrollBar")
+        if ok and type(bar) == "table" then
+            bar:SetPoint("TOPLEFT", f.scroll, "TOPRIGHT", 8, 0)
+            bar:SetPoint("BOTTOMLEFT", f.scroll, "BOTTOMRIGHT", 8, 0)
+            barMade = pcall(ScrollUtil.InitScrollFrameWithScrollBar, f.scroll, bar)
+            if not barMade then bar:Hide() end
+        end
+    end
+    if not barMade then
+        f.scroll:EnableMouseWheel(true)
+        f.scroll:SetScript("OnMouseWheel", function(self, delta)
+            local range = self:GetVerticalScrollRange() or 0
+            self:SetVerticalScroll(math.max(0, math.min(range, (self:GetVerticalScroll() or 0) - delta * 40)))
+        end)
+    end
+    f.lines = {}
+    f.close = GK.FrameButton(f, "Close", 110, function() f:Hide() end)
+    f.close:SetPoint("BOTTOMRIGHT", -16, 14)
+    notes = f
+end
+
+--- The next line of the notes' body, made once and kept: a font string in the skin's ink at size.
+local function NotesLine(i, colour, font, size)
+    local fs = notes.lines[i]
+    if not fs then
+        fs = notes.body:CreateFontString(nil, "ARTWORK")
+        fs:SetJustifyH("LEFT")
+        fs:SetSpacing(2)
+        notes.lines[i] = fs
+    end
+    GK.Ink(fs, colour, font, size)
+    fs:Show()
+    return fs
+end
+
+--- Open the patch notes of a version (none: the latest). Drawn anew each time, in the skin of the moment.
+function GK.OpenPatchNotes(version)
+    local p = PATCH_NOTES[version or PATCH_LATEST] or PATCH_NOTES[PATCH_LATEST]
+    if not notes then BuildNotes() end
+    local f = notes
+    GK.Ink(f.head, GK.INK, GK.TITLE_FONT, 24)
+    f.head:SetText("Patch notes")
+    GK.Ink(f.sub, GK.FADED, GK.TEXT_FONT, 11)
+    f.sub:SetText(("Version %s \194\183 %s"):format(version or PATCH_LATEST, p[1]))
+    local y, n = 0, 0
+    local function Put(fs, x, gap)
+        fs:ClearAllPoints()
+        fs:SetPoint("TOPLEFT", x, -y)
+        fs:SetWidth(NOTES_TEXT_W - x)
+        y = y + (fs:GetStringHeight() or 12) + gap
+    end
+    for si, section in ipairs(p[2]) do
+        if si > 1 then y = y + 10 end
+        n = n + 1
+        local h = NotesLine(n, GK.BLOOD, GK.TITLE_FONT, 17)
+        h:SetText(section[1])
+        Put(h, 0, 6)
+        for _, point in ipairs(section[2]) do
+            n = n + 1
+            local fs = NotesLine(n, GK.INK, GK.TEXT_FONT, 12)
+            fs:SetText(("\226\128\162  %s%s|r - %s"):format(Hex(GK.BLOOD), point[1], point[2]))
+            Put(fs, 4, point[3] and 3 or 7)
+            if point[3] then
+                n = n + 1
+                local more = NotesLine(n, GK.FADED, GK.TEXT_FONT, 11)
+                more:SetText(point[3])
+                Put(more, 18, 7)
+            end
+        end
+    end
+    for i = n + 1, #f.lines do f.lines[i]:Hide() end
+    f.body:SetHeight(math.max(10, y))
+    f.scroll:SetVerticalScroll(0)
+    f:ClearAllPoints()
+    f:SetPoint("CENTER", UIParent, "CENTER", 0, 40)
+    f:Show()
+    f:Raise()
+    return f
 end
 
 -- ---------------------------------------------------------------------------
@@ -1679,6 +1812,17 @@ function GK.ShowLetter(i)
     local list = GK.char.letters
     if #list == 0 then
         GK.CloseLetters()
+        return
+    end
+    -- an update's letter with patch notes opens them, read, in place of a scroll (2026-11-23)
+    local P = list[math.max(1, math.min(i or #list, #list))]
+    if P and P.kind == "news" and not P.sample and PATCH_NOTES[P.news] then
+        P.read = true
+        holding[P] = nil
+        GK.CloseLetters()
+        GK.OpenPatchNotes(P.news)
+        GK.NoticeUpdate(false)
+        GK.Changed()
         return
     end
     index = math.max(1, math.min(i or #list, #list))

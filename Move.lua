@@ -1,5 +1,5 @@
 -- Grudgekeeper - moving what comes up on the screen by itself: the letter icon (with the warning line and
--- the bubble that hang from it), the spree splash and the spree toasts. /grudge arrange (move is the notes'
+-- the bubble that hang from it), the splash and the toasts. /grudge arrange (move is the notes'
 -- command, moving a mark between lists), or Arrange on screen in the settings (which close for it, and
 -- open again at Done), shows each where it stands, a sample where there is nothing to show, with a
 -- frame and its name over it: drag it where you want it, right-click it to put it back. Done or Escape
@@ -18,11 +18,11 @@ local ITEMS = {
       show = function(on) return GK.NoticeForMove(on) end,
       moved = function() GK.NoticeMoved() end,
       reset = function() GK.NoticeReset() end },
-    { name = "Spree splash",
+    { name = "Splash",                  -- every splash: it was "Spree splash" until 2026-11-22
       show = function(on) return GK.SplashForMove and GK.SplashForMove(on) end,
       moved = function() GK.SplashMoved() end,
       reset = function() GK.SplashReset() end },
-    { name = "Spree toasts",
+    { name = "Toasts",                  -- and every toast
       show = function(on) return GK.ToastsForMove and GK.ToastsForMove(on) end,
       moved = function() GK.ToastsMoved() end,
       reset = function() GK.ToastsReset() end },

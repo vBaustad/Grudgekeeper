@@ -31,11 +31,11 @@ local KIND = { ended = "ended_shatter", tormentor = "debt_paid" }
 
 --- The effect a splash plays: kind is "spree", "ended" or "tormentor"; key the spree's tier; spree
 --- its kills. nil: none (1.8.0's punch).
-function GK.SpreeEffect(kind, key, spree, db)
+function GK.SpreeEffect(kind, key, spree)
     if kind ~= "spree" then return KIND[kind] end
-    if key == "reaper" then
-        return (db and db.reaperEffect == "smoke") and "reaper_smoke" or "reaper_scythe"   -- the scythe unless picked
-    end
+    -- the scythe, no setting: "kan vi ikke bare ha scythe for reaper og ikke smoke. kan sette smoke tilbake om
+    -- daniel ønsker" (the owner, 2026-11-22). The smoke is still in FxReaper.lua: its name here brings it back.
+    if key == "reaper" then return "reaper_scythe" end
     if key == "grudgebound" and spree then
         if spree == 100 then return "hundred" end
         if spree > GK.SPREE_TIERS[#GK.SPREE_TIERS].n then return "grudgebound_repeat" end
@@ -318,8 +318,8 @@ function P.Cues(frame, fx, age)
     if not list then return end
     local n = frame.cueN or 1
     while list[n] and age >= list[n][1] do
-        -- not on a silent one: a guildie's with Sounds from guildies off, or a sample's second (Announce.lua)
-        if GK.db and GK.db.sound and not frame.silent then
+        -- not on a silent one: its side's Play sounds or its box off, or a sample's second (Announce.lua, Muted)
+        if not frame.silent then
             local cue = list[n][2]
             PlaySoundFile(type(cue) == "number" and cue or MEDIA .. "sfx\\" .. cue .. ".mp3", "Master")
         end

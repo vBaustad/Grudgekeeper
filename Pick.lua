@@ -1,12 +1,13 @@
 -- Grudgekeeper - the who-picker: who a page's own action is for. The ledger's "Post a kill order",
--- "Track someone", "Put someone on Shame" and "Give someone kudos" open it, and so does /grudge post with
+-- "Add someone" on the Death list, "Put someone on Shame" and "Give someone kudos" open it, and so does /grudge post with
 -- no enemy targeted (it used to do nothing but print a line: "trykke post a kill order gjør ingenting
 -- fordi man må ha et target", the owner, 2026-11-06).
 -- A small window with a name box and the people you most likely mean: your target, then for Shame and
 -- Kudos your group and whoever left it lately, for a kill order or a mark the enemies seen in the last
 -- 15 minutes and your grudges. Typing narrows them, and searches everyone we keep a record of; a name
--- nobody has met is taken as typed. A pick opens the sheet the right-click menu opens: the kill order
--- (GK.OpenPost) or the note (GK.OpenNoteSheet), filled in.
+-- nobody has met is taken as typed. For a kill order and the Death list it is twice as wide and a pick fills
+-- its right half (Post.lua, GK.ShowPostHalf), so one is done after another in the same window (2026-11-22);
+-- for Shame and Kudos a pick opens the note sheet (GK.OpenNoteSheet), filled in.
 -- And for an officer, which enemy guild goes on watch (Notes.lua, GK.WatchGuild): typed in, as the
 -- right-click menu needs one of its players in sight - "la GM skrive inn et guildnavn ... om vi ikke
 -- klarer å finne noen fra den guilden" (the owner, 2026-11-08).
@@ -18,16 +19,17 @@ local LIB = GK.Lib or LibStub("LibForever-1.0")      -- names by themselves (Cor
 local W, H = 300, 400
 local INK, FADED, BLOOD = GK.INK, GK.FADED, GK.BLOOD
 local ROWS, ROW_H, ROWS_TOP = 9, 30, 68
+local WIDE_W, WIDE_H, WIDE_ROWS = 620, 448, 11     -- a kill order's and the Death list's: the half beside the list
 local LEFT_FOR = 2 * 3600       -- who left the group stays a suggestion this long
 local MAX_RECENT = 40           -- and at most this many of them are remembered
 
 -- What each kind asks, and whom it suggests: enemies (orders, tracking) or the people you group with.
 local KINDS = {
-    order = { title = "Who gets the kill order?", enemy = true },
-    track = { title = "Who do you track?", enemy = true },
+    order = { title = "Post a kill order", enemy = true, wide = true },
+    track = { title = "Add to Death list", enemy = true, wide = true },
     watch = { title = "Who goes on Shame?", list = "watch" },
     kudos = { title = "Who gets kudos?", list = "kudos" },
-    guild = { title = "Which guild goes on watch?", guild = true, hint = "Type the guild's name",
+    guild = { title = "Which guild do we track?", guild = true, hint = "Type the guild's name",
         none = "Type the guild's name as the game shows it, in any case: the game's own spelling takes its "
             .. "place when one of theirs is seen." },
 }
@@ -255,28 +257,62 @@ local frame                 -- made on first use
 local kind = "order"
 local rows = {}             -- what the sheet lists now
 local offset = 0
+local chosen                -- whom the half is on: { key, ... }
+local Fill
+
+--- Whom the right half is on, and their row marked. nil: nobody yet.
+local function Choose(t)
+    chosen = t
+    local wide = KINDS[kind].wide == true
+    GK.ShowPostHalf(frame, wide and kind or nil, t)
+    frame.pickOne:SetShown(wide and t == nil)
+    Fill()
+end
 
 local function Pick(r)
     if not (r and r.t) then return end
+    if KINDS[kind].wide then
+        frame.box:ClearFocus()
+        return Choose(r.t)
+    end
     frame:Hide()
     if r.t.guild then
-        -- on the kill orders page, under Watched guild, where it shows
-        if GK.WatchGuild(r.t.guild, true) then GK.OpenWindow(1)
-        else print(GK.TAG .. ": only an officer or the guild master can put a guild on watch.") end
-    elseif kind == "order" then
-        GK.OpenPost(r.t)
-    elseif kind == "track" then
-        GK.TrackSaying(r.t)
+        -- on Grudges' Versus, where it shows
+        if GK.WatchGuild(r.t.guild, true) then GK.OpenLedgerView("Grudges", "guild")
+        else print(GK.TAG .. ": only an officer or the guild master can track a guild.") end
     else
         GK.OpenNoteSheet(r.t, KINDS[kind].list)
     end
 end
 
-local function Fill()
+--- What stands at a row's right: an open order's seal and gold, or the Death list's eye.
+local function RowMark(b, t)
+    local icon, words
+    if kind == "order" and t and GK.OrderOn then
+        local o = GK.OrderOn(t.key, t.guid)
+        if o and o.state == "o" then
+            local pot = GK.Pot(o)
+            icon, words = "seal_red", pot > 0 and GK.Coins(pot) or ""
+        end
+    elseif kind == "track" and t and GK.IsTracked and GK.IsTracked(t.key) then
+        icon, words = "eye", ""
+    end
+    b.mark:SetShown(icon ~= nil)
+    if icon then b.mark:SetTexture("Interface\\AddOns\\Grudgekeeper\\Media\\" .. icon) end
+    b.pot:SetText(words or "")
+    local taken = icon and (22 + (words ~= "" and math.ceil(b.pot:GetStringWidth() or 0) + 10 or 0)) or 0
+    b.name:SetWidth(W - 78 - taken)
+    b.why:SetWidth(W - 78 - taken)
+end
+
+Fill = function()
     rows = GK.PickRows(kind, frame.box:GetText())
-    offset = math.max(0, math.min(offset, #rows - ROWS))
+    local most = KINDS[kind].wide and WIDE_ROWS or ROWS
+    offset = math.max(0, math.min(offset, #rows - most))
     for i, b in ipairs(frame.rows) do
-        local r = rows[i + offset]
+        local r = i <= most and rows[i + offset] or nil
+        RowMark(b, r and r.t)
+        b.on:SetShown(chosen ~= nil and r ~= nil and r.t ~= nil and r.t.key ~= nil and r.t.key == chosen.key)
         b.r = r
         b:SetShown(r ~= nil)
         if r and r.section then
@@ -319,7 +355,7 @@ local function Build()
     -- small capitals, in the ink of the ledger
     local inner = W - 40
     f.rows = {}
-    for i = 1, ROWS do
+    for i = 1, WIDE_ROWS do
         local b = CreateFrame("Button", nil, f)
         b:SetSize(inner, ROW_H)
         b:SetPoint("TOPLEFT", 20, -(ROWS_TOP + (i - 1) * ROW_H))
@@ -344,6 +380,17 @@ local function Build()
         b.head = b:CreateFontString(nil, "ARTWORK")
         Ink(b.head, FADED, 10)
         b.head:SetPoint("BOTTOMLEFT", 4, 5)
+        b.on = b:CreateTexture(nil, "BACKGROUND", nil, 1)     -- whom the half is on
+        b.on:SetAllPoints()
+        GK.Paint(b.on, "blood", 0.14)
+        b.on:Hide()
+        b.mark = b:CreateTexture(nil, "ARTWORK")
+        b.mark:SetSize(20, 20)
+        b.mark:SetPoint("RIGHT", -4, 0)
+        b.mark:Hide()
+        b.pot = b:CreateFontString(nil, "ARTWORK")
+        Ink(b.pot, INK, 11)
+        b.pot:SetPoint("RIGHT", b.mark, "LEFT", -4, 0)
         b:SetScript("OnEnter", function() hi:Show() end)
         b:SetScript("OnLeave", function() hi:Hide() end)
         b:SetScript("OnClick", function(self) Pick(self.r) end)
@@ -360,27 +407,119 @@ local function Build()
         offset = math.max(0, offset - delta * 2)
         Fill()
     end)
-    local cancel = GK.FrameButton(f, CANCEL or "Cancel", 96, function() f:Hide() end)
-    cancel:SetPoint("BOTTOMRIGHT", -16, 14)
+    f.cancel = GK.FrameButton(f, CANCEL or "Cancel", 96, function() f:Hide() end)
+    f.cancel:SetPoint("BOTTOMRIGHT", -16, 14)
+    -- between the halves, and the right one's words while nobody is chosen
+    f.divider = f:CreateTexture(nil, "BORDER")
+    GK.Paint(f.divider, "rule")
+    f.divider:SetSize(1, WIDE_H - 52)
+    f.divider:SetPoint("TOPLEFT", W, -34)
+    f.pickOne = f:CreateFontString(nil, "ARTWORK")
+    Ink(f.pickOne, FADED, 12)
+    f.pickOne:SetPoint("CENTER", f, "TOPLEFT", (W + WIDE_W) / 2, -WIDE_H / 2)
+    f.pickOne:SetText("Pick someone on the left.")
+    -- the guild picker's way to track none
+    f.stop = GK.FrameButton(f, "Stop tracking", 120, function()
+        local current = GK.WatchedGuild()
+        f:Hide()
+        if current and GK.WatchGuild(current, false) then GK.OpenLedgerView("Grudges", "guild") end
+    end)
+    f.stop:SetPoint("BOTTOMLEFT", 16, 14)
     frame = f
 end
 
 --- Open the picker for a kind: "order" (a kill order), "track", a list - "watch" or "kudos" - or "guild",
 --- the guild on watch.
-function GK.OpenPicker(k)
+--- The picker for a kind. t: whom it opens on (a kill order's or the Death list's half); else your target,
+--- where that is an enemy.
+function GK.OpenPicker(k, t)
     if not KINDS[k] then return end
     if not frame then Build() end
     kind, offset = k, 0
+    local wide = KINDS[k].wide == true
+    if wide then t = t or GK.ReadUnit("target") else t = nil end
+    frame:SetSize(wide and WIDE_W or W, wide and WIDE_H or H)
+    frame.divider:SetShown(wide)
+    frame.cancel:ClearAllPoints()
+    if wide then frame.cancel:SetPoint("BOTTOMRIGHT", -166, 14) else frame.cancel:SetPoint("BOTTOMRIGHT", -16, 14) end
+    frame.cancel:SetText(wide and (CLOSE or "Close") or (CANCEL or "Cancel"))
     frame.title:SetText(KINDS[k].title)
     frame.box.hint:SetText(KINDS[k].hint or HINT)
     frame.none:SetText(KINDS[k].none or NONE)
     frame.box:SetText("")
-    Fill()
+    frame.stop:SetShown(k == "guild" and GK.WatchedGuild() ~= nil and GK.CanWatchGuild())
+    Choose(t)
     GK.PlaceSheet(frame)
     frame:Show()
     frame:Raise()
-    frame.box:SetFocus()
+    -- with somebody to seal already the keys stay the player's: it opens from a right-click, out in the world
+    if t then frame.box:ClearFocus() else frame.box:SetFocus() end
+end
+
+--- The rows again, where the half has changed one (Post.lua).
+function GK.PickRefill()
+    if frame and frame:IsShown() then Fill() end
 end
 
 LIB.On("GROUP_ROSTER_UPDATE", function() GK.GroupChanged() end)
 LIB.On("PLAYER_ENTERING_WORLD", function() GK.GroupChanged() end)
+
+-- ---------------------------------------------------------------------------
+-- The Death list's small window
+-- ---------------------------------------------------------------------------
+-- "det må være relativt raskt, så kan komme et veldig lite vindu, med mulighet for å skrive note, avbryt eller
+-- legg til uavhengig av ting i note", "ikke ved musa, bare centrert og litt høyere Y" and "et mini vindu samme som
+-- søkevinduet" (the owner, 2026-11-22): the picker's frame, box and buttons, small. In a block: its own names.
+do
+    local MINI_W, MINI_H, MINI_UP = 300, 132, 150
+    local mini, noting
+
+    local function Save()
+        local t, text = noting, mini.box:GetText()
+        noting = nil
+        mini:Hide()
+        if not t then return end
+        if not GK.IsTracked(t.key) and not GK.TrackSaying(t) then return end
+        GK.SetDeathNote(t.key, text)
+    end
+
+    local function BuildMini()
+        local f = GK.MakeFrameSheet("GrudgekeeperDeathNote", MINI_W, MINI_H, "")
+        f.who = f:CreateFontString(nil, "ARTWORK")
+        Ink(f.who, INK, 14)
+        f.who:SetPoint("TOP", 0, -34)
+        f.who:SetWidth(MINI_W - 40)
+        f.who:SetWordWrap(false)
+        f.box = GK.FrameBox(f, MINI_W - 48, GK.DEATH_NOTE_MAX, "Note, if you want one. Only you see it.")
+        f.box:SetPoint("TOPLEFT", 26, -58)
+        f.box:SetScript("OnEnterPressed", Save)
+        f.box:SetScript("OnEscapePressed", function() f:Hide() end)
+        f.cancel = GK.FrameButton(f, CANCEL or "Cancel", 96, function() f:Hide() end)
+        f.cancel:SetPoint("BOTTOMLEFT", 22, 14)
+        f.ok = GK.FrameButton(f, "Add", 120, Save)
+        f.ok:SetPoint("BOTTOMRIGHT", -16, 14)
+        mini = f
+    end
+
+    --- Put someone on the Death list, or write their note: t = { key, c, r, l }. Add works with nothing written.
+    --- The box takes the keyboard at a click, not as the window opens: it opens out in the world, and a W meant
+    --- to run would be a letter in the note.
+    function GK.OpenDeathNote(t)
+        if not (t and type(t.key) == "string") then return end
+        if not mini then BuildMini() end
+        noting = t
+        local on = GK.IsTracked(t.key)
+        mini.title:SetText(on and "Death list note" or "Add to Death list")
+        mini.who:SetText(GK.Show(t.key))
+        mini.ok:SetText(on and "Save" or "Add")
+        mini.box:SetText(on and GK.DeathNote(t.key) or "")
+        mini.box.hint:SetShown((mini.box:GetText() or "") == "")
+        mini.box:ClearFocus()
+        -- the same place every time, whatever is open and wherever it was dragged to
+        mini:ClearAllPoints()
+        mini:SetPoint("CENTER", UIParent, "CENTER", 0, MINI_UP)
+        mini.onLedger = nil
+        mini:Show()
+        mini:Raise()
+    end
+end

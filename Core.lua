@@ -107,7 +107,7 @@ local defaults = {
     letters = true,          -- kill orders your guildies post arrive as letters
     myLetters = true,        -- a letter for a kill that earns a title, and a death that posts an order
     keepLetters = false,     -- an unread letter waits by the icon until read; off, it fades after a while (Letters.lua)
-    -- The warnings (Settings, Notifications, Warnings): "screen" by the letter icon, "chat" one line, or "off".
+    -- The warnings (Settings, Warnings): "screen" by the letter icon, "chat" one line, or "off".
     -- An older saved file holds true or false here: GK.WarnStyle reads true as the row's own way.
     alertNear = "screen",    -- the target of any open kill order is near, or a guildie sees them
     plateMarks = true,       -- a skull over anyone with an open order on them
@@ -118,8 +118,9 @@ local defaults = {
     shotEveryKill = false,   -- a screenshot at every kill
     share = true,            -- tell the guild your kills, deaths and score, and where targets are seen
     shareOutside = true,     -- answer a player on your side outside the guild who asks for your score (Profile.lua)
+    mode = "normal",         -- Normal, Streamer or Private: whose news is told, and what is shared (GK.Mode)
     autoOrders = true,       -- your death to someone on a rampage or camping you posts a kill order (Guild.lua)
-    sound = true,
+    sound = true,            -- the ledger's and the letters' own sounds (GK.Sound; Settings, Appearance)
     oldPortraits = true,     -- race faces from the old character-creation screen, not today's race icons (GK.SetPortrait);
                              -- on by default, whichever skin (the owner, 2026-11-11)
     tooltip = true,          -- one line on an enemy player's tooltip: your history with them
@@ -135,11 +136,12 @@ local defaults = {
     shameSound = "auto",     -- and the sound it plays (GK.SoundChoices; "off" for none; "auto" until one is picked: GK.ShameSoundKey)
     nearSound = "kit:PVP_THROUGH_QUEUE", -- the sound of a target near, a Marked player or the watched guild (GK.NearSound)
     kudosGroup = "off",      -- a Kudos player joins your group (off: the owner doesn't read chat lines)
-    plateNotes = true,       -- a small dim mark on the nameplate of a player you have notes on
+    plateNotes = true,       -- on a noted player's nameplate: Kudos' medals, Shame's small mark
     guilds = {},             -- [guild key] = { board, orders, wanted, slain, feed, nextId } (Guild.lua)
-    -- What is told on screen (Announce.lua; Settings, Notifications): "off", "toast" or "splash", yours and a
-    -- guildie's each on its own. These are the Big moments (GK.NOTIFY_PRESETS, Options.lua), for a new install
-    -- and, since 2026-11-20, for a guildie's side of an older one (MoveNotifications, below).
+    -- What is told on screen (Announce.lua; Settings, Mine and Guildies), yours and a guildie's each on its own:
+    -- yours "off", "toast" or "splash", a guildie's "off" or "toast" - "splash bør være bare for deg, og toast bør
+    -- være for guildies" (the owner, 2026-11-22). A guildie's start at the big moments alone, for a new install
+    -- and, since 2026-11-20, for an older one (MoveNotifications, below).
     spreeMine = "splash",    -- your spree milestone
     spreeGuild = "toast",    -- a guildie's spree milestone...
     spreeGuildFrom = 10,     -- ...from this many kills in a row, or "round": only 25, 50 and 100
@@ -156,24 +158,38 @@ local defaults = {
     revengeGuild = "off",    -- a guildie's: in a big guild somebody always has one
     grudgeMine = "toast",    -- you got one who led over you, no revenge: where you stand now (Announce.lua, GK_GRUDGE)
     guildZoneOnly = false,   -- a guildie's only when they are in your zone
-    guildSounds = true,      -- a guildie's play their sound
-    reaperEffect = "scythe", -- Reaper's splash: "scythe" or "smoke" (Effects.lua); the scythe since 2026-11-20
+    -- The sounds, each side's its own under its page's Play sounds: "sounds bør være delt, settings for dine egne,
+    -- settings for guildies. og hvis du unchecker 'Play sounds' bør alle ... bli skrudd av men også låse/grey out"
+    -- (the owner, 2026-11-22). A master off leaves each box's own pick as it was, for when it is on again.
+    mineSounds = true,       -- Mine's Play sounds
+    guildSounds = true,      -- Guildies'
+    warnSounds = true,       -- Warnings'
+    -- One for each moment, its call and its effect's (GK.MOMENT_SOUND; a spree's step is spreeSound), yours and a
+    -- guildie's. None has a sound to pick: "synes ikke folk skal kunne velge lyder på notifications hvor vi har
+    -- splash og sånn. bare på typ.. når du ser noen du har på kill list osv? vi har jo allerede lagd lyder for det
+    -- andre" (the owner, 2026-11-22).
+    spreeSound = true, spreeSoundGuild = true,
+    rankSound = true, rankSoundGuild = true,
+    orderSound = true, orderSoundGuild = true,
+    revengeSound = true, revengeSoundGuild = true,
+    grudgeSound = true,      -- yours alone: a guildie's score with an enemy is theirs
+    endedSound = true, endedSoundGuild = true,
+    tormentorSound = true, tormentorSoundGuild = true,
     announceWhenMine = "always",       -- when yours may come: "always", "noCombat", "noCombatInInstance" or "noInstance"
     announceWhenGuild = "noCombat",    -- the same for a guildie's; one held back waits, then comes in order
     announceTime = 7,                  -- how many seconds a toast shows; a splash half of it (Announce.lua)
-    spreeSounds = {},        -- [tier key, "ended", "tormentor" or "revenge"] = a sound (GK.SoundChoices); none picked: Announce.lua's own
     looks = {},              -- [player key] = race file and sex, "Scourge3": their race's face on cards (Sightings.lua)
 }
 -- This character's own record.
 local charDefaults = {
     points = 0, kills = 0, deaths = 0, assists = 0,
-    streak = 0, bestStreak = 0,  -- kills since you last died to an enemy player, and the most ever
-    spree = 0,               -- the same, counting only the kills worth points (GK.SpreeTier)
+    streak = 0, bestStreak = 0,  -- kills in a row since you last died to an enemy player, and the most ever:
+    spree = 0,                   -- no grey and no farmed one (GK.CountsInStreak); the spree announced is the same
     done = 0, won = 0,           -- kill orders you fulfilled, and the bounties on them (copper)
     -- week = { id, p, k, d, a }: this week's score, made by GK.Week and started over at the weekly reset
     log = {},                -- newest first: { k = "K", "A" or "D", t, n, c, r, l, z, p, o, w (an assist's killer) }
     foes = {},               -- [key] = { n, c, r, l, k, d, a, last, lastKill, lastAssist, lastDeath, hits = { time, ... } }
-    tracked = {},            -- [key] = { t, c, r, l }: enemies you track, yours alone (Sightings.lua, GK.Track)
+    tracked = {},            -- [key] = { t, c, r, l }: your Death list, yours alone (Sightings.lua, GK.Track)
     guildChat = {},          -- the last lines of guild chat, for the page on the guild window (GuildTab.lua)
     letters = {},            -- oldest first (Letters.lua)
     letterId = 0,
@@ -183,6 +199,38 @@ local charDefaults = {
 
 --- A character's record as a first install starts it, for the test panel's fresh start (Debug.lua).
 function GK.FreshChar() return CopyTable(charDefaults) end
+
+--- A setting as it is installed: for the test panel's modes (Debug.lua).
+function GK.Default(key) return defaults[key] end
+
+-- Mode, for a guild of 700 and a streamer in it: "må være mulig å #1 mute guild eller sette en 'personal only' eller
+-- 'only personal and from bnet friends'" and "kanskje det er 'streamer mode' og 'private mode'" (the owner,
+-- 2026-11-22), built as the table the owner said yes to ("vi kan bygge mode"):
+--               news told from          score shared   where you are shared   profile outside the guild
+--   normal      everyone                as set         yes                    as set
+--   streamer    you (your own orders)   as set         no                     as set
+--   private     you                     no             no                     no
+-- Streamer heard friends and your group until the same evening: "streamer mode skal vel helst ikke få noe spesielt
+-- fra guildies egentlig. ikke notifications om kill orders osv." Its orders about you are your own and those you
+-- backed (GK.OrderConcerns); Private's are also a guildie's on your Death list or on one who killed you.
+-- Where you are: the zone in a kill, an assist, a death and a fulfilled order, and a sighting's spot on the map.
+-- What is yours to say for an order to work - posting it, a bounty, a payment, its fulfilment - goes in every mode.
+
+--- The mode: "normal", "streamer" or "private".
+function GK.Mode()
+    local m = GK.db and GK.db.mode
+    if m == "streamer" or m == "private" then return m end
+    return "normal"
+end
+
+--- Whether our score goes to the guild: kills, deaths, assists, the board's row, and an order a death posts.
+function GK.SharesScore() return GK.db.share ~= false and GK.Mode() ~= "private" end
+
+--- Whether where we are goes with it.
+function GK.SharesPlace() return GK.Mode() == "normal" end
+
+--- Whether a player on our side outside the guild who asks is answered (Profile.lua).
+function GK.SharesOutside() return GK.db.shareOutside ~= false and GK.Mode() ~= "private" end
 
 -- ---------------------------------------------------------------------------
 -- Values from the client and from other players
@@ -283,6 +331,13 @@ function GK.Points(mine, theirs, killedToday, order, revenge, avenged)
     end
     if order then p = p + GK.ORDER_BONUS end
     return p, con
+end
+
+--- Does a kill count in a streak and its spree? Never a grey one, and none of a player farmed today, whatever
+--- they were worth: the bonuses give a grey kill points, and by its points it was in the spree ("kill streaks
+--- teller grå kills også? burde den det?", the owner, 2026-11-22). A level we never saw counts, as it has points.
+function GK.CountsInStreak(mine, theirs, killedToday)
+    return (killedToday or 0) < GK.REPEATS and GK.Con(mine, theirs) ~= "grey"
 end
 
 --- Points for one assist: the kill's, with no order bonus (the killer fulfils it), a little less. A
@@ -977,7 +1032,11 @@ local SOUND_FILES = {
     { "voice_grudgebound", "Voice: Grudgebound", "Interface\\AddOns\\Grudgekeeper\\Media\\voice_grudgebound.mp3",
       spree = true },
 }
-local CHIME = "kit:UI_RAID_BOSS_WHISPER_WARNING"
+-- A moment told on screen and the setting that is its sound, on or off (Announce.lua); a spree's step is spreeSound.
+GK.MOMENT_SOUND = { rank = "rankSound", order = "orderSound", revenge = "revengeSound", grudge = "grudgeSound",
+    deathlist = "grudgeSound",
+    ended = "endedSound", tormentor = "tormentorSound" }
+local SHAME_DEFAULT = "game:565564"        -- the troll gong, outside a guild with a clip of its own
 
 --- Whether one of our files is ours to offer: one for a guild only while we are in it (in any case), and
 --- not while the client can't say which guild that is.
@@ -986,35 +1045,74 @@ local function Offered(s)
     local mine = GetGuildInfo and GetGuildInfo("player")
     return type(mine) == "string" and not Secret(mine) and GK.SameGuild(mine, s.guild)
 end
--- The game's own, named for where the game plays them. More of them, as LibSharedMedia brings no sounds
--- of its own ("legg til flere lyder fra libsharedmedia", the owner, 2026-11-10: its only one is None, and
--- the rest are other addons' files). Each has a file in Forever's live build 70790 (soundkitentry, by
--- the SoundKitConstants id); one this client lacks in SOUNDKIT is left out.
-local SOUND_KITS = {
-    { "PVP_THROUGH_QUEUE", "Battleground horn" },
-    { "UI_GARRISON_TOAST_INVASION_ALERT", "Invasion alert" },
-    { "RAID_WARNING", "Raid warning" },
-    { "RAID_BOSS_EMOTE_WARNING", "Boss emote" },
-    { "UI_RAID_BOSS_WHISPER_WARNING", "The chime" },
-    { "IG_PVP_UPDATE", "PvP update" },
-    { "IG_CREATURE_AGGRO_SELECT", "Hostile target" },
-    { "GM_CHAT_WARNING", "GM warning" },
-    { "MAP_PING", "Map ping" },
-    { "READY_CHECK", "Ready check" },
-    { "UI_BATTLEGROUND_COUNTDOWN_FINISHED", "Countdown" },
-    { "ALARM_CLOCK_WARNING_1", "Alarm 1" },
-    { "ALARM_CLOCK_WARNING_2", "Alarm 2" },
-    { "ALARM_CLOCK_WARNING_3", "Alarm 3" },
-    { "UI_RAID_BOSS_DEFEATED", "Boss defeated" },
-    { "UI_PVP_HONOR_PRESTIGE_RANK_UP", "Rank up" },
-    { "IG_PLAYER_INVITE", "Group invite" },
+-- The game's own, grouped as the menu lists them. "flere av lydene er dårlige, noen funker ikke. men du fant jo
+-- masse sound effects når vi bygde lydene for streaks ... forskjellige horns og sånn. det er kanskje artigere enn
+-- kjedelige lyder som ikke gir like mye mening" (the owner, 2026-11-22). There were seventeen kits, and the live
+-- client's SoundKit (build 71037) has the chime at VolumeFloat 0.01, the map ping 34 dB under full, the alarm 23.
+-- The four left are the ones a default plays. The rest are files by FileDataID (PlaySoundFile takes the number and
+-- plays the client's own file, so none ships): the effect lab's, every one the owner liked there among them, and a
+-- few roars and a horn more. Each was fetched from that build and decoded: none quieter than 16 dB under full.
+-- A name is 17 letters at most: the narrowest sound dropdown holds no more.
+local HORNS, BELLS, ROARS, BLOWS, BREAKS, RUMBLES, SIGNALS = "Horns and drums", "Bells and gongs", "Roars",
+    "Blows and blades", "Breaking", "Rumbles", "Signals"
+local URGENT = "Urgent"
+local SOUND_GROUPS = { URGENT, HORNS, BELLS, ROARS, BLOWS, BREAKS, RUMBLES, SIGNALS }
+-- The urgent ones, first: "hvis kill order target er nære, så må det være litt urgency ... mange av de bjellene og
+-- roars og horns osv et veldig tamme" (the owner, 2026-11-22). Each is two to four of the client's files so close
+-- that they are one sound, { seconds in, FileDataID }. Mixed from build 71037 and measured, they reach -2.8 to -5.9
+-- LUFS momentary, within a fifth of a second; the Battleground horn reaches -10.8. The ten that measured tamest are
+-- `tame`: out of the menu, unless picked, and still played where a pick or the addon itself names one.
+local SOUND_CALLS = {
+    { "red_alert", "Red alert", parts = { { 0, 568165 }, { 0.30, 3512969 } } },          -- the flag taken, and a bell
+    { "alarm_bells", "Alarm bells", parts = { { 0, 3512969 }, { 0.36, 3512971 }, { 0.72, 3512974 } } },
+    { "attack_alarm", "Attack alarm", parts = { { 0, 1487138 }, { 0.02, 775389 }, { 0.45, 568165 } } },
+    { "war_call", "War call", parts = { { 0, 1487138 }, { 0.05, 4191279 } } },           -- an alarm drum, and a horn
+    { "battle_trumpet", "Battle trumpet", parts = { { 0, 1487138 }, { 0.02, 598187 } } },
+    { "under_attack", "Under attack", parts = { { 0, 1487139 }, { 0.05, 568165 } } },
+    { "horn_rush", "War horn rush",
+      parts = { { 0, 569112 }, { 0, 1487138 }, { 0.30, 1487139 }, { 0.55, 1487138 } } },
+    { "ambush", "Ambush", parts = { { 0, 1603948 }, { 0.10, 6908124 } } },
+    { "battle_roar", "Battle roar", parts = { { 0, 1487138 }, { 0.05, 2118810 }, { 0.40, 1487139 } } },
+    { "heartbeat", "Heartbeat", parts = { { 0, 1630809 }, { 0.50, 1630809 }, { 0.85, 568312 } } },
 }
--- The game's own sound files, by FileDataID (PlaySoundFile takes the number; the client plays its own file, so
--- none ships): the heavy ones picked in the effect lab's round 8 (2026-11-21), where the owner wanted "bass og dunk"
--- over the kits' chimes. Each is in Forever's live build 71037 (soundkitentry).
+local SOUND_KITS = {
+    { "PVP_THROUGH_QUEUE", "Battleground horn", HORNS },
+    { "UI_GARRISON_TOAST_INVASION_ALERT", "Invasion alert", SIGNALS },
+    { "UI_BATTLEGROUND_COUNTDOWN_FINISHED", "Countdown", SIGNALS },
+    { "UI_PVP_HONOR_PRESTIGE_RANK_UP", "Rank up", SIGNALS },
+}
 local SOUND_GAME = {
-    { 566027, "Tribal bell" },             -- BellTollTribal: a kill order fulfilled's call
-    { 568959, "Horde horn" },              -- PVPFlagCapturedHorde
+    { 568959, "Horde horn", HORNS },         -- PVPFlagCapturedHorde
+    { 569112, "Horde war horn", HORNS },     -- PVPWarningHorde
+    { 568320, "Alliance war horn", HORNS, tame = true },  -- PVPWarningAlliance
+    { 567084, "Horn of Echeyakee", HORNS },  -- G_HornofEcheyakee
+    { 566064, "Dwarven horn", HORNS, tame = true },       -- DwarfHorn
+    { 4854661, "Swoghorn", HORNS, tame = true },          -- Swoghorn_cast
+    { 566719, "Zeppelin horn", HORNS, tame = true },      -- ZeppelinHorn
+    { 568812, "Bloodlust", HORNS, tame = true },          -- bloodlust_player_cast_head
+    { 566027, "Tribal bell", BELLS, tame = true },        -- BellTollTribal: a kill order fulfilled's call
+    { 565853, "Horde bell", BELLS },         -- BellTollHorde
+    { 566564, "Alliance bell", BELLS },      -- BellTollAlliance
+    { 3512970, "Great bell", BELLS },        -- Valkyr_Bell_Large
+    { 669384, "Breaking bell", BELLS },      -- DivineBell_Ring_Destroyed
+    { 565564, "Troll gong", BELLS },         -- G_GongTroll01: a Shame player's, to begin with
+    { 565945, "Blackrock gong", BELLS },     -- ShieldGongCustom0_06
+    { 930379, "Gronn roar", ROARS },         -- MON_GRONN_BattleRoar_02
+    { 645422, "Sha roar", ROARS },           -- MON_Sha_Boss_BattleRoar
+    { 1034591, "Elemental roar", ROARS },    -- MON_FireElementalDraenor_BattleRoar_03
+    { 4565235, "Bronze blow", BLOWS },       -- Magic_Bronze_Impact_Large_02
+    { 1345549, "Heavy rock", BLOWS },        -- FX_RockImpact_Heavy_Short_01
+    { 1258136, "Cleave", BLOWS },            -- Spell_WR_Cleave_Cast_01
+    { 1267929, "Mortal Strike", BLOWS },     -- Spell_WR_MortalStrike_Cast_01
+    { 1093788, "Whirlwind", BLOWS },         -- SPELL_WR_WHIRLWIND_01
+    { 1036057, "Chain snap 1", BREAKS },     -- FX_Chain_Break_Large_01
+    { 1036058, "Chain snap 2", BREAKS },     -- FX_Chain_Break_Large_02
+    { 596411, "Breaking pillar", BREAKS, tame = true },   -- Deepholm MineralColumn
+    { 930442, "Rock blast 1", BREAKS },      -- FX_Explosion_Rock_Debris_02
+    { 930444, "Rock blast 2", BREAKS },      -- FX_Explosion_Rock_Debris_03
+    { 565728, "Cracking coral", BREAKS, tame = true },    -- AbyssalCoralChunkCeilingBreak
+    { 568874, "Earthquake", RUMBLES, tame = true },       -- EarthquakeCameraShake
+    { 838830, "Thunder", RUMBLES, tame = true },          -- MWThunderRumble01
 }
 
 --- Whether a pick is one of ours that left the package: a file (the war horn, the God of War clips) or a
@@ -1024,6 +1122,7 @@ local function Gone(pick)
     if type(pick) ~= "string" then return false end
     local kind, name = pick:match("^(%a+):(.+)$")
     local list = (kind == "file" and SOUND_FILES) or (kind == "kit" and SOUND_KITS) or (kind == "game" and SOUND_GAME)
+        or (kind == "call" and SOUND_CALLS)
     if not list then return false end
     if kind == "game" then name = tonumber(name) end
     for _, s in ipairs(list) do
@@ -1042,15 +1141,25 @@ local function SpreeOnly(pick)
     return false
 end
 
---- A gone pick goes back to the default: it would play the chime, or nothing, under a dropdown showing
+--- A gone pick goes back to the default: it would play the fallback, or nothing, under a dropdown showing
 --- nothing picked. So does a voice line picked for a target near or a Shame player (a build that offered
 --- them there): their pickers don't list it.
 function GK.ForgetGoneSounds(db)
     for field, default in pairs({ nearSound = defaults.nearSound, shameSound = defaults.shameSound }) do
         if Gone(db[field]) or SpreeOnly(db[field]) then db[field] = default end
     end
-    for key, pick in pairs(type(db.spreeSounds) == "table" and db.spreeSounds or {}) do
-        if Gone(pick) then db.spreeSounds[key] = nil end
+    -- What was told on screen had a sound to pick until 2026-11-22. A pick goes, and None is that moment's box
+    -- off - but not a spree ended's, which stood on None out of the box with its effect's sounds playing.
+    local picks = db.spreeSounds
+    db.spreeSounds = nil
+    if type(picks) ~= "table" then return end
+    local silenced = 0
+    for _, t in ipairs(GK.SPREE_TIERS) do
+        if picks[t.key] == "off" then silenced = silenced + 1 end
+    end
+    if silenced == #GK.SPREE_TIERS then db.spreeSound = false end
+    for key, setting in pairs(GK.MOMENT_SOUND) do
+        if key ~= "ended" and picks[key] == "off" then db[setting] = false end
     end
 end
 
@@ -1068,16 +1177,27 @@ local function SharedSounds()
 end
 
 --- Every sound there is to pick, { { key, label } }: none, ours, the game's, then other addons' by name.
---- spree: for a spree announcement, the Grudgekeeper's voice lines with them; else without.
-function GK.SoundChoices(spree)
+--- Never the Grudgekeeper's voice lines: a pick plays it, and hearing them ahead spoils the sprees (2026-11-22).
+function GK.SoundChoices()
     local list = { { "off", "None" } }
     for _, s in ipairs(SOUND_FILES) do
-        if Offered(s) and (spree or not s.spree) then list[#list + 1] = { "file:" .. s[1], s[2] } end
+        if Offered(s) and not s.spree then list[#list + 1] = { "file:" .. s[1], s[2] } end
     end
-    for _, s in ipairs(SOUND_KITS) do
-        if SOUNDKIT and SOUNDKIT[s[1]] then list[#list + 1] = { "kit:" .. s[1], s[2] } end
+    for _, c in ipairs(SOUND_CALLS) do list[#list + 1] = { "call:" .. c[1], c[2], group = URGENT } end
+    local near, shame = GK.db and GK.db.nearSound, GK.db and GK.db.shameSound
+    for _, group in ipairs(SOUND_GROUPS) do
+        for _, s in ipairs(SOUND_KITS) do
+            if s[3] == group and SOUNDKIT and SOUNDKIT[s[1]] then
+                list[#list + 1] = { "kit:" .. s[1], s[2], group = group }
+            end
+        end
+        for _, s in ipairs(SOUND_GAME) do
+            local key = "game:" .. s[1]
+            if s[3] == group and (not s.tame or key == near or key == shame) then
+                list[#list + 1] = { key, s[2], group = group }
+            end
+        end
     end
-    for _, s in ipairs(SOUND_GAME) do list[#list + 1] = { "game:" .. s[1], s[2] } end
     local shared = SharedSounds()
     if shared then
         local names = {}
@@ -1085,9 +1205,43 @@ function GK.SoundChoices(spree)
             if type(name) == "string" and name ~= "None" then names[#names + 1] = name end
         end
         table.sort(names)
-        for _, name in ipairs(names) do list[#list + 1] = { "lsm:" .. name, name } end
+        for _, name in ipairs(names) do
+            list[#list + 1] = { "lsm:" .. name, name, group = "Other addons", sub = true }
+        end
     end
     return list
+end
+
+--- One of the urgent ones: its first file now and the rest on their beats, under one handle a preview can stop
+--- (StopPlaying). False when the first won't play: then the caller's fallback does.
+local function PlayCall(call)
+    if not PlaySoundFile then return false end
+    local run = { handles = {} }
+    local function Strike(file)
+        if run.stopped then return false end
+        local ok, played, handle = pcall(PlaySoundFile, file, "Master")
+        if not (ok and played) then return false end
+        if handle then run.handles[#run.handles + 1] = handle end
+        return true
+    end
+    if not Strike(call.parts[1][2]) then return false end
+    for i = 2, #call.parts do
+        local at, part = call.parts[i][1], call.parts[i][2]
+        if at > 0 then C_Timer.After(at, function() Strike(part) end) else Strike(part) end
+    end
+    return true, run
+end
+
+--- Stop what GK.PlayChoice started: a sound's handle, or an urgent one's, whose later files then never start.
+local function StopPlaying(handle)
+    if type(handle) == "table" then
+        handle.stopped = true
+        if StopSound then
+            for _, h in ipairs(handle.handles or {}) do pcall(StopSound, h) end
+        end
+    elseif handle and StopSound then
+        pcall(StopSound, handle)
+    end
 end
 
 --- Play a picked sound, whatever the Sounds setting says (the caller asks it). Returns true when the game
@@ -1096,11 +1250,18 @@ function GK.PlayChoice(key)
     if type(key) ~= "string" then return false end
     local kind, name = key:match("^(%a+):(.+)$")
     local file
+    if kind == "call" then
+        for _, c in ipairs(SOUND_CALLS) do
+            if c[1] == name then return PlayCall(c) end
+        end
+        return false
+    end
     if kind == "kit" then
         local id = SOUNDKIT and SOUNDKIT[name]
         if not id then return false end
-        local ok, played = pcall(PlaySound, id, "Master")
-        return ok and played ~= false
+        local ok, played, handle = pcall(PlaySound, id, "Master")
+        if not ok then return false end
+        return played ~= false, handle
     elseif kind == "file" then
         for _, s in ipairs(SOUND_FILES) do
             if s[1] == name and Offered(s) then file = s[3] end
@@ -1114,29 +1275,38 @@ function GK.PlayChoice(key)
         file = shared and shared[name]
     end
     if not (file and PlaySoundFile) then return false end
-    local ok, played = pcall(PlaySoundFile, file, "Master")
-    return ok and played and true or false
+    local ok, played, handle = pcall(PlaySoundFile, file, "Master")
+    if not (ok and played) then return false end
+    return true, handle
 end
 
---- The sound of a target near (and a Marked player, and the watched guild): the one picked, the chime when it
+local previewing                          -- the handle of the sound last tried in the settings
+--- A sound tried in the settings: the one tried before it stops, as they run up to seven seconds.
+function GK.PreviewSound(key)
+    if previewing then StopPlaying(previewing) end
+    local _, handle = GK.PlayChoice(key)
+    previewing = handle
+end
+
+--- The sound of a target near (a tracked enemy's, and the watched guild's): the one picked, the horn when it
 --- can't be played - a warning never goes silent because a file went missing - and nothing for None or with
---- Sounds off.
+--- Warnings' Play sounds off.
 function GK.NearSound()
-    if not (GK.db and GK.db.sound) then return end
+    if not GK.db or GK.db.warnSounds == false then return end
     local key = GK.db.nearSound or defaults.nearSound
     if key == "off" then return end
-    if not GK.PlayChoice(key) then GK.Sound("UI_RAID_BOSS_WHISPER_WARNING") end
+    if not GK.PlayChoice(key) then GK.PlayChoice("kit:PVP_THROUGH_QUEUE") end
 end
 
 --- The sound a Shame player joining plays: the one picked in the settings, and until one is ("auto") the
---- clip of a guild we are in, or the chime.
+--- clip of a guild we are in, or the troll gong.
 function GK.ShameSoundKey()
     local key = GK.db and GK.db.shameSound
     if type(key) == "string" and key ~= "auto" then return key end
     for _, s in ipairs(SOUND_FILES) do
         if s.guild and Offered(s) then return "file:" .. s[1] end
     end
-    return CHIME
+    return SHAME_DEFAULT
 end
 
 --- Something changed that a window may show. Every guild message calls this, and at login they come
@@ -1230,7 +1400,10 @@ function GK.Foe(key, info)
         local n, oldest, oldKey = 0, nil, nil
         for k2, v in pairs(foes) do
             n = n + 1
-            if k2 ~= key and (not oldest or (v.last or 0) < oldest) then oldest, oldKey = v.last or 0, k2 end
+            -- never one on your Death list: their score is what its row says
+            if k2 ~= key and not (GK.char.tracked and GK.char.tracked[k2]) and (not oldest or (v.last or 0) < oldest) then
+                oldest, oldKey = v.last or 0, k2
+            end
         end
         if n > MAX_FOES and oldKey then foes[oldKey] = nil end
     end
@@ -1356,15 +1529,16 @@ end
 
 local function Help()
     print(TAG .. " v" .. GK.addonVersion .. " commands:")
-    print("  /grudge  - open the window: kill orders, the guild's leaderboard, your grudges")
+    print("  /grudge  - open the window: kill orders, the leaderboard, your Death list, grudges")
     print("  /grudge post  - write a kill order on your target (no enemy targeted: it asks who)")
     print("  /grudge letters  - read your letters")
-    print("  /grudge test  - five sample letters, to see what they look like")
-    print("  /grudge arrange  - put the letter icon, the spree splash and its toasts where you want them")
+    print("  /grudge test  - four sample letters, to see what they look like")
+    print("  /grudge news  - the patch notes of this version")
+    print("  /grudge arrange  - put the letter icon, the splash and the toasts where you want them")
     print("  /grudge spree  - show a sample spree splash and toast (or: spree fulfilled, spree tormentor, spree revenge, spree grudge)")
     print("  /grudge rank  - show a sample new-title splash and toast (or: rank nemesis, rank all)")
     print("  /grudge options  - open the settings")
-    print("  /grudge guild  - officers: put an enemy guild on watch by its name")
+    print("  /grudge guild  - officers: track an enemy guild by its name")
 end
 
 SLASH_GRUDGEKEEPER1 = "/grudge"
@@ -1383,6 +1557,8 @@ SlashCmdList.GRUDGEKEEPER = function(msg)
         GK.OpenLetters()
     elseif cmd == "test" then
         GK.SampleLetters()
+    elseif cmd == "news" or cmd == "patch notes" or cmd == "patchnotes" then
+        GK.OpenPatchNotes()
     elseif cmd == "arrange" or cmd == "notice" then
         -- the letter icon, the splash and the toasts (Move.lua); "move" is the notes' (NotesUI.lua)
         if GK.ToggleMover then GK.ToggleMover() end
@@ -1398,7 +1574,7 @@ SlashCmdList.GRUDGEKEEPER = function(msg)
         -- the guild on watch, typed in (Pick.lua): for an officer or the guild master, as on the ledger.
         -- Not "watch": that is the Shame list's word (NotesUI.lua)
         if GK.CanWatchGuild() then GK.OpenPicker("guild")
-        else print(TAG .. ": only an officer or the guild master can put a guild on watch.") end
+        else print(TAG .. ": only an officer or the guild master can track a guild.") end
     elseif cmd == "debug meter" then
         GK.MeterProbe()               -- the game's damage meter after a fight (Kills.lua)
     elseif cmd == "debug" then
@@ -1714,27 +1890,43 @@ local function MoveNotifications(db)
 end
 GK.MoveNotifications = MoveNotifications     -- for tests/run.lua
 
--- Revenge came on 2026-11-20 with a row of its own each side. A saved file from before it keeps the preset it
--- matched (Options.lua): Quiet has your revenge as a toast and All of it a guildie's as one, where the defaults
--- would have put a splash on a streamer's screen. A mix of its own: yours as your sprees are, a guildie's off.
+-- Revenge came on 2026-11-20 with a row of its own each side. A saved file from before it: yours as your sprees
+-- are, so a streamer's toasts stay toasts, and a guildie's off - but a toast for who had everything from guildies
+-- (the preset All of it, retired 2026-11-22: "presets.. fjerne eller?", the owner).
+local HAD_EVERYTHING = { spreeMine = "splash", rankMine = "splash", orderMine = "splash", spreeEnded = "toast",
+    spreeTormentor = "toast", spreeGuild = "toast", spreeGuildFrom = 3, rankGuild = "toast", rankGuildFrom = 0,
+    orderDone = "toast", spreeEndedGuild = "toast", spreeTormentorGuild = "toast", guildSounds = true }
 local function MoveRevenge(db)
     if type(db) ~= "table" or db.revengeMine ~= nil then return end
-    for _, p in ipairs(GK.NOTIFY_PRESETS or {}) do
-        local same = true
-        for k, v in pairs(p.set) do
-            -- not the keys that came with Revenge or after it: such a file has none of them
-            if k ~= "revengeMine" and k ~= "revengeGuild" and k ~= "grudgeMine" and db[k] ~= v then same = false end
-        end
-        if same then
-            db.revengeMine, db.revengeGuild = p.set.revengeMine, p.set.revengeGuild
-            return
-        end
+    local all = true
+    for k, v in pairs(HAD_EVERYTHING) do
+        if db[k] ~= v then all = false end
+    end
+    if all then
+        db.revengeMine, db.revengeGuild = "splash", "toast"
+        return
     end
     local s = db.spreeMine
     db.revengeMine = (s == "splash" or s == "toast" or s == "off") and s or "splash"
     db.revengeGuild = "off"
 end
 GK.MoveRevenge = MoveRevenge                 -- for tests/run.lua
+
+-- Yours and a guildie's apart (2026-11-22). A guildie's splash is a toast. Once for each account: Sounds was one
+-- switch for everything and a moment's box was for both sides, so what was off there is off on each side now.
+local GUILD_ROWS = { "spreeGuild", "rankGuild", "orderDone", "revengeGuild", "spreeEndedGuild", "spreeTormentorGuild" }
+local SHARED_BOXES = { "spreeSound", "rankSound", "orderSound", "revengeSound", "endedSound", "tormentorSound" }
+local function SplitSides(db)
+    for _, key in ipairs(GUILD_ROWS) do
+        if db[key] == "splash" then db[key] = "toast" end
+    end
+    if db.soundSplit then return end
+    db.soundSplit = true
+    if db.sound == false then db.mineSounds, db.guildSounds, db.warnSounds = false, false, false end
+    for _, key in ipairs(SHARED_BOXES) do
+        if db[key] == false then db[key .. "Guild"] = false end
+    end
+end
 
 -- A warning's row: "screen" by the letter icon, "chat" one line, or "off". true and false are an older saved
 -- file's, from when each row was a box to tick: true is the row's own way, as it was then.
@@ -1788,14 +1980,19 @@ LIB.On("PLAYER_LOGIN", function()
     -- heller en sånn notification om du dreper noen du har grudge mot", the owner) - a toast at the kill now
     -- (grudgeMine) - and Marked, with its warning (kill orders and Track do its work).
     GK.db.leadNear, GK.db.noteAlerts = nil, nil
-    -- Reaper's splash is the scythe since 2026-11-20 ("reaper scythe er default eller? mye bedre enn reaper
-    -- smoke ... ja bytt til scythe", the owner). Every saved file already holds "smoke", the old default written
-    -- into it, and nothing tells that apart from a pick: each account is moved once, and keeps what it picks after.
-    if not GK.db.reaperScythe then
-        GK.db.reaperEffect, GK.db.reaperScythe = "scythe", true
-    end
+    -- Retired 2026-11-22: Reaper's choice of the scythe or the smoke, and the one move to the scythe before it.
+    GK.db.reaperEffect, GK.db.reaperScythe = nil, nil
+    -- Hear from (2026-11-22, never released) is Mode's now: its friends and Only me are Streamer's and Private's
+    if GK.db.hearFrom == "friends" and GK.db.mode == "normal" then GK.db.mode = "streamer" end
+    if GK.db.hearFrom == "me" and GK.db.mode == "normal" then GK.db.mode = "private" end
+    GK.db.hearFrom = nil
+    -- "screenshots av by default btw" (the owner, 2026-11-22). The betas had a fulfilled order's on out of the box,
+    -- written into every saved file, and nothing tells that apart from a pick: each account is moved off once,
+    -- and keeps what it picks after.
+    if not GK.db.shotsOff then GK.db.shotFulfil, GK.db.shotsOff = false, true end
     GK.ClaimPC(GK.char)
     GK.ForgetGoneSounds(GK.db)
+    SplitSides(GK.db)                                -- after it: a None picked is a box off by then
     GK.RekeyStores()
     RegisterMinimap()
     GK.StartGuild()

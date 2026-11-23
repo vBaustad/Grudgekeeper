@@ -1,6 +1,6 @@
 -- Grudgekeeper - the announcements: a spree milestone, a spree that ended, a tormentor put down, a
--- guildie's kill order fulfilled. Each is told as a splash (big, in the middle of the screen,
--- click-through) or a toast (small, stacked under the letter icon), or not at all - the kind's setting
+-- guildie's kill order fulfilled. Each is told as a splash (big, click-through) or a toast (small,
+-- stacked), each where it was moved to (Move.lua), or not at all - the kind's setting
 -- says which. Two more settings say when it may come:
 -- always, or not in a fight, not in a fight in an instance, not in an instance. One that may not come yet
 -- is held, and plays in order when the setting allows (the fight ends, the area changes), one splash
@@ -40,7 +40,8 @@ local function SplashHold() return ToastHold() / 2 end
 -- replay at once, long after it mattered. The oldest goes.
 local MAX_HELD = 30
 
--- The sound of each kind until one is picked (GK.db.spreeSounds): the Grudgekeeper calling out each tier.
+-- The sound of each kind, the Grudgekeeper calling out each tier and a call for each other moment. They are ours:
+-- each is on or off and none is picked ("vi har jo allerede lagd lyder for det andre", the owner, 2026-11-22).
 local DEFAULT_SOUNDS = {
     bloodied = "file:voice_bloodied",
     merciless = "file:voice_merciless",
@@ -48,23 +49,34 @@ local DEFAULT_SOUNDS = {
     reaper = "file:voice_reaper",
     grudgebound = "file:voice_grudgebound",
     -- none: its pulse, shatter and the tribal bell are its sound - the Horde horn after them was one too many (the
-    -- owner, 2026-11-21: "holder med puls, knusing og sting"). A sound can still be picked for it.
+    -- owner, 2026-11-21: "holder med puls, knusing og sting").
     ended = "off",
     tormentor = "kit:UI_GARRISON_TOAST_INVASION_ALERT",
-    -- a kill order fulfilled: the tribal bell, struck with the slam (2026-11-21); no row to pick another on. The game's
+    -- a kill order fulfilled: the tribal bell, struck with the slam (2026-11-21). The game's
     -- PvP alert it had was "litt negativ i tonen" and its loudest moment comes 1.5 s in, so it never met the thud.
     order = "game:566027",
-    rank = "kit:UI_PVP_HONOR_PRESTIGE_RANK_UP",  -- a new title: the game's own rank-up, no row either
+    rank = "kit:UI_PVP_HONOR_PRESTIGE_RANK_UP",  -- a new title: the game's own rank-up
     revenge = "kit:UI_BATTLEGROUND_COUNTDOWN_FINISHED",
-    grudge = "game:566027",                      -- a grudge evened up: the tribal bell, no row either (2026-11-22)
+    grudge = "game:566027",                      -- a grudge evened up: the tribal bell (2026-11-22)
+    deathlist = "off",                           -- a Death list kill: its effect's cues are its sound (FxRevenge.lua)
 }
-GK.SPREE_DEFAULT_SOUNDS = DEFAULT_SOUNDS     -- for the settings page, which shows these until one is picked
 
---- An item's own sound: the player's pick for it, else the default (the tier's voice).
+--- Whether an item is without its sounds, its call and its effect's: its side's Play sounds is off, or that
+--- side's box for its moment.
+local function Muted(item)
+    local mine = item.mine ~= false
+    if GK.db[mine and "mineSounds" or "guildSounds"] == false then return true end
+    local kind = item.sound
+    if not kind then return false end
+    local setting = GK.MOMENT_SOUND[kind] or (DEFAULT_SOUNDS[kind] and "spreeSound")
+    if not setting then return false end
+    if not mine then setting = setting .. "Guild" end
+    return GK.db[setting] == false
+end
+
+--- An item's own call (a tier's: its voice).
 local function PlayVoice(item)
-    if GK.db.sound and not item.silent then
-        GK.PlayChoice((GK.db.spreeSounds or {})[item.sound] or DEFAULT_SOUNDS[item.sound])
-    end
+    if not item.silent then GK.PlayChoice(DEFAULT_SOUNDS[item.sound]) end
 end
 
 --- Whether an announcement may come now, by its when-setting and where we are.
@@ -504,6 +516,7 @@ local drainTimer = false
 --- What an item is shown with, and its sound: when it is shown, not when it was queued.
 local function Show(item)
     local toast
+    if Muted(item) then item.silent = true end
     if item.style == "splash" then ShowSplash(item) else toast = ShowToast(item) end
     -- a splash or toast with an effect plays it at the effect's voice time (its OnUpdate), the rest at once
     if item.style == "splash" and (splash.voiceAt or splash.noVoice) then return end
@@ -578,6 +591,9 @@ end
 
 local function Name(key) return Hide(GK.Show(key)) end
 
+--- A guildie's, and the mode leaves them out (Guild.lua, GK.Hears).
+local function TurnedDown(who, mine) return not mine and GK.Hears ~= nil and not GK.Hears(who) end
+
 -- Every line in colours, not plain white (revenge's first, 2026-11-20; the rest 2026-11-21: "farg litt av texten
 -- da? som gold osv", the owner): a guildie in their class's colour, an enemy in theirs where it is known and in
 -- red where it is not, what was won - kills, points, a title, gold - in gold, and the words between in white.
@@ -606,17 +622,22 @@ local function EnemyName(name, class)
     return Coloured(name, RED)
 end
 
---- setting: the kind's own (off, toast, splash). nil for anything else, which shows nothing.
-local function Style(setting)
+--- setting: the kind's own (off, toast, or splash for yours). nil for anything else, which shows nothing. A
+--- guildie's is never a splash, whatever is saved: "splash bør være bare for deg, og toast bør være for guildies.
+--- burde ikke kunne velge det" (the owner, 2026-11-22).
+local function Style(setting, mine)
     local s = GK.db and GK.db[setting]
-    if s == "toast" or s == "splash" then return s end
+    if s == "splash" then return mine and s or "toast" end
+    if s == "toast" then return s end
     return nil
 end
 
 local function Add(setting, mine, item)
-    item.style = Style(setting)
+    item.style = Style(setting, mine)
     if not item.style then return end
-    item.mine = mine
+    item.mine = mine and true or false
+    -- the test panel asking what would show (Debug.lua): said, with whether it would wait, and not shown
+    if GK.probe then return GK.probe(item.style, item.line, (GK.InBattleground() or not Allowed(item)) and true or nil) end
     Tell(item)
 end
 
@@ -646,11 +667,10 @@ local function InMyZone(zone)
     return type(zone) == "string" and zone ~= "" and here ~= nil and zone == here
 end
 
---- A guildie's that may be told at all, by where they are, and its sound by Sounds from guildies.
+--- A guildie's that may be told at all, by where they are.
 local function GuildItem(mine, zone, item)
     if mine then return item end
     if not InMyZone(zone) then return nil end
-    if GK.db.guildSounds == false then item.silent = true end
     return item
 end
 
@@ -685,14 +705,14 @@ end
 -- says where you stand. "vi skulle gjerne sett animasjoner/effekter for de forskjellige rankups" (the owner,
 -- 2026-11-18): each title's own effect comes from dakristia's kit, by its name (the top of this file).
 LIB.Listen("GK_RANKUP", function(who, title, points, mine, zone)
-    if type(title) ~= "string" then return end
+    if type(title) ~= "string" or TurnedDown(who, mine) then return end
     if not mine and not GK.GuildTitleTold(points) then return end
     local item = GuildItem(mine, zone, RankItem(who, title, points, mine))
     if item then Add(mine and "rankMine" or "rankGuild", mine, item) end
 end)
 
 LIB.Listen("GK_SPREE", function(who, spree, tierName, mine, key, zone)
-    if not key then return end
+    if not key or TurnedDown(who, mine) then return end
     if not mine and not GK.GuildSpreeTold(spree) then return end
     local line = ("%s kills in a row"):format(Coloured(spree, GOLD))
     if not mine then line = GuildieName(who) .. ": " .. line end
@@ -704,6 +724,7 @@ LIB.Listen("GK_SPREE", function(who, spree, tierName, mine, key, zone)
 end)
 
 LIB.Listen("GK_SPREE_ENDED", function(who, spree, killerName, mine, zone)
+    if TurnedDown(who, mine) then return end
     local line
     if mine then
         line = ("Your %d-kill spree ended (%s)"):format(spree, EnemyName(Hide(killerName)))
@@ -718,6 +739,7 @@ LIB.Listen("GK_SPREE_ENDED", function(who, spree, killerName, mine, zone)
 end)
 
 LIB.Listen("GK_TORMENTOR", function(who, enemyName, count, mine, zone)
+    if TurnedDown(who, mine) then return end
     local line = ("%s put an end to %s, who had killed %s of us"):format(mine and "You" or GuildieName(who),
         EnemyName(Hide(enemyName)), Coloured(count, GOLD))
     local item = GuildItem(mine, zone, { seal = MEDIA .. "seal_black", line = line, sound = "tormentor",
@@ -736,18 +758,16 @@ end)
 -- with its effect (FxRevenge.lua) says REVENGE in large letters over the line, so the line does not say it again.
 -- (The colours, Coloured and InClassColour are by Name, at the top of what is told: every line has them now.)
 
---- A revenge's line: big, the splash's effect says REVENGE over it.
+--- A revenge's line. big: your splash, whose effect says REVENGE over it.
 local function RevengeLine(mine, big, guildie, enemy, you, they)
     local score = ("now %s - %s"):format(Coloured(you, GOLD), Coloured(they, GREY))
-    if big then
-        if mine then return ("%s \194\183 %s"):format(enemy, score) end
-        return ("%s got %s \194\183 %s"):format(guildie, enemy, score)
-    end
+    if big then return ("%s \194\183 %s"):format(enemy, score) end
     if mine then return ("%s on %s \194\183 %s"):format(Coloured("Revenge", RED), enemy, score) end
     return ("%s: %s on %s \194\183 %s"):format(guildie, Coloured("revenge", RED), enemy, score)
 end
 
 LIB.Listen("GK_REVENGE", function(who, enemyName, you, they, mine, enemyKey, enemyClass, zone)
+    if TurnedDown(who, mine) then return end
     you, they = tonumber(you) or 0, tonumber(they) or 0
     local setting = mine and "revengeMine" or "revengeGuild"
     local class = GK.ValidClass and GK.ValidClass(enemyClass) or nil
@@ -756,7 +776,7 @@ LIB.Listen("GK_REVENGE", function(who, enemyName, you, they, mine, enemyKey, ene
         local row = GK.Store and GK.Store().board[who]
         guildie = InClassColour(Name(who), row and row.c)
     end
-    local big = Style(setting) == "splash" and FirstFx(GK.FX, "revenge") ~= nil
+    local big = Style(setting, mine) == "splash" and FirstFx(GK.FX, "revenge") ~= nil
     local line = RevengeLine(mine, big, guildie, InClassColour(Hide(enemyName), class), you, they)
     local item = GuildItem(mine, zone, { seal = MEDIA .. "seal_red", line = line, sound = "revenge",
         targetKey = type(enemyKey) == "string" and enemyKey or nil, targetClass = class,
@@ -770,6 +790,12 @@ end)
 -- du har grudge mot? jevner ut score" (the owner, 2026-11-22). Yours alone: a guildie's score with an enemy is
 -- theirs. No effect of its own, so a splash is the seal and the line.
 
+--- A Death list kill's line: "Death list: X killed, now 3 - 9".
+local function ListedLine(enemy, you, they)
+    return ("%s %s killed \194\183 now %s - %s"):format(Coloured("Death list:", RED), enemy, Coloured(you, GOLD),
+        Coloured(they, GREY))
+end
+
 --- A grudge's line: "Grudge: X · now 2 - 3", or "Even with X · now 3 - 3".
 local function GrudgeLine(enemy, you, they)
     local score = ("now %s - %s"):format(Coloured(you, GOLD), Coloured(they, GREY))
@@ -777,12 +803,21 @@ local function GrudgeLine(enemy, you, they)
     return ("%s %s \194\183 %s"):format(Coloured("Grudge:", RED), enemy, score)
 end
 
-LIB.Listen("GK_GRUDGE", function(enemyName, you, they, enemyKey, enemyClass)
+LIB.Listen("GK_GRUDGE", function(enemyName, you, they, enemyKey, enemyClass, listed)
     you, they = tonumber(you) or 0, tonumber(they) or 0
     local class = GK.ValidClass and GK.ValidClass(enemyClass) or nil
-    Add("grudgeMine", true, { seal = MEDIA .. "seal_red", sound = "grudge",
-        line = GrudgeLine(InClassColour(Hide(enemyName), class), you, they),
-        targetKey = type(enemyKey) == "string" and enemyKey or nil, targetClass = class })
+    local enemy = InClassColour(Hide(enemyName), class)
+    local item = { seal = MEDIA .. "seal_red", sound = "grudge", line = (listed and ListedLine or GrudgeLine)(enemy, you, they),
+        targetKey = type(enemyKey) == "string" and enemyKey or nil, targetClass = class }
+    -- one on your Death list: the eye (FxRevenge.lua, the lab's round 10, 2026-11-23), whatever the score. DEATH LIST
+    -- stands over the splash, so its line says the rest
+    if listed then
+        item.sound, item.effect, item.toastEffect = "deathlist", FirstFx(GK.FX, "deathlist"), FirstFx(GK.TOASTFX, "deathlist")
+        if item.effect then
+            item.splashLine = ("%s killed \194\183 now %s - %s"):format(enemy, Coloured(you, GOLD), Coloured(they, GREY))
+        end
+    end
+    Add("grudgeMine", true, item)
 end)
 
 -- A guildie got the target of a kill order (Guild.lua, the F we heard): told as it happens, to everyone -
@@ -796,7 +831,9 @@ end)
 -- fight to end ("det må og være lettere å se når noen fyller en kill order", the owner, 2026-11-16). Before,
 -- yours was a splash unless a guildie's was off. class: the order's, so the poster has their crest when we
 -- never kept what they look like; zone: where it was got, for a guildie's only in my zone.
-LIB.Listen("GK_ORDER_DONE", function(who, helpers, targetKey, pot, mine, class, zone)
+LIB.Listen("GK_ORDER_DONE", function(who, helpers, targetKey, pot, mine, class, zone, concerns)
+    -- one about you is told whoever got them
+    if not concerns and TurnedDown(who, mine) then return end
     local more = type(helpers) == "table" and #helpers or 0
     -- in colours: the target in their class's (red when unknown), you in gold or the guildie in theirs, the gold in gold
     local hunter = LIB.IsMyStoredName(who) and "you" or Name(who)
@@ -946,6 +983,11 @@ local function IsActive(t)
     return false
 end
 
+--- Is a splash still having its time, or one waiting for its turn? The test panel's next waits for it.
+function GK.AnnouncementsWaiting()
+    return #ready > 0 or GetTime() < splashBusyUntil
+end
+
 --- on: the splash shown, with a sample, until the mover closes; returns it. Off: gone.
 --- The toasts showing now, oldest first: for a picture of them (Shots.lua).
 function GK.ToastFrames()
@@ -968,7 +1010,7 @@ function GK.SplashForMove(on)
         return nil
     end
     ShowSplash({ seal = MEDIA .. "spree_butcher", ribbon = MEDIA .. "spree_butcher_name",
-        line = "7 kills in a row", fire = "butcher" })
+        line = "7 kills in a row", fire = "butcher", silent = true })
     splash.held = true
     return splash
 end
@@ -993,7 +1035,7 @@ function GK.ToastsForMove(on)
     end
     if not (sampleToast and IsActive(sampleToast)) then
         ShowToast({ seal = MEDIA .. "spree_butcher", ribbon = MEDIA .. "spree_butcher_name",
-            line = "Glue Enjoyer: 7 kills in a row" })
+            line = "Glue Enjoyer: 7 kills in a row", silent = true })
         sampleToast = active[#active]
         sampleToast.held = true
     end

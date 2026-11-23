@@ -14,6 +14,7 @@ local SEND_WINDOW = 60      -- seconds from Send to the game's word that the let
 local TRADE_WINDOW = 10     -- seconds after a trade closes that our money may still change for it
 
 local card
+local preview       -- the test panel's debt (Debug.lua): the card shown at once, a mailbox or not, until it closes
 local sending       -- { to, copper, at }: a letter with money in it, sent, until the game says it went
 local trade         -- { who, before, give, get, closedAt }: the trade open now, or the one just closed
 local hooked
@@ -66,14 +67,21 @@ end
 -- entry = { o = order, share = copper, to = hunter }: what I owe one hunter on it (GK.Owed).
 local function Fill(entry)
     local o = entry.o
+    -- the test panel's debt is to nobody real: no name and no gold, so a Send can't pay a stranger
+    local test = GK.testMode
     if MailFrameTab2 then MailFrameTab2:Click() end
-    if SendMailNameEditBox then SendMailNameEditBox:SetText(LIB.WhisperName(entry.to)) end
+    if SendMailNameEditBox then SendMailNameEditBox:SetText(test and "" or LIB.WhisperName(entry.to)) end
     if SendMailSubjectEditBox then SendMailSubjectEditBox:SetText(("Bounty: %s"):format(GK.Show(o.n))) end
+    -- and a line in the letter ("kan ikke gjøre så de kan trykke 'pay bounty' når de er ved mail og legge til gold og
+    -- han som skal motta og melding?", the owner, 2026-11-22): Blizzard's own box, as Reply fills it
+    if SendMailBodyEditBox then
+        SendMailBodyEditBox:SetText(("Your part of the bounty on %s. Thanks for the kill!"):format(GK.Show(o.n)))
+    end
     -- money, not C.O.D.: Blizzard's own radio, as a click on it would set it
     if SendMailRadioButton_OnClick then SendMailRadioButton_OnClick(1) end
     local credit = GK.char.credit and GK.char.credit[entry.to] or 0
     local copper = math.max(0, entry.share - credit)
-    if MoneyInputFrame_SetCopper and SendMailMoney then MoneyInputFrame_SetCopper(SendMailMoney, copper) end
+    if MoneyInputFrame_SetCopper and SendMailMoney then MoneyInputFrame_SetCopper(SendMailMoney, test and 0 or copper) end
 end
 
 local function Row(i)
@@ -126,11 +134,13 @@ local function Build()
     -- closed by hand: not again until the next visit to a mailbox
     card:HookScript("OnHide", function()
         if MailFrame and MailFrame:IsShown() and not card.updating then card.dismissed = true end
+        if not card.updating then preview = nil end
     end)
 end
 
 local function Update()
-    local open = MailFrame and MailFrame:IsShown()
+    local atMail = MailFrame and MailFrame:IsShown()
+    local open = atMail or preview
     local owed = open and GK.Owed() or {}
     if #owed == 0 then
         if card then
@@ -165,9 +175,19 @@ local function Update()
     if #owed > n then y = y + 16 end
     card.note:SetPoint("TOPLEFT", 20, -(y + 4))
     card:SetHeight(y + 40)
+    card.note:SetText(GK.testMode and "Test: Fill in leaves the name and the gold empty."
+        or "Mail or trade them the money and it is marked paid by itself.")
     card:ClearAllPoints()
-    card:SetPoint("TOPLEFT", MailFrame, "TOPRIGHT", 6, 0)
+    if atMail then card:SetPoint("TOPLEFT", MailFrame, "TOPRIGHT", 6, 0)
+    else card:SetPoint("CENTER", UIParent, "CENTER", 260, 60) end
     card:Show()
+end
+
+--- The test panel's debt: the card shown now, beside the mail when it is open (Debug.lua). Off: gone.
+function GK.PreviewOwed(on)
+    preview = (on and GK.testMode) and true or nil
+    if card then card.dismissed = nil end
+    Update()
 end
 
 -- ---------------------------------------------------------------------------
