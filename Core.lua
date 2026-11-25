@@ -143,7 +143,7 @@ local defaults = {
     targetedBy = "off",      -- one in your Death Note you can see targets you, out of a fight (Sightings.lua, TargetedBy)
     targetSound = "call:heartbeat", -- and its own sound, short: Heartbeat ("jeg vil ikke ha 10s dark souls musikk
                              -- hver gang noen targeter meg", the owner, 2026-11-24)
-    plateNotes = true,       -- on a noted player's nameplate: Kudos' medals, Shame's small mark
+    plateNotes = true,       -- a medal per tag over the nameplate of a player on Shame or Kudos
     guilds = {},             -- [guild key] = { board, orders, wanted, slain, feed, nextId } (Guild.lua)
     -- What is told on screen (Announce.lua; Settings, Mine and Guildies), yours and a guildie's each on its own:
     -- yours "off", "toast" or "splash", a guildie's "off" or "toast" - "splash bør være bare for deg, og toast bør

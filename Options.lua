@@ -444,7 +444,7 @@ function GK.SettingsChapters()
           rows = {
             Check("tooltip", "Line on enemy tooltips", "Only for enemies you have a history with."),
             Check("plateMarks", "Seal over kill order targets", "And an eye over your Death Note. Needs enemy nameplates."),
-            Check("plateNotes", "Mark over Shame and Kudos players", "A medal for each Kudos tag, out of combat. A small mark for Shame."),
+            Check("plateNotes", "Mark over Shame and Kudos players", "A medal for each tag. Kudos' only out of combat."),
             Check("mapPins", "Last seen on the map", "Where a guildie saw a target, for 15 minutes."),
           } },
         { group = "GENERAL", name = "Right-click menu", title = "Right-click menu",
