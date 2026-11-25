@@ -12,7 +12,7 @@ local ADDON, GK = ...
 local LIB = GK.Lib or LibStub("LibForever-1.0")      -- names by themselves (Core.lua, GK.Lib)
 
 -- { its name; show(on): shown to be moved, returning its frame (on), or as it was (off); moved(): keep
--- where it was dragged; reset(): back where it starts }
+-- where it was dragged; reset(): back where it starts (a right-click) }
 local ITEMS = {
     { name = "Letter icon",
       show = function(on) return GK.NoticeForMove(on) end,
@@ -65,7 +65,7 @@ local function Handle(item)
     h:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:AddLine(item.name, 1, 1, 1)
-        GameTooltip:AddLine("Drag to move. Right-click: back where it starts.", nil, nil, nil, true)
+        GameTooltip:AddLine("Drag to move. Right-click to reset.", nil, nil, nil, true)
         GameTooltip:Show()
     end)
     h:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -90,7 +90,10 @@ local function BuildBar()
     title:SetText("Arrange on screen")
     local hint = bar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     hint:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -6)
-    hint:SetText("Drag Grudgekeeper's things where you want them. Right-click one: back where it starts.")
+    -- inside the bar, and short: the longer words ran past its right edge (the owner's picture, 2026-11-24)
+    hint:SetWidth(460 - 28)
+    hint:SetJustifyH("LEFT")
+    hint:SetText("Drag each one where you want it. Right-click one to reset it.")
     local done = GK.MakeButton(bar, 80, 22)
     done:SetPoint("TOPRIGHT", -12, -12)
     done:SetText("Done")

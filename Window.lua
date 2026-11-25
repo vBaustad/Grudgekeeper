@@ -484,7 +484,7 @@ local function Owed(f) return (f.d or 0) - (f.k or 0) end
 local function DeathListItems()
     local items, c = {}, GK.char
     local tracked = {}
-    for key, t in pairs(c.tracked or {}) do
+    for key, t in pairs(GK.TrackedList() or c.tracked or {}) do
         tracked[#tracked + 1] = { key = key, t = t, s = GK.Seen and GK.Seen(key), name = GK.Show(key) }
     end
     table.sort(tracked, function(a, b)
@@ -512,7 +512,7 @@ local function DeathListItems()
             desc = Short(look.l, look.c, look.r), sub = sub, noted = note ~= nil, score = { you, they },
             select = PosterSpec(e.key, look), you = you, they = they, ts = f and f.last or e.t.t, own = true }
     end
-    return items, "No names written yet. Add someone, or right-click an enemy and pick Add to Death list."
+    return items, "No names written yet. Add someone, or right-click an enemy and pick Add to Death Note."
 end
 
 local NO_LOG = "No kills or deaths yet. Only the open world counts: dungeons and battlegrounds hide who is who."
@@ -670,10 +670,24 @@ end
 -- no kind, so no words are found for it and no row made.
 local UNSAID = {}
 
+-- A death that ended a spree is told once, as the spree's end: "Bad Guy ended Sigrid's 6-kill spree" says the
+-- death as well, and the death's own line under it read as one more death - two deaths stood as three lines
+-- (the owner's screenshot, 2026-11-23: "slå sammen"). The end's line is written straight after its death's
+-- (OnDeath, GK.RecordDeath), so its death is the line just older than it. As with a kill's lines (KillGroups),
+-- what is kept and sent is a line each as before: only the page puts them together.
+local function EndedDeaths(feed)
+    local said = {}
+    for i, e in ipairs(feed) do
+        local d = feed[i + 1]
+        if e.kind == "E" and d and d.kind == "D" and d.who == e.who and d.n == e.n then said[i + 1] = true end
+    end
+    return said
+end
+
 local function NewsItems(limit)
     local items = {}
     local feed = GK.Store().feed
-    local groupOf = KillGroups(feed)
+    local groupOf, ended = KillGroups(feed), EndedDeaths(feed)
     -- In the Classic skin each name in a line is in its class's colour: the enemy's as the line has it, a
     -- guildie's as the leaderboard does, yours as you are (GK.InClass)
     local paint, board = GK.Classic(), GK.Store().board
@@ -699,7 +713,9 @@ local function NewsItems(limit)
         -- line - or the first assist's, where the blow was nobody's we hear - with the others named after.
         local g = groupOf[i]
         local e, with = newest, nil
-        if g and g.at ~= i then
+        if ended[i] then
+            e = UNSAID                             -- the spree's end over it says it (EndedDeaths)
+        elseif g and g.at ~= i then
             e = UNSAID
         elseif g then
             e = g.k or g.h[1]
@@ -896,10 +912,12 @@ GK.LedgerPages = {
       linksTail = function() return weekly and ResetText() or "" end },   -- the first row is chosen by itself
     -- The list you made, and only that: no row gets here but by your click (DeathListItems). All of it, however
     -- many turns of the page, so no max.
-    { name = "Death list", items = DeathListItems, headings = {},
+    -- The Death Note since 2026-11-24, the Death list before: "kanskje kalle det Death Note isteden for Death List som
+    -- en homage til animeen" (the owner), who picked the line under its title of four in our own words.
+    { name = "Death Note", items = DeathListItems, headings = {},
       icon = ICONS .. "Ability_Hunter_SniperShot",          -- the hunter's mark: marked to be hunted
       add = { text = "Add someone", kind = "track" },
-      sub = function() return "Every name written here is a death sentence." end,
+      sub = function() return "The one whose name is written here shall die." end,
       default = function(items)
           if #items > 0 then return nil end
           return { key = "me", select = { kind = "record", key = LIB.Me() } }
@@ -3398,7 +3416,7 @@ end
 -- enemy on your Death list, then your Grudges, who killed you and who killed the guild (an open order on them
 -- goes first of all, GK.ShowInLedger); a guildie or you on the You page (yours) and the leaderboard; a note's
 -- card on the lists it is from.
-local HOMES = { poster = { "Death list", "Grudges" }, record = { "You", "Leaderboard" },
+local HOMES = { poster = { "Death Note", "Grudges" }, record = { "You", "Leaderboard" },
     card = { "Shame", "Kudos" } }
 
 --- Is this row about whom the spec is: the same kind of card, on the same player (GK.SameName: another

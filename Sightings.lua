@@ -18,7 +18,7 @@ local seen, byGuid, count = {}, {}, 0      -- [key] = { key, guid, c, r, rf, l, 
 local alerted, shared = {}, {}             -- [order key] = GetTime() of the last warning / report (and
                                            -- of the last time we noted where we stood)
 local plates = {}                          -- nameplate units on screen
-local trackedAt = {}                       -- [key] = GetTime() of the last "Death list: ... is near"
+local trackedAt = {}                       -- [key] = GetTime() of the last "Death Note: ... is near"
 
 function GK.SeenCount() return count end
 
@@ -246,11 +246,37 @@ local MAX_TRACKED = 100
 local trackVersion = 0                     -- moves at every change, for the plates and the name index
 local trackIndex, trackIndexed = {}, -1    -- [name without realm] = the key it is tracked under
 
+-- One Death Note for all my characters (Settings, Death Note, 2026-11-24): "er jo nice å se de du 'hater' på alten du
+-- lvler" (the owner, after a player's "is it possible to make the grudges appear on all characters?"). Off, each
+-- character keeps its own (char.tracked), as before. On, every character of the account on the same side uses one
+-- (db.deathNotes[faction]): an enemy of an Alliance character is a Horde one's friend. Each character's own list joins
+-- it once each time the box is ticked (GK.JoinDeathNote), and is there as it was when the box is off again. Never in
+-- the test panel or the screenshots (GK.testMode): their made-up character's list is theirs.
+local inUse                                -- the list last handed out: another one rebuilds the name index
+
+--- The Death Note in use: this character's own, or the one shared on this side.
+function GK.TrackedList()
+    if not GK.char then return nil end
+    local list = GK.char.tracked
+    if GK.db and GK.db.deathNoteShared and not GK.testMode then
+        local side = UnitFactionGroup("player")
+        if GK.Secret(side) or type(side) ~= "string" or side == "" then side = "?" end
+        GK.db.deathNotes = GK.db.deathNotes or {}
+        list = GK.db.deathNotes[side] or {}
+        GK.db.deathNotes[side] = list
+    end
+    if list ~= inUse then
+        inUse = list
+        trackVersion = trackVersion + 1
+    end
+    return list
+end
+
 --- The key someone is tracked under, and its record: the same key, else the same name on another of the
 --- server's realms (a name typed in is filed under ours; the plate names theirs). s: the sighting, which
 --- keeps its realm-less name so a plate costs no string work after the first look.
 local function TrackedOf(key, s)
-    local list = GK.char and GK.char.tracked
+    local list = GK.TrackedList()
     if not (list and type(key) == "string") then return nil end
     if list[key] then return key, list[key] end
     if not next(list) then return nil end
@@ -296,7 +322,7 @@ end
 function GK.Track(t)
     if not (GK.char and t and type(t.key) == "string") or LIB.IsMyStoredName(t.key) then return false end
     if LIB.roster and LIB.roster[t.key] then return false, "guildie" end
-    local list = GK.char.tracked
+    local list = GK.TrackedList()
     local key = TrackedOf(t.key) or t.key
     if not list[key] then
         local n = 0
@@ -322,9 +348,9 @@ end
 function GK.TrackSaying(t)
     local ok, why = GK.Track(t)
     if why == "full" then
-        print(("%s: your Death list is full at %d - remove one of them first."):format(GK.TAG, MAX_TRACKED))
+        print(("%s: your Death Note is full at %d - remove one of them first."):format(GK.TAG, MAX_TRACKED))
     elseif why == "guildie" then
-        print(GK.TAG .. ": that's a guildie. The Death list is for enemies.")
+        print(GK.TAG .. ": that's a guildie. The Death Note is for enemies.")
     end
     return ok
 end
@@ -332,7 +358,7 @@ end
 function GK.Untrack(key)
     local k = TrackedOf(key)
     if not k then return end
-    GK.char.tracked[k] = nil
+    GK.TrackedList()[k] = nil
     trackedAt[k] = nil
     trackVersion = trackVersion + 1
     GK.Changed()
@@ -345,7 +371,7 @@ local function TrackedNear(key, e, s)
     local now = GetTime()
     if trackedAt[key] and now - trackedAt[key] < ALERT_GAP then return end
     trackedAt[key] = now
-    GK.Warn(("Death list: %s is near!"):format(GK.Show(key)), true, nil, key, key)
+    GK.Warn(("Death Note: %s is near!"):format(GK.Show(key)), true, nil, key, key)
 end
 
 -- One who leads over you in sight warned you until you stood even, from 2026-11-20 until 2026-11-22: "leads over
@@ -429,7 +455,9 @@ end
 -- The target of an open order is in sight: warn, and tell the guild where. Every order, whoever posted
 -- it: there is no taking an order any more - "hey, we put out an order, kill this one" is the whole of
 -- it (the owner, 2026-11-07). Before, only orders you took or posted warned you.
---- Returns whether an order on them is loud: a quiet one leaves a Death list's warning to Track (GK.See).
+--- Returns whether the order's warning speaks for them: loud, and Kill order target near not off. Else the
+--- Death Note's does (GK.See): with that warning off, one in your Death Note with an order on them was told
+--- nothing (2026-11-24).
 local function Spotted(order, s)
     local now = GetTime()
     -- another order on them may be the loud one (GK.OrderLoud); a quiet one still has its seal
@@ -470,7 +498,7 @@ local function Spotted(order, s)
         end
         GK.SendSighting(order)                   -- by the mode and Share my score (Guild.lua)
     end
-    return loud
+    return loud and GK.WarnStyle("alertNear") ~= "off"
 end
 
 --- An order just posted on someone we saw a moment ago - our target, or whoever killed us for an order a
@@ -562,7 +590,7 @@ function GK.See(unit)
             s.keptRf, s.keptSx = s.rf, s.sx
         end
     end
-    -- an order's warning, or the Death list's where no order on them is loud (a guildie's, in Streamer)
+    -- an order's warning, or the Death Note's where the order's says nothing (its warning off, or just given)
     if order then
         if not Spotted(order, s) and tracked then TrackedNear(trackedKey, tracked, s) end
     elseif tracked then
@@ -570,20 +598,78 @@ function GK.See(unit)
     end
 end
 
+-- One in your Death Note with you as their target (Settings, Warnings): "skal vi prøve å legge til warning om fiender
+-- targeter oss?", then "kanskje bare death note enemies gir varsel?" and a sound of its own, not a target near's
+-- (the owner, 2026-11-24). A nameplate's target is compared with you as it changes (UNIT_TARGET) and
+-- as the plate comes up. The game answers that comparison outside instances only ("nameplate3target" against
+-- "player": SecretWhenUnitComparisonRestricted, "only ... on an addon-restricted map" - the API docs), and a
+-- stealthed rogue has no plate: this is who you can see. Out of a fight only - in one, everyone has you targeted -
+-- and once a minute a player at most. Off to begin with; off, it costs one look at the setting.
+local TARGETED_GAP, MAX_TARGETED = 60, 200
+local targetedAt, targetedCount = {}, 0
+
+local function TargetedBy(unit)
+    if GK.WarnStyle("targetedBy") == "off" then return end
+    if InCombatLockdown() or not GK.InWorld() then return end
+    local key = GK.UnitIdentity(unit)
+    if not (key and GK.IsTracked and GK.IsTracked(key)) then return end
+    local ok, yes = pcall(UnitIsUnit, unit .. "target", "player")
+    if not ok or Secret(yes) or not yes then return end
+    local now = GetTime()
+    if targetedAt[key] and now - targetedAt[key] < TARGETED_GAP then return end
+    if not targetedAt[key] then
+        if targetedCount >= MAX_TARGETED then
+            wipe(targetedAt)
+            targetedCount = 0
+        end
+        targetedCount = targetedCount + 1
+    end
+    targetedAt[key] = now
+    if GK.WarnAs("targetedBy", ("Death Note: %s is targeting you!"):format(GK.Show(key)), true, true, key, key) then
+        GK.TargetSound()
+    end
+end
+
 --- Whether Tracked's eye is over this unit's plate, where no order's seal is: an enemy on your list, with the
 --- marks on. The kudos medals give way to it (NotesUI.lua), as they do to the seal.
 function GK.EyeOn(unit)
     if not (GK.db and GK.db.plateMarks and GK.char) then return false end
-    if not (GK.char.tracked and next(GK.char.tracked)) then return false end
+    local list = GK.TrackedList()
+    if not (list and next(list)) then return false end
     local key = GK.UnitIdentity(unit)
     return key ~= nil and TrackedOf(key, seen[key]) ~= nil
 end
 
+--- With One Death Note on: this character's own list joins the shared one, once each time the box was ticked. A name
+--- already there keeps its own record and note; never past MAX_TRACKED.
+function GK.JoinDeathNote()
+    if not (GK.db and GK.db.deathNoteShared and GK.char) or GK.testMode then return end
+    local tick = GK.db.deathNoteTick or 0
+    if (GK.char.deathNoteTick or -1) >= tick then return end
+    GK.char.deathNoteTick = tick
+    local shared, n = GK.TrackedList(), 0
+    for _ in pairs(shared) do n = n + 1 end
+    for key, e in pairs(GK.char.tracked or {}) do
+        if not shared[key] and n < MAX_TRACKED then
+            local copy = {}
+            for k, v in pairs(e) do copy[k] = v end
+            shared[key] = copy
+            n = n + 1
+        end
+    end
+    trackVersion = trackVersion + 1
+end
+
 function GK.StartSightings()
+    GK.JoinDeathNote()                       -- a character first here since the box was ticked
     LIB.On("NAME_PLATE_UNIT_ADDED", function(unit)
         if type(unit) ~= "string" then return end
         plates[unit] = true
         GK.See(unit)
+        TargetedBy(unit)                     -- one who had you targeted before their plate came up
+    end)
+    LIB.On("UNIT_TARGET", function(unit)
+        if type(unit) == "string" and plates[unit] then TargetedBy(unit) end
     end)
     LIB.On("NAME_PLATE_UNIT_REMOVED", function(unit)
         if type(unit) ~= "string" then return end

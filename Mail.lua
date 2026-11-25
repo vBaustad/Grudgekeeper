@@ -6,16 +6,25 @@
 --   made: oldest first, and what falls short of a whole share counts toward it.
 -- ("hvis du har en 'outstanding payment' burde det poppe opp noe når du åpner mailbox ... og så kan vi
 -- registrere om det blir sendt penger til personen via mail eller trade", the owner, 2026-11-09.)
+-- Whatever window the mailbox is in: TSM hides the game's own and sends with its own code, so the card stood for
+-- MailFrame shown and a payment for Blizzard's Send, and with TSM neither came ("ta også hensyn til om noen bruker
+-- TSM eller ellesmere UI osv", the owner, 2026-11-24). The mailbox is open from MAIL_SHOW to MAIL_CLOSED, and the
+-- money is read where every window sends it: SetSendMailMoney, then SendMail. A skin (ElvUI, EllesmereUI) keeps the
+-- game's window, and the card stands beside it.
 local ADDON, GK = ...
 local LIB = GK.Lib or LibStub("LibForever-1.0")      -- names by themselves (Core.lua, GK.Lib)
 
-local W, ROW_H, ROWS_TOP, MAX_ROWS = 320, 44, 34, 5
+-- 24 wider since the button says what it fills in (Fill in mail, 2026-11-24): the words beside it keep their room
+local W, ROW_H, ROWS_TOP, MAX_ROWS = 344, 44, 34, 5
 local SEND_WINDOW = 60      -- seconds from Send to the game's word that the letter went
 local TRADE_WINDOW = 10     -- seconds after a trade closes that our money may still change for it
 
 local card
 local preview       -- the test panel's debt (Debug.lua): the card shown at once, a mailbox or not, until it closes
 local sending       -- { to, copper, at }: a letter with money in it, sent, until the game says it went
+local mailMoney = 0 -- the money the next letter carries, as the game was last told it (SetSendMailMoney)
+local mailOpen      -- the mailbox is open, in the game's window or another addon's (MAIL_SHOW to MAIL_CLOSED)
+local frameHooked   -- the game's window: Update when it shows or hides (no field of ours on Blizzard's frame)
 local trade         -- { who, before, give, get, closedAt }: the trade open now, or the one just closed
 local hooked
 
@@ -65,23 +74,31 @@ end
 -- The card at the mailbox
 -- ---------------------------------------------------------------------------
 -- entry = { o = order, share = copper, to = hunter }: what I owe one hunter on it (GK.Owed).
-local function Fill(entry)
+--- The letter Fill in mail writes: to whom, its subject, its line and the gold - what is still owed on the share.
+--- One function for the letter and its tooltip, so what is shown is what is written. The test panel's debt is to
+--- nobody real: no name and no gold, so a Send can't pay a stranger - but the one to a player you named yourself
+--- (/grudge owe, Debug.lua), which is written in full, so a real payment can be tried alone. And a line in the
+--- letter ("kan ikke gjøre så de kan trykke 'pay bounty' når de er ved mail og legge til gold og han som skal motta og
+--- melding?", the owner, 2026-11-22).
+local function Letter(entry)
     local o = entry.o
-    -- the test panel's debt is to nobody real: no name and no gold, so a Send can't pay a stranger
-    local test = GK.testMode
+    local test = GK.testMode and not o.testNamed
+    local credit = GK.char.credit and GK.char.credit[entry.to] or 0
+    return { to = test and "" or LIB.WhisperName(entry.to), subject = ("Bounty: %s"):format(GK.Show(o.n)),
+        body = ("Your part of the bounty on %s. Thanks for the kill!"):format(GK.Show(o.n)),
+        copper = test and 0 or math.max(0, entry.share - credit) }
+end
+
+local function Fill(entry)
+    if not (MailFrame and MailFrame:IsShown()) then return end   -- the game's own window: the boxes it fills are its
+    local l = Letter(entry)
     if MailFrameTab2 then MailFrameTab2:Click() end
-    if SendMailNameEditBox then SendMailNameEditBox:SetText(test and "" or LIB.WhisperName(entry.to)) end
-    if SendMailSubjectEditBox then SendMailSubjectEditBox:SetText(("Bounty: %s"):format(GK.Show(o.n))) end
-    -- and a line in the letter ("kan ikke gjøre så de kan trykke 'pay bounty' når de er ved mail og legge til gold og
-    -- han som skal motta og melding?", the owner, 2026-11-22): Blizzard's own box, as Reply fills it
-    if SendMailBodyEditBox then
-        SendMailBodyEditBox:SetText(("Your part of the bounty on %s. Thanks for the kill!"):format(GK.Show(o.n)))
-    end
+    if SendMailNameEditBox then SendMailNameEditBox:SetText(l.to) end
+    if SendMailSubjectEditBox then SendMailSubjectEditBox:SetText(l.subject) end
+    if SendMailBodyEditBox then SendMailBodyEditBox:SetText(l.body) end       -- Blizzard's own box, as Reply fills it
     -- money, not C.O.D.: Blizzard's own radio, as a click on it would set it
     if SendMailRadioButton_OnClick then SendMailRadioButton_OnClick(1) end
-    local credit = GK.char.credit and GK.char.credit[entry.to] or 0
-    local copper = math.max(0, entry.share - credit)
-    if MoneyInputFrame_SetCopper and SendMailMoney then MoneyInputFrame_SetCopper(SendMailMoney, test and 0 or copper) end
+    if MoneyInputFrame_SetCopper and SendMailMoney then MoneyInputFrame_SetCopper(SendMailMoney, l.copper) end
 end
 
 local function Row(i)
@@ -91,7 +108,7 @@ local function Row(i)
     b:SetPoint("TOPLEFT", 16, -(ROWS_TOP + (i - 1) * ROW_H))
     b.face = GK.MakePortrait(b, 30)
     b.face.tex:SetPoint("CENTER", b, "LEFT", 18, 0)
-    local text = W - 32 - 40 - 128
+    local text = W - 32 - 40 - 152
     b.name = b:CreateFontString(nil, "ARTWORK")
     Ink(b.name, GK.INK, 12)
     b.name:SetPoint("TOPLEFT", 40, -8)
@@ -113,8 +130,28 @@ local function Row(i)
         GameTooltip:Show()
     end)
     b.paid:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    b.fill = GK.FrameButton(b, "Fill in", 70, function() if b.entry then Fill(b.entry) end end)
+    -- what it fills in, in its name: "men det burde stå hva den skal 'fylle inn'?" (the owner, 2026-11-24)
+    b.fill = GK.FrameButton(b, "Fill in mail", 94, function() if b.entry then Fill(b.entry) end end)
     b.fill:SetPoint("RIGHT", b.paid, "LEFT", -4, 0)
+    b.fill:SetMotionScriptsWhileDisabled(true)
+    -- the letter it will write, before it writes it ("jeg vil se hva den planlegger å skrive inn", the owner,
+    -- 2026-11-24); where it waits for the game's own window, the same lines say what to send
+    b.fill:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        local live = self:IsEnabled()
+        GameTooltip:AddLine(live and "Fill in mail" or "Fill in mail works in the game's own mail window")
+        local l = b.entry and Letter(b.entry)
+        if l then
+            GameTooltip:AddDoubleLine("To", l.to ~= "" and l.to or "nobody: a test", 1, 0.82, 0, 1, 1, 1)
+            GameTooltip:AddDoubleLine("Subject", l.subject, 1, 0.82, 0, 1, 1, 1)
+            GameTooltip:AddDoubleLine("Gold", GK.Coins(l.copper), 1, 0.82, 0, 1, 1, 1)
+            GameTooltip:AddLine(l.body, 0.8, 0.8, 0.8, true)
+        end
+        GameTooltip:AddLine(live and "You press Send." or "Mail it from the window you have open: it is marked paid when "
+            .. "it goes.", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    b.fill:SetScript("OnLeave", function() GameTooltip:Hide() end)
     f.rows[i] = b
     return b
 end
@@ -133,14 +170,14 @@ local function Build()
     card.note:SetText("Mail or trade them the money and it is marked paid by itself.")
     -- closed by hand: not again until the next visit to a mailbox
     card:HookScript("OnHide", function()
-        if MailFrame and MailFrame:IsShown() and not card.updating then card.dismissed = true end
+        if mailOpen and not card.updating then card.dismissed = true end
         if not card.updating then preview = nil end
     end)
 end
 
 local function Update()
-    local atMail = MailFrame and MailFrame:IsShown()
-    local open = atMail or preview
+    local atMail = MailFrame and MailFrame:IsShown()      -- the game's own window: the card beside it, Fill in at work
+    local open = mailOpen or atMail or preview
     local owed = open and GK.Owed() or {}
     if #owed == 0 then
         if card then
@@ -154,17 +191,21 @@ local function Update()
     if card.dismissed then return end
     local n = math.min(#owed, MAX_ROWS)
     local first = {}            -- money already given toward a hunter counts on their oldest share only
+    local named                 -- a test's debt to a name you gave (/grudge owe): written in full
     for i = 1, n do
         local b = card.rows[i] or Row(i)
         local e = owed[i]
         b.entry = e
+        if e.o.testNamed then named = true end
         local r = GK.Store().board[e.to] or {}
         b.face:Set({ key = e.to, c = r.c, rf = r.rf, sx = r.sx })
         b.name:SetText(GK.Show(e.to))
         local credit = not first[e.to] and GK.char.credit and GK.char.credit[e.to] or 0
         first[e.to] = true
-        local left = credit > 0 and (" (%s still)"):format(GK.MoneyText(e.share - credit)) or ""
-        b.what:SetText(("%s%s for %s"):format(GK.MoneyText(e.share), left, GK.Show(e.o.n)))
+        -- in coins ("gold bør vises med icons også", the owner, 2026-11-24), as big as the words
+        local left = credit > 0 and (" (%s still)"):format(GK.Coins(e.share - credit, 11)) or ""
+        b.what:SetText(("%s%s for %s"):format(GK.Coins(e.share, 11), left, GK.Show(e.o.n)))
+        b.fill:SetEnabled(atMail and true or false)
         b:Show()
     end
     for i = n + 1, #card.rows do card.rows[i]:Hide() end
@@ -175,8 +216,10 @@ local function Update()
     if #owed > n then y = y + 16 end
     card.note:SetPoint("TOPLEFT", 20, -(y + 4))
     card:SetHeight(y + 40)
-    card.note:SetText(GK.testMode and "Test: Fill in leaves the name and the gold empty."
-        or "Mail or trade them the money and it is marked paid by itself.")
+    -- the test's: "hva betyr 'fill in leaves the name and the gold empty'?" (the owner, 2026-11-24)
+    card.note:SetText(not GK.testMode and "Mail or trade them the money and it is marked paid by itself."
+        or named and "A test, but a real letter: Fill in mail writes the name you gave and the gold, and Send sends it."
+        or "Only a test: Fill in mail adds no name and no gold, so nothing real is sent.")
     card:ClearAllPoints()
     if atMail then card:SetPoint("TOPLEFT", MailFrame, "TOPRIGHT", 6, 0)
     else card:SetPoint("CENTER", UIParent, "CENTER", 260, 60) end
@@ -193,15 +236,13 @@ end
 -- ---------------------------------------------------------------------------
 -- Money given: by mail, and in a trade
 -- ---------------------------------------------------------------------------
--- After Blizzard's own Send: to whom, and how much money went with it - only with "Send Money" picked,
--- never C.O.D., and nothing when the radio can't be read (a payment is never guessed).
-local function OnSend()
-    local to = SendMailNameEditBox and SendMailNameEditBox:GetText()
-    local copper = 0
-    if SendMailSendMoneyButton and SendMailSendMoneyButton:GetChecked() and MoneyInputFrame_GetCopper
-        and SendMailMoney then
-        copper = tonumber(MoneyInputFrame_GetCopper(SendMailMoney)) or 0
-    end
+-- A letter sent, from any window: to whom, and the money the game was told to put in it (SetSendMailMoney, which
+-- Blizzard's Send sets to 0 first and a C.O.D. leaves at 0). Read after the game's own functions, as hooks.
+local function OnMoneySet(copper) mailMoney = tonumber(copper) or 0 end
+
+local function OnSend(to)
+    local copper = mailMoney
+    mailMoney = 0
     sending = (type(to) == "string" and to ~= "" and copper > 0) and { to = to, copper = copper, at = GetTime() }
         or nil
 end
@@ -232,16 +273,24 @@ end
 
 function GK.StartMail()
     LIB.On("MAIL_SHOW", function()
-        if not MailFrame then return end
-        -- A post-hook only: Blizzard's send runs as it always does.
-        if not hooked and SendMailFrame_SendMail then
-            hooksecurefunc("SendMailFrame_SendMail", OnSend)
+        mailOpen = true
+        -- Post-hooks only: the game's functions run as they always do, whichever window called them.
+        if not hooked and SendMail and SetSendMailMoney then
+            hooksecurefunc("SetSendMailMoney", OnMoneySet)
+            hooksecurefunc("SendMail", OnSend)
             hooked = true
+        end
+        -- the game's window shown or hidden while the mailbox is open (TSM's switch): the card goes with it
+        if MailFrame and not frameHooked then
+            frameHooked = true
+            MailFrame:HookScript("OnShow", function() Update() end)
+            MailFrame:HookScript("OnHide", function() if card and card:IsShown() then Update() end end)
         end
         if card then card.dismissed = nil end
         Update()
     end)
     LIB.On("MAIL_CLOSED", function()
+        mailOpen = nil
         if not card then return end
         card.updating = true
         card:Hide()

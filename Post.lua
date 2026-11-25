@@ -243,7 +243,7 @@ local function Seal()
         GK.SetDeathNote(target.key, frame.tnote:GetText())
         frame.tnote:ClearFocus()
         Dress(target)
-        Said("On your Death list. Pick the next one, or Close.")
+        Said("In your Death Note. Pick the next one, or Close.")
     else
         local gold = tonumber(frame.gold:GetText()) or 0
         local silver = tonumber(frame.silver:GetText()) or 0
@@ -454,9 +454,9 @@ Dress = function(t)
         local on = GK.IsTracked(t.key)
         frame.bounty:Label("Your note")
         frame.tnote:SetText(on and GK.DeathNote(t.key) or "")
-        frame.small:SetText(on and "On your Death list." or "A warning and an eye over them when they are near.")
+        frame.small:SetText(on and "In your Death Note." or "A warning and an eye over them when they are near.")
         frame.small:SetPoint("TOP", 0, -L.smallPot)
-        frame.seal:SetText(on and "Save the note" or "Add to Death list")
+        frame.seal:SetText(on and "Save the note" or "Add to Death Note")
         return
     end
     plan = GK.PostPlan(t)

@@ -591,9 +591,6 @@ end
 
 local function Name(key) return Hide(GK.Show(key)) end
 
---- A guildie's, and the mode leaves them out (Guild.lua, GK.Hears).
-local function TurnedDown(who, mine) return not mine and GK.Hears ~= nil and not GK.Hears(who) end
-
 -- Every line in colours, not plain white (revenge's first, 2026-11-20; the rest 2026-11-21: "farg litt av texten
 -- da? som gold osv", the owner): a guildie in their class's colour, an enemy in theirs where it is known and in
 -- red where it is not, what was won - kills, points, a title, gold - in gold, and the words between in white.
@@ -705,14 +702,14 @@ end
 -- says where you stand. "vi skulle gjerne sett animasjoner/effekter for de forskjellige rankups" (the owner,
 -- 2026-11-18): each title's own effect comes from dakristia's kit, by its name (the top of this file).
 LIB.Listen("GK_RANKUP", function(who, title, points, mine, zone)
-    if type(title) ~= "string" or TurnedDown(who, mine) then return end
+    if type(title) ~= "string" then return end
     if not mine and not GK.GuildTitleTold(points) then return end
     local item = GuildItem(mine, zone, RankItem(who, title, points, mine))
     if item then Add(mine and "rankMine" or "rankGuild", mine, item) end
 end)
 
 LIB.Listen("GK_SPREE", function(who, spree, tierName, mine, key, zone)
-    if not key or TurnedDown(who, mine) then return end
+    if not key then return end
     if not mine and not GK.GuildSpreeTold(spree) then return end
     local line = ("%s kills in a row"):format(Coloured(spree, GOLD))
     if not mine then line = GuildieName(who) .. ": " .. line end
@@ -724,7 +721,6 @@ LIB.Listen("GK_SPREE", function(who, spree, tierName, mine, key, zone)
 end)
 
 LIB.Listen("GK_SPREE_ENDED", function(who, spree, killerName, mine, zone)
-    if TurnedDown(who, mine) then return end
     local line
     if mine then
         line = ("Your %d-kill spree ended (%s)"):format(spree, EnemyName(Hide(killerName)))
@@ -739,7 +735,6 @@ LIB.Listen("GK_SPREE_ENDED", function(who, spree, killerName, mine, zone)
 end)
 
 LIB.Listen("GK_TORMENTOR", function(who, enemyName, count, mine, zone)
-    if TurnedDown(who, mine) then return end
     local line = ("%s put an end to %s, who had killed %s of us"):format(mine and "You" or GuildieName(who),
         EnemyName(Hide(enemyName)), Coloured(count, GOLD))
     local item = GuildItem(mine, zone, { seal = MEDIA .. "seal_black", line = line, sound = "tormentor",
@@ -767,7 +762,6 @@ local function RevengeLine(mine, big, guildie, enemy, you, they)
 end
 
 LIB.Listen("GK_REVENGE", function(who, enemyName, you, they, mine, enemyKey, enemyClass, zone)
-    if TurnedDown(who, mine) then return end
     you, they = tonumber(you) or 0, tonumber(they) or 0
     local setting = mine and "revengeMine" or "revengeGuild"
     local class = GK.ValidClass and GK.ValidClass(enemyClass) or nil
@@ -790,9 +784,9 @@ end)
 -- du har grudge mot? jevner ut score" (the owner, 2026-11-22). Yours alone: a guildie's score with an enemy is
 -- theirs. No effect of its own, so a splash is the seal and the line.
 
---- A Death list kill's line: "Death list: X killed, now 3 - 9".
+--- A Death Note kill's line: "Death Note: X killed, now 3 - 9".
 local function ListedLine(enemy, you, they)
-    return ("%s %s killed \194\183 now %s - %s"):format(Coloured("Death list:", RED), enemy, Coloured(you, GOLD),
+    return ("%s %s killed \194\183 now %s - %s"):format(Coloured("Death Note:", RED), enemy, Coloured(you, GOLD),
         Coloured(they, GREY))
 end
 
@@ -832,8 +826,6 @@ end)
 -- yours was a splash unless a guildie's was off. class: the order's, so the poster has their crest when we
 -- never kept what they look like; zone: where it was got, for a guildie's only in my zone.
 LIB.Listen("GK_ORDER_DONE", function(who, helpers, targetKey, pot, mine, class, zone, concerns)
-    -- one about you is told whoever got them
-    if not concerns and TurnedDown(who, mine) then return end
     local more = type(helpers) == "table" and #helpers or 0
     -- in colours: the target in their class's (red when unknown), you in gold or the guildie in theirs, the gold in gold
     local hunter = LIB.IsMyStoredName(who) and "you" or Name(who)
@@ -852,6 +844,11 @@ LIB.Listen("GK_ORDER_DONE", function(who, helpers, targetKey, pot, mine, class, 
     if item then Add(mine and "orderMine" or "orderDone", mine, item) end
 end)
 
+-- The samples' enemy and guildie. The screenshot mode puts the made-up guild's in their place (GK.shotSample,
+-- Shots.lua): the store pictures of the splash and the toasts named these (the owner's pictures, 2026-11-23).
+local function SampleEnemy() return GK.shotSample and GK.shotSample.enemy or "Glue Enjoyer" end
+local function SampleGuildie() return GK.shotSample and GK.shotSample.guildie or "Kari" end
+
 -- what /grudge spree <what> shows: a tier, a number of kills, Reaper's two, a spree ended or a tormentor
 local SAMPLE_KILLS = { bloodied = 3, merciless = 5, butcher = 7, reaper = 10, scythe = 10, smoke = 10, grudgebound = 15 }
 
@@ -864,17 +861,17 @@ function GK.AnnounceSample(what)
     what = what and what:lower() or "butcher"
     if what == "fulfilled" then
         -- a face of its own: the sample's target is nobody we have seen
-        local item = { seal = MEDIA .. "seal_red", sound = "order", target = "Glue Enjoyer", pot = 50000,
+        local item = { seal = MEDIA .. "seal_red", sound = "order", target = SampleEnemy(), pot = 50000,
             face = { rf = "Orc", sx = 2, c = "WARRIOR" },
             effect = FirstFx(GK.FX, "order_fulfilled"), toastEffect = FirstFx(GK.TOASTFX, "order_fulfilled") }
         local mine, theirs = {}, {}
         for k, v in pairs(item) do mine[k], theirs[k] = v, v end
         mine.style, mine.mine, mine.hunter = "splash", true, "you"
-        local glue, gold = InClassColour("Glue Enjoyer", "WARRIOR"), Coloured(GK.MoneyText(50000), GOLD)
+        local glue, gold = InClassColour(SampleEnemy(), "WARRIOR"), Coloured(GK.MoneyText(50000), GOLD)
         mine.line = "Kill order fulfilled: " .. glue .. ", by " .. Coloured("you", GOLD) .. " - " .. gold
         mine.splashLine = item.effect and glue .. ", by " .. Coloured("you", GOLD) .. " - " .. gold or nil
-        theirs.style, theirs.mine, theirs.hunter, theirs.silent = "toast", false, "Kari", true
-        theirs.line = "Kill order fulfilled: " .. glue .. ", by " .. InClassColour("Kari", "MAGE") .. " - " .. gold
+        theirs.style, theirs.mine, theirs.hunter, theirs.silent = "toast", false, SampleGuildie(), true
+        theirs.line = "Kill order fulfilled: " .. glue .. ", by " .. InClassColour(SampleGuildie(), "MAGE") .. " - " .. gold
         Show(mine)
         Show(theirs)
         return
@@ -885,18 +882,18 @@ function GK.AnnounceSample(what)
             effect = FirstFx(GK.FX, "revenge"), toastEffect = FirstFx(GK.TOASTFX, "revenge") }
         local mine, theirs = {}, {}
         for k, v in pairs(item) do mine[k], theirs[k] = v, v end
-        local enemy = InClassColour("Glue Enjoyer", "WARRIOR")
+        local enemy = InClassColour(SampleEnemy(), "WARRIOR")
         mine.style, mine.mine = "splash", true
         mine.line = RevengeLine(true, item.effect ~= nil, nil, enemy, 3, 5)
         theirs.style, theirs.mine, theirs.silent = "toast", false, true
-        theirs.line = RevengeLine(false, false, InClassColour("Kari", "MAGE"), enemy, 1, 2)
+        theirs.line = RevengeLine(false, false, InClassColour(SampleGuildie(), "MAGE"), enemy, 1, 2)
         Show(mine)
         Show(theirs)
         return
     end
     -- a grudge evened up: two toasts, one still owed and one even, as your own are told (yours alone)
     if what == "grudge" then
-        local enemy = InClassColour("Glue Enjoyer", "WARRIOR")
+        local enemy = InClassColour(SampleEnemy(), "WARRIOR")
         local item = { style = "toast", mine = true, seal = MEDIA .. "seal_red", sound = "grudge",
             face = { rf = "Orc", sx = 2, c = "WARRIOR" }, line = GrudgeLine(enemy, 2, 3) }
         Show(item)
@@ -907,7 +904,7 @@ function GK.AnnounceSample(what)
     if what == "ended" or what == "tormentor" then
         local tormentor = what == "tormentor"
         local seal = MEDIA .. (tormentor and "seal_black" or "seal_broken")
-        local glue = EnemyName("Glue Enjoyer")
+        local glue = EnemyName(SampleEnemy())
         local line = tormentor and ("You put an end to %s, who had killed %s of us"):format(glue, Coloured(4, GOLD))
             or ("Your 12-kill spree ended (%s)"):format(glue)
         Show({ style = "splash", seal = seal, sound = what, line = line,
@@ -942,7 +939,7 @@ function GK.RankSample(what)
                 local mine = RankItem(LIB.Me(), row[2], row[1], true)
                 mine.style, mine.mine = "splash", true
                 ready[#ready + 1] = mine
-                local theirs = RankItem("Kari", row[2], row[1], false)
+                local theirs = RankItem(SampleGuildie(), row[2], row[1], false)
                 theirs.style, theirs.mine, theirs.silent = "toast", false, true
                 C_Timer.After(n * 2.5, function() Show(theirs) end)
                 n = n + 1
@@ -959,7 +956,7 @@ function GK.RankSample(what)
     local mine = RankItem(LIB.Me(), title, points, true)
     mine.style, mine.mine = "splash", true
     Show(mine)
-    local theirs = RankItem("Kari", title, points, false)
+    local theirs = RankItem(SampleGuildie(), title, points, false)
     theirs.style, theirs.mine, theirs.silent = "toast", false, true
     Show(theirs)
     return title

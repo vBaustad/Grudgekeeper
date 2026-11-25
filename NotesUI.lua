@@ -617,7 +617,7 @@ end
 --- Who a menu is about, learned for the who-picker (Pick.lua): { key, ... }, or nil for a mob, an NPC, a pet,
 --- yourself, or a name the client keeps from us.
 local function MenuPlayer(ctx)
-    if not (GK.db and GK.db.unitMenu and GK.char) or type(ctx) ~= "table" then return nil end
+    if not (GK.db and GK.char and GK.MenuAny()) or type(ctx) ~= "table" then return nil end
     local unit = Text(ctx.unit)
     local t
     if unit then
@@ -642,15 +642,21 @@ local function OnFriendlyNotesMenu(_, root, ctx)
     local t = MenuPlayer(ctx)
     if not t then return end
     local key = t.key
+    -- each line its own (Settings, Right-click menu, 2026-11-24): Shame, Kudos and their notes
+    local shown = {}
+    if GK.MenuLine("menuShame") then shown[#shown + 1] = "watch" end
+    if GK.MenuLine("menuKudos") then shown[#shown + 1] = "kudos" end
+    local notes = GK.MenuLine("menuNotes") and GK.IsNoted(key)
+    if #shown == 0 and not notes then return end
     if root.CreateDivider then root:CreateDivider() end
-    for _, list in ipairs({ "watch", "kudos" }) do
+    for _, list in ipairs(shown) do
         local lists = root:CreateButton(MENU_LIST[list])
         for _, tag in ipairs(GK.TAGS[list]) do
             lists:CreateButton(GK.TagText(tag), function() GK.WriteNote(t, list, "", tag) end)
         end
         lists:CreateButton("No tag", function() GK.WriteNote(t, list, "", "") end)
     end
-    if GK.IsNoted(key) then root:CreateButton("Their notes", function() ShowNotes(key) end) end
+    if notes then root:CreateButton("Their notes", function() ShowNotes(key) end) end
 end
 
 --- An enemy's menu: learned for the who-picker, and no line of ours here (Profile.lua has them).

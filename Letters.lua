@@ -281,7 +281,7 @@ end
 -- of its own. Someone who skipped a release gets each letter they missed, oldest first: 1.5.0's came the
 -- same day as 1.4.0's (the owner, 2026-11-12: "må vel ha enda en what's new da"). The next one: its id at
 -- the end of NEWS, and its words in NEWS_WORDS.
-local NEWS = { "1.4.0", "1.5.0", "1.6.0", "1.7.0", "1.9.0", "1.12.0" }
+local NEWS = { "1.4.0", "1.5.0", "1.6.0", "1.7.0", "1.9.0", "1.12.0", "1.13.0" }
 local LATEST = NEWS[#NEWS]
 
 -- Each letter in his voice: two short paragraphs with air between and no numbers, and a button to where
@@ -295,10 +295,10 @@ local NEWS_WORDS = {
         "Avenging a fallen guildie pays when you come back for the killer - not in the fight where they fell.",
     }, "seal_red", "Leaderboard", function() GK.OpenWindow(2) end },
     ["1.5.0"] = { "Eyes on them", {
-        "Put an enemy on your Death list, and I'll tell you when they come near. You'll know them by the eye over their head.",
+        "Put an enemy in your Death Note, and I'll tell you when they come near. You'll know them by the eye over their head.",
         "",
-        "They wait on that list, and nobody else reads that page.",
-    }, "seal_black", "Death list", function() GK.OpenLedgerPage("Death list") end },
+        "They wait in that book, and nobody else reads that page.",
+    }, "seal_black", "Death Note", function() GK.OpenLedgerPage("Death Note") end },
     ["1.6.0"] = { "Blood in a row", {
         "String your kills together and I'll call it out - louder, the longer you last.",
         "",
@@ -315,7 +315,7 @@ local NEWS_WORDS = {
         "A tab on your guild window puts my ledger beside guild chat. Now everyone sees who's working, and who's slacking.",
         "",
         "Brag if you've earned it. And if all you do is die - maybe try killing someone, for a change.",
-    }, "seal_black", "Settings", function() GK.OpenOptions("In the game") end },
+    }, "seal_black", "Settings", function() GK.OpenOptions("Buttons & tabs") end },
     -- 1.8.0 went out without one. 1.9.0's: the spree splashes and the longer title ladder, what a player
     -- hears and reaches for ("lage en liten 'what's new'?", the owner, 2026-11-18, who said ok to these words).
     ["1.9.0"] = { "Louder now", {
@@ -330,6 +330,11 @@ local NEWS_WORDS = {
         "",
         "The patch notes say what is new.",
     }, "seal_red", "Patch notes", function() GK.OpenPatchNotes("1.12.0") end },
+    ["1.13.0"] = { "Patch notes", {
+        "A new version of Grudgekeeper is here: a quick setup for your settings, and the news you missed while away.",
+        "",
+        "The patch notes say what is new.",
+    }, "seal_red", "Patch notes", function() GK.OpenPatchNotes("1.13.0") end },
 }
 
 --- The news letters not seen yet, oldest first: all of them when none was, those after the one seen last,
@@ -366,7 +371,9 @@ end
 -- bronze rammen osv fra spillet (samme som add to kill order) med fin punkliste osv og mer som vanlig patch notes ...
 -- jeg vil ha Patch notes og noe mer forklarende under noen punkter om det trengs" (the owner, 2026-11-23). An update's
 -- letter by the icon still says there is news; opening it opens these. /grudge news opens the latest.
--- { version, date, { { heading, { { lead, text, more } ... } } ... } }: more is the line under a point, when it needs one.
+-- { version, date, { { heading, { { lead, text, more } ... } } ... }, button }: more is the line under a point, when
+-- it needs one; button, { words, what it does }, stands beside Close ("forholdsvis kort, og med en 'open settings'
+-- knapp som kan sende de til settings", the owner, 2026-11-24).
 local PATCH_NOTES = {
     ["1.12.0"] = { "23 November 2026", {
         { "New", {
@@ -383,8 +390,21 @@ local PATCH_NOTES = {
             { "Kill streaks", "Grey and farmed kills no longer count." },
         } },
     } },
+    -- the next version's, kept short (the owner, 2026-11-24); its number and date are the tag's to set
+    ["1.13.0"] = { "25 November 2026", {
+        { "New", {
+            { "Quick setup", "The settings open on two choices: what you see and what you share. Every row can still be changed." },
+            { "Catching up", "When you log in, the guildies online fill in the kills and deaths you missed, in the News and on Versus." },
+            { "Right-click menu", "Turn each of Grudgekeeper's lines on or off, under Settings." },
+            { "Death Note on every character", "Turn it on under Settings, Death Note, and your alts share the list." },
+            { "Targeted", "A warning when someone in your Death Note targets you, out of a fight. Off to begin with, under Warnings." },
+        } },
+        { "Changed", {
+            { "Death Note", "The Death list has a new name." },
+        } },
+    }, { "Open settings", function() GK.OpenOptions("Quick setup") end } },
 }
-local PATCH_LATEST = "1.12.0"
+local PATCH_LATEST = "1.13.0"
 GK.PATCH_NOTES, GK.PATCH_LATEST = PATCH_NOTES, PATCH_LATEST       -- for tools/smoke_grudgekeeper.py
 
 local NOTES_W, NOTES_H, NOTES_TEXT_W = 460, 520, 392      -- the notes scroll when they run past about 390
@@ -427,6 +447,14 @@ local function BuildNotes()
     f.lines = {}
     f.close = GK.FrameButton(f, "Close", 110, function() f:Hide() end)
     f.close:SetPoint("BOTTOMRIGHT", -16, 14)
+    -- a version's way to what it is about (Open settings): the notes close, and there it opens
+    f.go = GK.FrameButton(f, "", 130, function()
+        local go = f.goFn
+        f:Hide()
+        if go then go() end
+    end)
+    f.go:SetPoint("RIGHT", f.close, "LEFT", -8, 0)
+    f.go:Hide()
     notes = f
 end
 
@@ -480,6 +508,10 @@ function GK.OpenPatchNotes(version)
         end
     end
     for i = n + 1, #f.lines do f.lines[i]:Hide() end
+    local go = p[3]
+    f.goFn = go and go[2] or nil
+    if go then f.go:SetText(go[1]) end
+    f.go:SetShown(go ~= nil)
     f.body:SetHeight(math.max(10, y))
     f.scroll:SetVerticalScroll(0)
     f:ClearAllPoints()

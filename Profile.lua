@@ -348,7 +348,7 @@ function GK.PosterCard(t, inLedger)
     if GK.IsTracked and GK.IsTracked(key) then
         d.buttons[#d.buttons + 1] = { "Remove from list", function() GK.Untrack(key) end }
     elseif GK.TrackSaying then
-        d.buttons[#d.buttons + 1] = { "Add to Death list", function() GK.OpenDeathNote({ key = key, c = c, r = r, l = l }) end }
+        d.buttons[#d.buttons + 1] = { "Add to Death Note", function() GK.OpenDeathNote({ key = key, c = c, r = r, l = l }) end }
     end
     if f and fkey and (f.k or 0) + (f.d or 0) + (f.a or 0) > 0 then
         local armed = forgetArmed == fkey and GetTime() < forgetUntil
@@ -871,19 +871,26 @@ end
 local FILE_LABEL = "Grudge file"
 
 local function OnEnemyMenu(_, root, ctx)
-    if not (GK.db and GK.db.unitMenu and GK.char) or type(ctx) ~= "table" then return end
+    if not (GK.db and GK.char and GK.MenuAny()) or type(ctx) ~= "table" then return end
     local unit = Text(ctx.unit)
     local t = unit and GK.ReadUnit(unit)   -- an enemy player we can tell apart, or nil
     if not t then return end
     t.unit = unit
+    -- Each line its own (Settings, Right-click menu, 2026-11-24), and the divider over the first that shows.
+    local lined = false
+    local function Line(label, fn)
+        if not lined and root.CreateDivider then root:CreateDivider() end
+        lined = true
+        root:CreateButton(label, fn)
+    end
+    if GK.MenuLine("menuFile") then Line(FILE_LABEL, function() GK.ShowProfile({ kind = "poster", t = t }) end) end
     -- and the kill order itself, one click from the enemy: opening the ledger to post one was too much
     -- work (the owner, 2026-11-05). The label says which of the sheet's three cases it will open.
-    AddLine(root, FILE_LABEL, function() GK.ShowProfile({ kind = "poster", t = t }) end, GK.PostLabel(t),
-        function() GK.OpenPost(t) end)
-    -- Tracked (Sightings.lua): yours alone, one line that says which way it goes
-    if GK.IsTracked then
+    if GK.MenuLine("menuOrder") then Line(GK.PostLabel(t), function() GK.OpenPost(t) end) end
+    -- the Death Note (Sightings.lua): yours alone, one line that says which way it goes
+    if GK.IsTracked and GK.MenuLine("menuDeathNote") then
         local on = GK.IsTracked(t.key)
-        root:CreateButton(on and "Remove from Death list" or "Add to Death list", function()
+        Line(on and "Remove from Death Note" or "Add to Death Note", function()
             if on then GK.Untrack(t.key) else GK.OpenDeathNote(t) end
         end)
     end
@@ -891,20 +898,20 @@ local function OnEnemyMenu(_, root, ctx)
     -- which typing one wouldn't. One guild at a time, so the line says which it replaces.
     local ok, guild = pcall(GetGuildInfo, unit)
     if ok and not GK.Secret(guild) and type(guild) == "string" and guild ~= "" and GK.CanWatchGuild
-        and GK.CanWatchGuild() then
+        and GK.CanWatchGuild() and GK.MenuLine("menuGuild") then
         local current = GK.WatchedGuild()
         local same = GK.SameGuild(current, guild)        -- the one on watch, if typed in another case
         local label = (same and ("Stop tracking <%s>"):format(guild))
             or (current and ("Track <%s> instead of <%s>"):format(guild, current))
             or ("Track their guild <%s>"):format(guild)
-        root:CreateButton(label, function() GK.WatchGuild(same and current or guild, not same) end)
+        Line(label, function() GK.WatchGuild(same and current or guild, not same) end)
     end
 end
 
 -- A friendly player's profile, every one of them since 2026-11-20: a player outside the guild is asked for
 -- their score as it opens (GK.AskProfile), and it fills in when they answer.
 local function OnFriendlyMenu(_, root, ctx)
-    if not (GK.db and GK.db.unitMenu and GK.char) then return end
+    if not (GK.db and GK.char and GK.MenuLine("menuProfile")) then return end
     local key, unit = GK.MenuKey(ctx)
     if not key then return end
     AddLine(root, LABEL, function()

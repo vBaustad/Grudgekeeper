@@ -6,7 +6,8 @@
 --
 -- While the panel is open nothing leaves this client: no addon message to the guild, no line in guild
 -- chat. When it closes - or the game logs out or reloads with it open - your own record and the guild's
--- store are put back exactly as they were when it opened, so nothing the buttons did is kept.
+-- store are put back exactly as they were when it opened, so nothing the buttons did is kept. Guild chat is
+-- the one thing left as it is: it is real chat, and no button makes any.
 -- The pretend guildies are Kari and Edvard; the pretend enemies are Pølse Hans and Gærd Balle, of
 -- whichever side is not yours. With an enemy player targeted, "your target" is them instead.
 local ADDON, GK = ...
@@ -40,7 +41,11 @@ local function Restore()
     if not (GK.testMode and saved) then return end
     GK.testMode = false
     if saved then
+        -- the guild window's page (GuildTab.lua) holds the very table it adds guild chat to: put back as a copy,
+        -- every line heard after the panel closed went to a table no longer saved, gone at the next login
+        local chat = GK.char.guildChat
         PutBack(GK.char, saved.char)
+        GK.char.guildChat = chat
         PutBack(saved.storeTable, saved.store)
         saved = nil
     end
@@ -138,7 +143,7 @@ end
 
 -- A warning as its row on Settings, Warnings would tell it, with the words the game uses (Sightings.lua,
 -- NotesUI.lua): for that moment the row is its own way, so it comes whatever yours says.
-local WARN_WAY = { alertNear = "screen", watchGroup = "screen", kudosGroup = "chat" }
+local WARN_WAY = { alertNear = "screen", watchGroup = "screen", kudosGroup = "chat", targetedBy = "screen" }
 local function Warning(key, text, urgent, ownSound, target)
     local was = GK.db[key]
     GK.db[key] = WARN_WAY[key]
@@ -192,10 +197,11 @@ local ACTIONS = {
     { "You owe a bounty", function()
         -- your own order, fulfilled by Edvard: the card of what you owe, shown now and at a mailbox ("jeg vil også ha
         -- en test for 'skylder penger' så jeg kan se hvordan det ser ut, og når jeg åpner mailbox", the owner,
-        -- 2026-11-22). Fill in leaves the name and the gold empty: Edvard is nobody you owe.
+        -- 2026-11-22). Fill in mail leaves the name and the gold empty: Edvard is nobody you owe.
         local o = GK.PostOrder(Enemy("Gærd Balle", "HUNTER"), 50000, "Test: you owe Edvard 5g")
         if o then Hear("Edvard", "F", 1, LIB.Me(), o.id, GK.Zone()) end
         GK.PreviewOwed(true)
+        Say("to one of your own characters, for money you say, written in full: /grudge owe First Surname 50c")
     end },
 
     { "The guild" },
@@ -230,6 +236,20 @@ local ACTIONS = {
     end },
     { "Edvard fulfils it", function() Hear("Edvard", "F", 1, Guildie("Kari"), KARI_ORDER, GK.Zone()) end },
     { "Kari and Edvard's scores", Scores },
+    -- What a login missed (Guild.lua, SayMissed), to see alone: Kari's and Edvard's own kills and deaths since you
+    -- were last on, and a count against the guild on watch - in the News, on Versus with a guild on watch, and none
+    -- of it announced ("jeg vil teste og se selv ... uten hjelp fra andre", the owner, 2026-11-24).
+    { "They answer your login", function()
+        local now, v, w = time(), Enemy("Pølse Hans", "ROGUE"), Enemy("Gærd Balle", "HUNTER")
+        local watched = GK.WatchedGuild and GK.WatchedGuild()
+        local guild = watched or "Bloodfang"
+        Hear("Kari", "G", 1, "K", v.key, v.c, v.r, v.l, GK.Zone(), now - 25 * 60, guild, 2, 6)
+        Hear("Edvard", "G", 1, "D", w.key, w.c, w.r, w.l, GK.Zone(), now - 50 * 60, guild, 1)
+        Hear("Kari", "V", 1, w.key, w.c, w.r, w.l, guild, 3, 1)
+        GK.OpenLedgerPage("News")
+        Say(("Kari and Edvard answered your login: two fights you missed, in the News%s."):format(
+            watched and " and on Versus" or ""))
+    end },
 
     -- the rows of Settings, Warnings, in its order, and the tracked enemy's, which has no row
     { "Warnings" },
@@ -237,15 +257,20 @@ local ACTIONS = {
         local v = TheEnemy()
         Warning("alertNear", ("%s is near!"):format(GK.Show(v.key)), true, nil, v.key)
     end },
-    { "Death list: enemy near", function()
+    { "Death Note: enemy near", function()
         local v = TheEnemy()
-        GK.Warn(("Death list: %s is near!"):format(GK.Show(v.key)), true, nil, v.key, v.key)
+        GK.Warn(("Death Note: %s is near!"):format(GK.Show(v.key)), true, nil, v.key, v.key)
     end },
     { "Shame player joins", function()
         Warning("watchGroup", ("Shame list: %s joined your group"):format("Edvard"), true, true)
     end },
     { "Kudos player joins", function()
         Warning("kudosGroup", ("|cff4dff66Kudos:|r %s joined your group"):format("Edvard"), false)
+    end },
+    { "Death Note: targets you", function()
+        local v = TheEnemy()
+        Warning("targetedBy", ("Death Note: %s is targeting you!"):format(GK.Show(v.key)), true, true, v.key)
+        GK.TargetSound()
     end },
 }
 GK.debugActions = ACTIONS    -- for tools/smoke_grudgekeeper.py, which presses every one
@@ -268,12 +293,9 @@ local function Announce(set, event, ...)
     for _, k in ipairs(HELD) do was[k] = GK.db[k] end
     GK.db.announceWhenMine, GK.db.announceWhenGuild = "always", "always"
     GK.db.spreeGuildFrom, GK.db.rankGuildFrom, GK.db.guildZoneOnly, GK.db.guildSounds = 3, 0, false, true
-    local heard = GK.db.mode
-    GK.db.mode = "normal"                -- the pretend guildies are nobody's friends
     for k, v in pairs(set) do GK.db[k] = v end
     LIB.Fire(event, ...)        -- its listeners run at once (LibForever), so the settings above are what they read
     for _, k in ipairs(HELD) do GK.db[k] = was[k] end
-    GK.db.mode = heard
     if GK.db.mineSounds == false then Say("Play sounds is off on Mine, so yours are silent.") end
 end
 
@@ -351,7 +373,7 @@ local HEAR = {
     -- one who still led over you, got again: where you stand, or even (Announce.lua, GK_GRUDGE)
     { "A grudge, still owed", function() Grudge(false) end },
     { "A grudge evened up", function() Grudge(true) end },
-    { "A Death list kill", DeathListKill },
+    { "A Death Note kill", DeathListKill },
     { "A spree ended", function() Ended(true) end },
     { "A tormentor put down", function() Tormentor(true) end },
     { "Kari's" },
@@ -418,7 +440,7 @@ end
 GK.debugAll = ALL            -- for tools/smoke_grudgekeeper.py
 
 -- ---------------------------------------------------------------------------
--- By mode: each splash, toast and letter one mode lets through, once each
+-- By what you see: each splash, toast and letter one choice of Quick setup lets through, once each
 -- ---------------------------------------------------------------------------
 -- "jeg tenkte en ting likt som show all splashes men som viste kun de forskjellige splash/toasts/brev som dukker opp i
 -- hver mode" (the owner, 2026-11-22). Every one above forces the settings; here each moment happens through the
@@ -428,21 +450,19 @@ GK.debugAll = ALL            -- for tools/smoke_grudgekeeper.py
 -- file's locals.
 do
     local SETTINGS = { "anyLetters", "letters", "myLetters", "keepLetters", "share", "shareOutside", "autoOrders",
-        "alertNear", "watchNearby", "watchGroup", "kudosGroup", "plateMarks", "plateNotes", "mapPins", "mode",
+        "alertNear", "watchNearby", "watchGroup", "kudosGroup", "targetedBy", "plateMarks", "plateNotes", "mapPins", "mode",
         "spreeMine", "spreeGuild", "spreeGuildFrom", "rankMine", "rankGuild", "rankGuildFrom", "orderMine",
         "orderDone", "spreeEnded", "spreeEndedGuild", "spreeTormentor", "spreeTormentorGuild", "revengeMine",
         "revengeGuild", "grudgeMine", "guildZoneOnly", "announceWhenMine", "announceWhenGuild", "announceTime",
         "mineSounds", "guildSounds", "warnSounds", "spreeSound", "spreeSoundGuild", "rankSound", "rankSoundGuild",
         "orderSound", "orderSoundGuild", "revengeSound", "revengeSoundGuild", "grudgeSound", "endedSound",
-        "endedSoundGuild", "tormentorSound", "tormentorSoundGuild", "nearSound", "shameSound", "shotFulfil",
+        "endedSoundGuild", "tormentorSound", "tormentorSoundGuild", "nearSound", "shameSound", "targetSound", "shotFulfil",
         "shotEveryKill" }
-    -- set: over the settings as installed; none: the player's own
-    local MODES = {
-        { id = "normal", name = "Normal", set = { mode = "normal" } },
-        { id = "streamer", name = "Streamer", set = { mode = "streamer" } },
-        { id = "private", name = "Private", set = { mode = "private" } },
-        { id = "yours", name = "Your settings" },
-    }
+    -- set: over the settings as installed; none: the player's own. By What you see's choices since 2026-11-24
+    -- (GK.SEE): what you share turns nothing down any more, so Normal, Streamer and Private showed the same.
+    local MODES = {}
+    for i, c in ipairs(GK.SEE) do MODES[i] = { id = c.id, name = c.name, set = c.rows } end
+    MODES[#MODES + 1] = { id = "yours", name = "Your settings" }
     local SHOWN = { splash = true, toast = true, letter = true }
     local GAP = { splash = 1.5, toast = 2.5, letter = 0.5 }     -- a splash waits for itself as well (Step)
     local GUILDIE, OTHER = "Kari", "Edvard"          -- the guildie whose moments they are, and one more
@@ -497,7 +517,7 @@ do
 
     local function Spree(n) return { setup = function() GK.char.spree = n - 1 end, act = YouKill } end
 
-    --- A guildie's moment. No mode hears a friend by being one (GK.Hears): Normal hears everyone, the others nobody.
+    --- A guildie's moment: shown by every choice that has the guildie's row on.
     local function Theirs(label, act, setup) return { label, { who = GUILDIE, setup = setup, act = act } } end
 
     -- { label, a way it happens, another way ... }: the first way the mode lets through is the one played
@@ -511,7 +531,7 @@ do
         { "Revenge", { setup = function() KilledYou(1, 3) end, act = YouKill } },
         { "A grudge, still owed", { setup = function() KilledYou(1, 3, true) end, act = YouKill } },
         { "A grudge evened up", { setup = function() KilledYou(1, 2, true) end, act = YouKill } },
-        { "A Death list kill", { setup = function() GK.char.tracked[Them().key] = { t = time() } end, act = YouKill } },
+        { "A Death Note kill", { setup = function() GK.char.tracked[Them().key] = { t = time() } end, act = YouKill } },
         { "A spree ended", { setup = function() GK.char.spree = 12 end, act = YouDie } },
         { "A tormentor put down", { setup = function() GK.Store().tormentors[Them().key] = 4 end, act = YouKill } },
         { "Your death posts an order", { act = YouDie, setup = function()
@@ -668,7 +688,7 @@ do
     end
 
     -- at the top of the third column: a heading, a button for each, and a line saying what each brought
-    table.insert(ALL, 1, { "By mode" })
+    table.insert(ALL, 1, { "By what you see" })
     for i, m in ipairs(MODES) do table.insert(ALL, 1 + i, { m.name, function() Play(m) end }) end
     table.insert(ALL, 2 + #MODES, { "", said = true })
 
@@ -809,6 +829,49 @@ local function Build()
     if LIB.RegisterWindow then LIB.RegisterWindow(panel, GK.db, "debugPanel") end
     -- Closing it any way at all - the X, Escape, the big button - puts everything back.
     panel:HookScript("OnHide", Hidden)
+end
+
+-- ---------------------------------------------------------------------------
+-- /grudge owe <name> <money>: a debt you can really pay
+-- ---------------------------------------------------------------------------
+-- The test's debt to a player you name, for the money you say: Fill in mail writes their name and the gold, and a
+-- Send pays it as a real one would ("kan vi som test legge inn [a character of mine] som mottaker og 50c som reward?
+-- fill in la ikke inn noe", the owner, 2026-11-25). The name is typed in the game, never written here, and the debt
+-- goes with everything else when the panel closes; the money you send is real.
+
+--- Money as typed: copper alone ("50"), or numbers with g, s and c ("50c", "5s", "1g20s"). nil for anything else.
+local function Copper(text)
+    text = (text or ""):lower()
+    if text:find("^[0-9]+$") then return tonumber(text) end
+    if text == "" or text:gsub("[0-9]+[gsc]", "") ~= "" then return nil end
+    local copper, unit = 0, { g = 10000, s = 100, c = 1 }
+    for n, u in text:gmatch("([0-9]+)([gsc])") do copper = copper + tonumber(n) * unit[u] end
+    return copper
+end
+
+--- /grudge owe: only with the test panel open, so the debt goes when it closes.
+function GK.TestOwe(text)
+    if not (GK.testMode and panel and panel:IsShown()) then
+        print(GK.TAG .. ": open the test panel first (/grudge debug) - this debt goes when it closes.")
+        return
+    end
+    local name, money = strtrim(text or ""):match("^(.-) +([^ ]+)$")      -- a chat line holds no tab
+    local key, copper = GK.TypedName(name), Copper(money)
+    if not (key and copper and copper > 0) then
+        Say("a name and the money: /grudge owe First Surname 50c (or 5s, 1g, 1g20s).")
+        return
+    end
+    if key == LIB.Me() then
+        Say("that is you - name one of your other characters.")
+        return
+    end
+    local o = GK.PostOrder(Enemy("Gærd Balle", "HUNTER"), copper, "Test: you owe " .. GK.Show(key))
+    if not o then return end
+    o.testNamed = true
+    Hear(key, "F", 1, LIB.Me(), o.id, GK.Zone())
+    GK.PreviewOwed(true)
+    Say(("you owe %s %s. At a mailbox, Fill in mail writes their name and the gold, and Send really sends it."):format(
+        GK.Show(key), GK.MoneyText(copper)))
 end
 
 --- /grudge debug: open the test panel, and test mode with it.

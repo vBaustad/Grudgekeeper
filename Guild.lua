@@ -11,7 +11,8 @@
 --                                                              for my portrait in the ledger; parts:
 --                                                              what each of my PCs made of the score
 --                                                              ("One character, more than one PC")
---   Q;1                                                        tell me everything (at login)
+--   Q;1;since                                                  tell me everything (at login); since: when I was
+--                                                              last online, for what I missed (G, V)
 --   K;1;name;class;race;level;zone;points;avenged;times;raceFile;sex;spree
 --                                                              I killed someone (avenging a guildie;
 --                                                              times: how often I have, in all; raceFile
@@ -49,6 +50,12 @@
 --   U;1;name                                                   forget my kills, deaths and news about
 --                                                              this player (a grudge that was wrong)
 --   Y;1;poster;id                                              I paid my share of a fulfilled order
+--   G;1;kind;name;class;race;level;zone;t;guild;times;points  a kill (K) or death (D) of mine said again to a
+--                                                              guildie who was away (answering a Q, and at my
+--                                                              own login): when it was, the enemy's guild, my
+--                                                              count with them
+--   V;1;name;class;race;level;guild;kills;deaths               my count against one of the guild on watch
+--                                                              (with the G), for the versus page
 -- Order states: o open, d fulfilled (a bounty may be owed), p paid, x withdrawn, e expired.
 -- The pot: the poster's own reward, plus what anyone else puts in (T). Each backer owns their share,
 -- owes it to whoever fulfils the order, and says when they paid it (Y); the poster's own part is
@@ -59,7 +66,8 @@
 -- (enemies and their count of us killed, Core.lua), 500 guildies' last sprees (in memory only), 80 feed
 -- lines and 20 backers per order (a share passed on, P, counts against the same 20) with the names of 20 more
 -- who took theirs out (TookOut), and 20 fights against the guild on watch, kept as they leave the feed's 80
--- (KeepFight). Every sender is also held to LibForever's 30 messages / 10 s.
+-- (KeepFight). Every sender is also held to LibForever's 30 messages / 10 s, and to 20 lines said again (G) and 30
+-- counts (V) a quarter of an hour (Allowed), from at most 500 senders at once.
 local ADDON, GK = ...
 local LIB = GK.Lib or LibStub("LibForever-1.0")      -- names by themselves (Core.lua, GK.Lib)
 
@@ -182,7 +190,15 @@ local function KeepFight(s, e)
     local guild = GK.WatchedGuild and GK.WatchedGuild()
     if not (guild and IsFight(e, guild)) then return end
     s.fights = s.fights or {}
-    table.insert(s.fights, 1, e)
+    -- by its time: a line leaving the feed is as new as any kept, but one said again at a login (G) need not be
+    local at = #s.fights + 1
+    for i, x in ipairs(s.fights) do
+        if (x.t or 0) <= (e.t or 0) then
+            at = i
+            break
+        end
+    end
+    table.insert(s.fights, at, e)
     for i = #s.fights, MAX_FIGHTS + 1, -1 do s.fights[i] = nil end
 end
 
@@ -952,20 +968,13 @@ do
     --- The friends read again at the next question.
     function GK.ForgetFriends() readAt = nil end
 
-    --- Is this guildie's news told here?
-    function GK.Hears(who)
-        if GK.Mode() == "normal" then return true end
-        -- Streamer and Private: yours alone. Streamer heard friends and the group until 2026-11-22: "streamer mode
-        -- skal vel helst ikke få noe spesielt fra guildies egentlig. ikke notifications om kill orders osv."
-        return type(who) == "string" and LIB.IsMyStoredName(who) or false
-    end
+    -- Whose news was told here was Mode's until 2026-11-24: Streamer and Private told nothing of a guildie's. What you
+    -- see is the rows' now (Settings, Quick setup), and what you share turns nothing down.
 
-    --- Yours, backed by you, on someone on your Death list or on one who killed you: about you, whatever is heard.
-    --- Streamer: yours and backed by you alone - your gold - and no guildie's order on one who killed you.
+    --- Yours, backed by you, on someone in your Death Note or on one who killed you: about you.
     function GK.OrderConcerns(o)
         local me = LIB.Me()
         if o.by == me or (o.pot and o.pot[me]) then return true end
-        if GK.Mode() == "streamer" then return false end
         if type(o.n) ~= "string" then return false end
         if GK.IsTracked and GK.IsTracked(o.n) then return true end
         local f = GK.char and GK.char.foes and GK.char.foes[o.n]
@@ -975,7 +984,6 @@ do
     --- Does the order come as a letter, a warning and a pin?
     function GK.OrderLoud(o)
         if GK.OrderConcerns(o) then return true end
-        if not GK.Hears(o.by) then return false end
         return (GK.Pot(o)) > 0 or GK.IsFriend(o.by) == true
     end
 end
@@ -2136,6 +2144,165 @@ local function OnlyPC()
     return GK.SharesScore() and type(GK.char.parts) == "table" and not next(GK.char.parts)
 end
 
+-- ---------------------------------------------------------------------------
+-- What a login missed
+-- ---------------------------------------------------------------------------
+-- A kill or a death was heard only by who was online then (K and D are never passed on, OnKill), so a guildie away
+-- at the time had none of it, in the News or on the versus page: "alles addon bør jo bli oppdatert på en måte når
+-- man logger inn, så man får nyeste informasjonen ... ellers funker i hvert fall ikke versus" (the owner,
+-- 2026-11-24, after a friend's versus page showed three fights the owner's never did). So each of us online answers
+-- a login with our OWN kills and deaths since the asker was last here (G), at most the last CATCH_UP and
+-- MAX_CAUGHT of them, and our own count against each of the guild on watch we fought since (V). Nobody passes on
+-- another's. So a guildie away at our login could not answer it, and at their own login said nothing of theirs
+-- unasked: we never heard their kills from before. Now each of us says the last CATCH_UP of ours at our login too,
+-- for whoever logged in while we were away ("Bygg det først", the owner, 2026-11-25) - but a /reload says nothing
+-- again: on within LOGIN_GAP of when we were last online, all who are on now heard us then. Nothing of it is
+-- announced - it is old news - and a line already heard, live or in another answer, is not taken again
+-- (FeedCaughtUp).
+local CATCH_UP, MAX_CAUGHT, MAX_TOTALS = 12 * 3600, 10, 15
+local LOGIN_GAP = 15 * 60            -- the sweep keeps when we were last online to ten minutes: a /reload is inside
+local SAME_LINE = 120                -- a line heard live and the same said again: one, the clocks a little apart
+local CAUGHT_FOR, MAX_SENDERS = 900, 500
+local caughtFrom, caughtCount = {}, 0 -- [sender] = { g, v, at }: what we took from them this quarter of an hour
+local wantSince                      -- the earliest a guildie who asked since our last answer was here (OnAsk)
+local missedSince                    -- when we were last online, for our own ask (Ask)
+
+--- Whether a sender may say one more of this kind (g: a line, v: a count) this quarter of an hour.
+local function Allowed(sender, kind, most)
+    local now = GetTime()
+    local c = caughtFrom[sender]
+    if not c or now - c.at > CAUGHT_FOR then
+        if not c then
+            if caughtCount >= MAX_SENDERS then
+                wipe(caughtFrom)
+                caughtCount = 0
+            end
+            caughtCount = caughtCount + 1
+        end
+        c = { g = 0, v = 0, at = now }
+        caughtFrom[sender] = c
+    end
+    if c[kind] >= most then return false end
+    c[kind] = c[kind] + 1
+    return true
+end
+
+--- A guildie's count with an enemy, from what they said again: only ever up, as the count only grows. A K or D
+--- heard live while this waited said a newer one.
+local function RaiseSlain(who, key, c, r, l, times)
+    local e = GK.Store().slain[key]
+    if e and (tonumber(e.by[who]) or 0) >= times then return end
+    GK.NoteSlain(who, key, c, r, l, times)
+end
+
+local function RaiseWanted(who, key, c, r, l, times)
+    local w = GK.Store().wanted[key]
+    if w and (tonumber(w.victims[who]) or 0) >= times then return end
+    GK.NoteWanted(who, key, c, r, l, times)
+end
+
+--- A line said again into the feed, by its time, unless we have it: one heard live within SAME_LINE of it, or the
+--- same said again before (to the second). Older than a full feed's last, it goes where fights are kept.
+local function FeedCaughtUp(e)
+    local s = GK.Store()
+    for _, kept in ipairs({ s.feed, s.fights or {} }) do
+        for _, x in ipairs(kept) do
+            if x.who == e.who and x.kind == e.kind and GK.SameName(x.n, e.n) then
+                local apart = math.abs((x.t or 0) - e.t)
+                if apart == 0 or (not x.late and apart <= SAME_LINE) then return false end
+            end
+        end
+    end
+    local feed = s.feed
+    local at = #feed + 1
+    for i, x in ipairs(feed) do
+        if (x.t or 0) < e.t then
+            at = i
+            break
+        end
+    end
+    if at > MAX_FEED then
+        KeepFight(s, e)
+        return true
+    end
+    table.insert(feed, at, e)
+    for i = #feed, MAX_FEED + 1, -1 do
+        local gone = feed[i]
+        feed[i] = nil
+        KeepFight(s, gone)
+    end
+    return true
+end
+
+--- G: a kill or a death of the sender's, said again. Theirs alone (who is the sender), within CATCH_UP, and
+--- nothing announced: no toast, no spree, no letter.
+local function OnCaughtUp(sender, f)
+    local kind = f[3]
+    if kind ~= "K" and kind ~= "D" then return end
+    local name = GK.PlayerKey(GK.Clean(f[4], 64))
+    local now = time()
+    local t = Int(f[9], now - CATCH_UP - 600, now + 60)
+    if not (name and t) or not Allowed(sender, "g", 2 * MAX_CAUGHT) then return end
+    t = math.min(t, now)
+    local c, r, l = GK.ValidClass(f[5]), GK.Clean(f[6], 20), GK.ValidLevel(f[7])
+    GK.NoteEnemyGuild(name, f[10])
+    local times = Int(f[11], 1, 1e6)
+    if times and kind == "K" then RaiseSlain(sender, name, c, r, l, times) end
+    if times and kind == "D" then RaiseWanted(sender, name, c, r, l, times) end
+    FeedCaughtUp({ t = t, who = sender, kind = kind, n = name, c = c, l = l, z = GK.Clean(f[8], 40),
+        p = kind == "K" and Int(f[12], 0, 100) or nil, late = true })
+end
+
+--- V: the sender's count against one of a guild, for the versus page: their kills of them and deaths to them.
+local function OnTotals(sender, f)
+    local name = GK.PlayerKey(GK.Clean(f[3], 64))
+    local guild = GK.ValidGuildName and GK.ValidGuildName(f[7])
+    if not (name and guild) or not Allowed(sender, "v", 2 * MAX_TOTALS) then return end
+    local c, r, l = GK.ValidClass(f[4]), GK.Clean(f[5], 20), GK.ValidLevel(f[6])
+    GK.NoteEnemyGuild(name, guild)
+    local k, d = Int(f[8], 0, 1e6), Int(f[9], 0, 1e6)
+    if k and k > 0 then RaiseSlain(sender, name, c, r, l, k) end
+    if d and d > 0 then RaiseWanted(sender, name, c, r, l, d) end
+end
+
+--- Ours, for the guildies who asked since our last answer: our kills and deaths since the earliest of them was
+--- here (from our own log, at most the last CATCH_UP and MAX_CAUGHT of them), and our count against each of the
+--- guild on watch we fought since. Only with our score shared, as the K and D themselves; where only in Normal.
+--- since: from when, at our own login (SayOwn), where nobody asked; the asks' are left for the next answer.
+local function SayMissed(since)
+    if since == nil then
+        since = wantSince
+        wantSince = nil
+    end
+    if not since or not GK.SharesScore() then return end
+    local from, sent = math.max(since, time() - CATCH_UP), 0
+    for _, e in ipairs(GK.char.log) do                  -- the newest first
+        if (e.t or 0) <= from or sent >= MAX_CAUGHT then break end
+        if (e.k == "K" or e.k == "D") and type(e.n) == "string" then
+            local f = GK.char.foes[e.n]
+            local times = f and (e.k == "K" and f.k or f.d) or nil
+            sent = sent + 1
+            Paced(function()
+                return Msg("G", PROTO, e.k, e.n, e.c, e.r, e.l, Place(e.z), e.t, GK.EnemyGuild(e.n), times,
+                    e.k == "K" and e.p or nil)
+            end)
+        end
+    end
+    local guild = GK.WatchedGuild and GK.WatchedGuild()
+    if not guild then return end
+    local list = {}
+    for key, f in pairs(GK.char.foes) do
+        if (f.last or 0) > since and ((f.k or 0) > 0 or (f.d or 0) > 0) and GK.SameGuild(GK.EnemyGuild(key), guild) then
+            list[#list + 1] = { key = key, f = f }
+        end
+    end
+    table.sort(list, function(a, b) return (a.f.last or 0) > (b.f.last or 0) end)
+    for i = 1, math.min(#list, MAX_TOTALS) do
+        local key, f = list[i].key, list[i].f
+        Paced(function() return Msg("V", PROTO, key, f.c, f.r, f.l, guild, f.k or 0, f.d or 0) end)
+    end
+end
+
 --- What only we may say: the orders we posted, our shares in others' pots or that we took one out, what we
 --- fulfilled and what we have paid. In every answer, and at our own login: a relay never changes what a guildie
 --- has, so one who was away when we changed a bounty, and back while we were away, learns it from us or not at
@@ -2144,6 +2311,11 @@ end
 --- happens (toast, News), so it stays the answer's.
 local function SayOwn(atLogin)
     local me, now, s = LIB.Me(), time(), GK.Store()
+    if not atLogin then
+        SayMissed()                                     -- what the guildies who asked missed of ours
+    elseif type(missedSince) ~= "number" or now - missedSince > LOGIN_GAP then   -- the saved file is data
+        SayMissed(now - CATCH_UP)                       -- half a day of ours, for who came while we were away
+    end
     for _, o in pairs(s.orders) do
         local recent = o.state == "o" or now - (o.doneAt or o.t or 0) < ORDER_DAYS * GK.DAY
         if atLogin and o.state ~= "o" and o.state ~= "x" then recent = false end
@@ -2271,11 +2443,15 @@ local function SayOwnSoon()
     end)
 end
 
-local function OnAsk(sender)
+local function OnAsk(sender, f)
     -- Everyone logging in at once asks at once: one answer, a few seconds later. An ask inside the gap
     -- after an answer waits for the gap to end; it used to get no answer at all, so a guildie who logged
     -- in half a minute after another heard nothing.
     askedAt = GetTime()
+    -- what they missed goes back from when the earliest of them was last here; an older client, or a first
+    -- login, says nothing: as far back as anything is said again (SayMissed)
+    local since = Int(f and f[3], 0, 2 ^ 31) or 0
+    wantSince = math.min(wantSince or since, since)
     if Count(askers) < 50 then askers[sender] = true end
     local online = GK.GuildOnline()
     if online > SMALL_GUILD then
@@ -2296,7 +2472,7 @@ end
 
 local HANDLERS = { B = OnBoard, Q = OnAsk, K = OnKill, H = OnAssist, D = OnDeath, C = OnOrder, F = OnFulfil,
     S = OnSighting, T = OnPot, Y = OnSharePaid, O = OnRelayedOrder, P = OnRelayedPot, R = OnRelayedBoard,
-    U = OnForget }
+    U = OnForget, G = OnCaughtUp, V = OnTotals }
 
 local function OnMessage(_, text, dist, sender)
     if dist ~= "GUILD" or type(text) ~= "string" or #text > 600 or not GK.char then return end
@@ -2320,6 +2496,7 @@ function GK.InvalidateOrders() Touched() end
 -- ---------------------------------------------------------------------------
 function GK.Sweep()
     local s, now, me = GK.Store(), time(), LIB.Me()
+    if GK.char then GK.char.lastOnline = now end       -- for our next login's ask: what we missed (Ask)
     for key, o in pairs(s.orders) do
         if o.state == "o" and (o.exp or 0) < now then
             o.state, o.doneAt = "e", now
@@ -2353,11 +2530,14 @@ local function Ask()
     -- our row first, then the ask: a guildie who answers has our parts by then, joined to the ones they
     -- had, and passes the whole back to us
     GK.SendBoard(true)
-    Send(Msg("Q", PROTO))
+    Send(Msg("Q", PROTO, missedSince))                -- and since when, for what we missed (SayMissed)
     C_Timer.After(OWN_AFTER, SayOwnAtLogin)
 end
 
 function GK.StartGuild()
+    -- when we were last online, before the sweep says now (GK.Sweep: at eight seconds, then every ten minutes - a
+    -- line we said again a second time is taken once, FeedCaughtUp)
+    missedSince = GK.char and GK.char.lastOnline
     -- before anything is shown or sent: the login's B then says our record as it is without "?"
     GK.RetireOldRows()
     -- While the test panel or the screenshots stand in for the guild (GK.testMode), the real guild's

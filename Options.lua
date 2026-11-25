@@ -21,6 +21,12 @@
 -- Ours opens in a fight, closes itself while things are moved on screen, and needs no scrolling: a
 -- chapter is a page. The game's Options -> AddOns -> Grudgekeeper keeps one button, which opens this.
 -- Grudgekeeper is not one of the YippYapp addons (the user, 2026-11-03): no YippYapp page or footer.
+-- Quick setup is the first page (2026-11-24): What you see sets the rows of Mine, Guildies and Warnings at once and is
+-- Custom when they match none (GK.SEE, Core.lua), and What you share is what Mode was. The presets of 2026-11-20 were
+-- the ledger's ink tabs over a page, and players took them for tabs to other things ("folk skjønte ikke at det var
+-- presets og trudde det bare var tabs for forskjellige ting", the owner): these are the game's dropdowns, and each says
+-- what its choice does, beside it and under the mouse. In the game was eight boxes; it is three pages, and the
+-- right-click menu a box a line. Drawn first (art/mockups/modes, A).
 -- Two layers: GK.SettingsChapters() is what there is to set, as data (what the tests read); the rest
 -- draws it.
 local ADDON, GK = ...
@@ -31,7 +37,14 @@ local LIB = GK.Lib or LibStub("LibForever-1.0")      -- names by themselves (Cor
 -- ---------------------------------------------------------------------------
 local STYLES = { { "splash", "Splash: big", "Splash" }, { "toast", "Toast: small", "Toast" }, { "off", "Off" } }
 local WARN_WAYS = { { "screen", "On screen" }, { "chat", "Chat line" }, { "off", "Off" } }
-local MODES = { { "normal", "Normal" }, { "streamer", "Streamer" }, { "private", "Private" } }
+-- What you share (Quick setup and Sharing), Mode's three until 2026-11-24, by what each does. The values stay.
+local MODES = { { "normal", "Everything" }, { "streamer", "All but where I am" }, { "private", "Nothing" } }
+local SHARE_SAYS = { normal = "Your score, and where you are and see targets.",
+    streamer = "Your score, but never where you are or see targets.",
+    private = "No score, no zone, no profile. Only what a kill order needs." }
+-- A guildie's rows by what Quick setup calls them, when one alone is on (Counted)
+local GUILD_WORDS = { spreeGuild = "kill sprees", rankGuild = "new titles", orderDone = "kill orders fulfilled",
+    revengeGuild = "revenges", spreeEndedGuild = "sprees ended", spreeTormentorGuild = "tormentors put down" }
 local WHEN = { { "always", "Always" }, { "noCombat", "Not in combat" },
     { "noCombatInInstance", "Not in combat in a dungeon or raid", "Not in combat in dungeons" },
     { "noInstance", "Never in a dungeon or raid", "Not in dungeons" } }
@@ -128,6 +141,13 @@ local function Cell(key, options, get, set)
                 if done then done() end
             end)
             if cell.preview and value ~= "off" then AddPlay(radio, function() cell.preview(value) end) end
+            -- what a choice does, under the mouse (What you see's): the game's menu has one line a row
+            if o.tip and radio and radio.SetTooltip then
+                radio:SetTooltip(function(tooltip)
+                    tooltip:SetText(o[2])
+                    tooltip:AddLine(o.tip, 1, 1, 1, true)
+                end)
+            end
         end
     end
     return cell
@@ -160,6 +180,14 @@ end
 
 local function Ruled() return { kind = "rule" } end
 local function Section(label) return { kind = "head", label = label } end
+--- A choice of Quick setup: its dropdown, and beside it what the choice does (says()).
+local function Choice(cell, says) return { kind = "choice", cell = cell, says = says } end
+--- A line of what a choice comes to: value() gives the words, and true after them for a no (grey).
+local function Fact(label, value) return { kind = "fact", label = label, value = value } end
+--- Words of the page's own, in the quiet grey.
+local function Note(text) return { kind = "note", text = text } end
+--- Two settings on or off side by side, each with its words: the right-click menu's, an enemy's and a friend's.
+local function Pair(left, right) return { kind = "pair", left = left, right = right } end
 
 --- A moment's sound box: locked, unticked and grey while its page's Play sounds is off, or while it doesn't show.
 local function SoundBox(label, key, master, shownBy)
@@ -179,22 +207,65 @@ local function MineMoment(label, setting, sound)
         Tick(420, 52, SoundBox(label, sound, "mineSounds", setting)) } }
 end
 
---- Mode (Core.lua, GK.Mode): on Guildies, as whose news is told, and on Sharing, as what goes out. One setting.
-local function ModeRow(help)
-    local cell = Cell("mode", MODES, function() return GK.Mode() end, function(value)
+--- What you share (Core.lua, GK.Mode), Mode until 2026-11-24: on Quick setup and on Sharing, one setting. It decides
+--- what goes out and nothing else: what you see is the rows' (SeeCell).
+local function ShareCell()
+    return Cell("mode", MODES, function() return GK.Mode() end, function(value)
         local was = GK.Mode()
         GK.db.mode = value
-        if GK.ForgetFriends then GK.ForgetFriends() end
         if was == "private" and value ~= "private" then GK.SendBoard() end     -- sharing again: the guild hears it
         GK.Changed()
     end)
-    return { kind = "line", label = "Mode", height = 54, help = help, parts = { Drop(268, 170, cell) } }
 end
 
---- A setting of Sharing that Private turns off: unticked, grey and kept for when it is on again.
+local function ShareSays() return SHARE_SAYS[GK.Mode()] end
+
+local function ShareRow()
+    return { kind = "line", label = "What you share", height = 54, help = ShareSays,
+        parts = { Drop(268, 200, ShareCell()) } }
+end
+
+--- What you see (Core.lua, GK.SEE): the rows of Mine, Guildies and Warnings at once, Custom when they match none.
+--- Each choice says what it does under the mouse.
+local function SeeCell()
+    local list = {}
+    for i, c in ipairs(GK.SEE) do list[i] = { c.id, c.name, tip = c.says } end
+    local cell = Cell("see", list, function() return GK.SeeChoice() end, function(id)
+        GK.SetSee(id)
+        GK.Changed()
+    end)
+    cell.missing = "Custom"
+    return cell
+end
+
+local function SeeSays()
+    local id = GK.SeeChoice()
+    for _, c in ipairs(GK.SEE) do
+        if c.id == id then return c.says end
+    end
+    return "You changed rows on the pages. Pick one to start over."
+end
+
+--- How many of a page's rows show: all, none, "Only" the one, or "n of N". True after the words for none.
+local function Counted(keys, on, all, none, words)
+    local shown, last = 0, nil
+    for _, key in ipairs(keys) do
+        if on(key) then shown, last = shown + 1, key end
+    end
+    if shown == 0 then return none, true end
+    if shown == #keys then return all end
+    if shown == 1 and words and words[last] then return "Only " .. words[last] end
+    return ("%d of %d"):format(shown, #keys)
+end
+
+local function Shown(key) return GK.db[key] ~= "off" end
+local function Warned(key) return GK.WarnStyle(key) ~= "off" end
+local function Yes(on) return on and "Yes" or "No", not on end
+
+--- A setting of Sharing that sharing Nothing turns off: unticked, grey and kept for when it is on again.
 local function Shared(check)
     function check.enabled() return GK.Mode() ~= "private" end
-    function check.why() return "Private shares nothing." end
+    function check.why() return "What you share is Nothing." end
     return check
 end
 
@@ -227,7 +298,7 @@ end
 -- How tall each kind of row is on the page, which holds PAGE_ROOM under its heading (the window, below):
 -- drawn at these, and summed by tests/run.lua so that no chapter runs past the frame.
 local PAGE_ROOM = 430
-local ROW_HEIGHT = { columns = 24, rule = 14, head = 28 }
+local ROW_HEIGHT = { columns = 24, rule = 14, head = 28, choice = 48, fact = 24, note = 40, pair = 58 }
 GK.SETTINGS_ROOM = PAGE_ROOM
 function GK.SettingsRowHeight(r)
     if r.height then return r.height end
@@ -246,7 +317,7 @@ function GK.SettingsChapters()
         MineMoment("Kill order fulfilled", "orderMine", "orderSound"),
         MineMoment("Revenge", "revengeMine", "revengeSound"),
         -- yours alone: a guildie's score with an enemy is theirs (Announce.lua, GK_GRUDGE)
-        MineMoment("Grudge or Death list kill", "grudgeMine", "grudgeSound"),
+        MineMoment("Grudge or Death Note kill", "grudgeMine", "grudgeSound"),
         MineMoment("Spree ended", "spreeEnded", "endedSound"),
         MineMoment("Tormentor put down", "spreeTormentor", "tormentorSound"),
         Ruled(),
@@ -263,7 +334,6 @@ function GK.SettingsChapters()
     local titlesFrom = Cell("rankGuildFrom", TITLES_FROM)
     titlesFrom.enabled = function() return GK.db.rankGuild ~= "off" end
     local guild = {
-        ModeRow("Streamer: nothing of theirs but your own kill orders, and never where you are. Private: only you."),
         PlaySounds("guildSounds", 298, "The sounds of your guildies' toasts."),
         Columns(10, "WHEN A GUILDIE HAS", 236, "TOAST", 304, "SOUND", 378, "ONLY FROM"),
         GuildMoment("A kill spree", "spreeGuild", "spreeSoundGuild", spreesFrom),
@@ -287,7 +357,7 @@ function GK.SettingsChapters()
                 GK.db.nearSound = value
                 GK.Changed()
             end),
-            "Also the sound for your Death list and the tracked guild."),
+            "Also the sound for your Death Note and the tracked guild."),
         WarnRow("watchNearby", "A Shame player is near"),
         WarnRow("watchGroup", "A Shame player joins my group",
             SoundCell("shame", function() return GK.ShameSoundKey() end, function(value)
@@ -295,9 +365,35 @@ function GK.SettingsChapters()
                 GK.Changed()
             end)),
         WarnRow("kudosGroup", "A Kudos player joins my group"),
+        -- 2026-11-24: "skal vi prøve å legge til warning om fiender targeter oss?" (the owner); off to begin with
+        WarnRow("targetedBy", "A Death Note enemy targets me",
+            SoundCell("target", function() return GK.db.targetSound end, function(value)
+                GK.db.targetSound = value
+                GK.Changed()
+            end),
+            "Out of a fight, and only one you can see: enemy nameplates on."),
+    }
+
+    -- Quick setup (2026-11-24): what you see, what you share, and what each comes to
+    local quick = {
+        Section("WHAT YOU SEE"),
+        Choice(SeeCell(), SeeSays),
+        Fact("Your splashes and toasts", function() return Counted(GK.SEE_MINE, Shown, "On", "Off") end),
+        Fact("Guildies' toasts", function() return Counted(GK.SEE_GUILD, Shown, "All of them", "None", GUILD_WORDS) end),
+        Fact("Warnings", function() return Counted(GK.SEE_WARN, Warned, "All of them", "Off") end),
+        Ruled(),
+        Section("WHAT YOU SHARE"),
+        Choice(ShareCell(), ShareSays),
+        Fact("Score on the leaderboard", function() return Yes(GK.SharesScore()) end),
+        Fact("Where you are", function() return Yes(GK.SharesPlace()) end),
+        Fact("Profile outside the guild", function() return Yes(GK.SharesOutside()) end),
+        Ruled(),
+        Note("Seals and marks over players are on Nameplates & map. Letters have a page of their own."),
     }
 
     return {
+        { name = "Quick setup", title = "Quick setup",
+          intro = "Start here. Every page after this one can still be changed row by row.", rows = quick },
         { group = "NOTIFICATIONS", name = "Mine", title = "My notifications",
           intro = "What you see and hear when it happens to you.", rows = mine },
         { group = "NOTIFICATIONS", name = "Guildies", title = "Guildie notifications",
@@ -313,9 +409,23 @@ function GK.SettingsChapters()
             Check("keepLetters", "Wait until read", "Off: an unread letter fades after two minutes.", true,
                 function(on) if not on and GK.FadeLetters then GK.FadeLetters() end end),   -- what waited fades
           } },
+        -- a page of its own, for its one setting (the owner, 2026-11-24: "kanskje egen page for death note")
+        { group = "GENERAL", name = "Death Note", title = "Death Note", intro = "Your own list of the enemies you want dead.",
+          rows = {
+            Check("deathNoteShared", "One Death Note for all my characters",
+                "Every character of yours on the same side shares the names, your notes and the warning.", false,
+                function(on)
+                    if on then
+                        GK.db.deathNoteTick = (GK.db.deathNoteTick or 0) + 1
+                        GK.JoinDeathNote()
+                    end
+                end),
+            Ruled(),
+            Note("The warning's sound is on Warnings, and the eye over their nameplate on Nameplates & map."),
+          } },
         { group = "GENERAL", name = "Sharing", title = "Sharing", intro = "What others get to see.",
           rows = {
-            ModeRow("Normal shares as set below. Streamer never shares where you are. Private shares nothing."),
+            ShareRow(),
             Shared(Check("share", "Share my score with the guild", "Your kills, deaths and points on the leaderboard.",
                 false, function(on) if on then GK.SendBoard() end end)),
             -- a player on your side outside the guild who opens your profile or inspects you (2026-11-20)
@@ -327,14 +437,34 @@ function GK.SettingsChapters()
             Shared(Check("autoOrders", "My deaths can post kill orders",
                 "When someone kills you 3 times in half an hour, or 3 of the guild in two hours.")),
           } },
-        { group = "GENERAL", name = "In the game", title = "In the game",
-          intro = "Tooltips, menus, nameplates and the map.",
+        -- In the game's eight boxes are three pages (2026-11-24): "sidebar items under general burde ha bedre navn. i
+        -- hvert fall 'in the game'" (the owner). The right-click menu has a box a line.
+        { group = "GENERAL", name = "Nameplates & map", title = "Nameplates & map",
+          intro = "What Grudgekeeper puts on players and on the map.",
           rows = {
             Check("tooltip", "Line on enemy tooltips", "Only for enemies you have a history with."),
-            Check("unitMenu", "Right-click menu", "An enemy: Grudge file, kill order, Death list. A friend: Shame, Kudos."),
-            Check("plateMarks", "Seal over kill order targets", "And an eye over your Death list. Needs enemy nameplates."),
+            Check("plateMarks", "Seal over kill order targets", "And an eye over your Death Note. Needs enemy nameplates."),
             Check("plateNotes", "Mark over Shame and Kudos players", "A medal for each Kudos tag, out of combat. A small mark for Shame."),
             Check("mapPins", "Last seen on the map", "Where a guildie saw a target, for 15 minutes."),
+          } },
+        { group = "GENERAL", name = "Right-click menu", title = "Right-click menu",
+          intro = "Our lines in the game's menu when you right-click a player.",
+          rows = {
+            Columns(10, "ON AN ENEMY", 286, "ON A FRIENDLY PLAYER"),
+            Pair(Check("menuFile", "Grudge file", "What the guild knows of them."),
+                Check("menuProfile", "Grudgekeeper profile", "Their title and score.")),
+            Pair(Check("menuOrder", "Kill order", "Post one, or add to the pot."),
+                Check("menuShame", "Shame", "Put them on it, with a tag.")),
+            Pair(Check("menuDeathNote", "Death Note", "Write them in, or take them out."),
+                Check("menuKudos", "Kudos", "Give them kudos, with a tag.")),
+            Pair(Check("menuGuild", "Track their guild", "Officers: put their guild on watch."),
+                Check("menuNotes", "Their notes", "When someone has written about them.")),
+            Ruled(),
+            Note("A line that is off is left out of the menu. With every line off, Grudgekeeper adds nothing to it."),
+          } },
+        { group = "GENERAL", name = "Buttons & tabs", title = "Buttons & tabs",
+          intro = "Where Grudgekeeper shows up in the game's own windows.",
+          rows = {
             Check("inspectTab", "Tab on the Inspect window", "A guildie's record, right there."),
             { kind = "check", key = "guildButton", label = "Tab on the guild window",
               help = "Your week, the kill orders, the leaderboard and guild chat.",
@@ -504,7 +634,7 @@ local function LineRow(parent, y, r, striped)
         f.help = Words(f, 11, QUIET)
         f.help:SetPoint("TOPLEFT", TEXT_X, -36)
         f.help:SetWidth(PAGE_W - 2 * TEXT_X)
-        f.help:SetText(r.help)
+        f.help:SetText(type(r.help) == "function" and (r.help() or "") or r.help)
     end
     f.parts = {}
     for i, part in ipairs(r.parts) do
@@ -515,6 +645,79 @@ local function LineRow(parent, y, r, striped)
     end
     function f:Refresh()
         for _, c in ipairs(self.parts) do c:Refresh() end
+        if self.help and type(r.help) == "function" then self.help:SetText(r.help() or "") end   -- What you share's
+    end
+    return f, height
+end
+
+--- A choice of Quick setup: the dropdown, and what the choice does beside it in grey, two lines at most.
+local function ChoiceRow(parent, y, r)
+    local height = GK.SettingsRowHeight(r)
+    local f = CreateFrame("Frame", nil, parent)
+    f:SetSize(PAGE_W, height)
+    f:SetPoint("TOPLEFT", 0, -y)
+    f.drop = DropBox(f, { w = 250, cell = r.cell })
+    f.drop:SetPoint("TOPLEFT", TEXT_X, -8)
+    f.says = Words(f, 12, QUIET)
+    f.says:SetPoint("TOPLEFT", 280, -6)
+    f.says:SetWidth(PAGE_W - 280 - TEXT_X)
+    f.says:SetWordWrap(true)
+    function f:Refresh()
+        self.drop:Refresh()
+        self.says:SetText(r.says() or "")
+    end
+    return f, height
+end
+
+--- What a choice comes to: its label in gold, the value in white, or grey for a no.
+local function FactRow(parent, y, r)
+    local height = GK.SettingsRowHeight(r)
+    local f = CreateFrame("Frame", nil, parent)
+    f:SetSize(PAGE_W, height)
+    f:SetPoint("TOPLEFT", 0, -y)
+    f.label = Words(f, 13, GOLD)
+    f.label:SetPoint("LEFT", TEXT_X, 0)
+    f.label:SetText(r.label)
+    f.value = Words(f, 13, WHITE)
+    f.value:SetPoint("LEFT", 222, 0)
+    function f:Refresh()
+        local text, off = r.value()
+        self.value:SetText(text or "")
+        local c = off and QUIET or WHITE
+        self.value:SetTextColor(c[1], c[2], c[3])
+    end
+    return f, height
+end
+
+--- The page's own words, in grey.
+local function NoteRow(parent, y, r)
+    local height = GK.SettingsRowHeight(r)
+    local f = CreateFrame("Frame", nil, parent)
+    f:SetSize(PAGE_W, height)
+    f:SetPoint("TOPLEFT", 0, -y)
+    f.text = Words(f, 12, QUIET)
+    f.text:SetPoint("TOPLEFT", TEXT_X, -12)
+    f.text:SetWidth(PAGE_W - 2 * TEXT_X)
+    f.text:SetWordWrap(true)
+    f.text:SetText(r.text)
+    function f:Refresh() end
+    return f, height
+end
+
+--- Two boxes side by side, each with its words: an enemy's line of the menu on the left, a friend's on the right.
+local PAIR_X = 280
+local function PairRow(parent, y, r)
+    local height = GK.SettingsRowHeight(r)
+    local f = CreateFrame("Frame", nil, parent)
+    f:SetSize(PAGE_W, height)
+    f:SetPoint("TOPLEFT", 0, -y)
+    f.left = TickBox(f, r.left, PAIR_X - 4, height)
+    f.left:SetPoint("TOPLEFT", 0, 0)
+    f.right = TickBox(f, r.right, PAGE_W - PAIR_X, height)
+    f.right:SetPoint("TOPLEFT", PAIR_X, 0)
+    function f:Refresh()
+        self.left:Refresh()
+        self.right:Refresh()
     end
     return f, height
 end
@@ -563,7 +766,8 @@ local function SectionRow(parent, y, r)
     return f, height
 end
 
-local ROW = { check = CheckRow, line = LineRow, columns = ColumnsRow, rule = RuleRow, head = SectionRow }
+local ROW = { check = CheckRow, line = LineRow, columns = ColumnsRow, rule = RuleRow, head = SectionRow,
+    choice = ChoiceRow, fact = FactRow, note = NoteRow, pair = PairRow }
 
 --- A chapter's page, made the first time it is turned to: its rows under one another, every other one of
 --- a table's shaded.
@@ -636,7 +840,7 @@ local function BuildMenu()
     local y, group = MENU_TOP, nil
     for i, ch in ipairs(chapters) do
         if ch.group ~= group then
-            if group then y = y + 20 end
+            if i > 1 then y = y + 20 end           -- under Quick setup, which has no group over it, too
             group = ch.group
             local head = Words(win, 11, QUIET)
             head:SetPoint("TOPLEFT", MENU_X + 6, -y)

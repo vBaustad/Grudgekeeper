@@ -1396,7 +1396,7 @@ test("the list pages: Shame and Kudos on the right, none with links; Marked has 
     local want = { { "Shame", "right", 7 }, { "Kudos", "right", 8 } }
     local order = {}
     for i, page in ipairs(GK.LedgerPages) do order[i] = page.name end
-    eq(table.concat(order, "|"), "Kill orders|Leaderboard|Death list|Grudges|News|You|Shame|Kudos")
+    eq(table.concat(order, "|"), "Kill orders|Leaderboard|Death Note|Grudges|News|You|Shame|Kudos")
     for _, w in ipairs(want) do
         local page = GK.LedgerPages[w[3]]
         eq(page.name, w[1])
@@ -1948,10 +1948,18 @@ test("the right-click menu: Put on Shame and Give kudos on a friendly player, wi
     W2.mobs.mouseover = nil
     menu(nil, root, { unit = "player" })
     eq(#root.kids, 0, "myself")
-    GK.db.unitMenu = false
+    -- each line its own (Settings, Right-click menu, 2026-11-24): every one off, nothing; Shame off, Kudos alone
+    for _, key in ipairs(GK.MENU_LINES) do GK.db[key] = false end
     menu(nil, root, { unit = "mouseover" })
-    eq(#root.kids, 0)
-    GK.db.unitMenu = true
+    eq(#root.kids, 0, "every line off")
+    for _, key in ipairs(GK.MENU_LINES) do GK.db[key] = true end
+    GK.db.menuShame = false
+    root = fakeNode("root")
+    menu(nil, root, { unit = "mouseover" })
+    eq(labels(root):find("Put on Shame", 1, true), nil, "Shame off: not in the menu")
+    eq(labels(root):find("Give kudos", 1, true) ~= nil, true, "...and Kudos still is")
+    GK.db.menuShame = true
+    root = fakeNode("root")
     -- a name in chat has no unit: the key comes from the menu's own fields
     W2.menuKey = "Chatter One-Realm"
     menu(nil, root, { name = "Chatter One" })
@@ -2798,36 +2806,38 @@ test("what's new: every letter missed, oldest first, once; none on a first insta
     GK.DeliverNews(false)
     eq(#GK.char.letters, 0, "a moment after login, not under the loading screen")
     W.advance(6)
-    eq(#GK.char.letters, 6)
+    eq(#GK.char.letters, 7)
     eq(GK.char.letters[1].news, "1.4.0", "the oldest first")
     eq(GK.char.letters[2].news, "1.5.0")
     eq(GK.char.letters[3].news, "1.6.0")
     eq(GK.char.letters[4].news, "1.7.0")
     eq(GK.char.letters[5].news, "1.9.0", "1.8.0 had none")
     eq(GK.char.letters[6].news, "1.12.0", "1.10.0 and 1.11.0 had none")
-    eq(GK.db.newsSeen, "1.12.0")
+    eq(GK.char.letters[7].news, "1.13.0")
+    eq(GK.db.newsSeen, "1.13.0")
     GK.DeliverNews(false)                          -- the next login
     W.advance(6)
-    eq(#GK.char.letters, 6, "once")
+    eq(#GK.char.letters, 7, "once")
 
     local GK1 = bootSheets({ me = ME })
     function GK1.NoticeUpdate() end
     GK1.db.newsSeen = "1.4.0"                      -- on 1.4.0: its letter came then
     GK1.DeliverNews(false)
     W.advance(6)
-    eq(#GK1.char.letters, 5)
+    eq(#GK1.char.letters, 6)
     eq(GK1.char.letters[1].news, "1.5.0", "only the ones after it")
     eq(GK1.char.letters[2].news, "1.6.0")
     eq(GK1.char.letters[3].news, "1.7.0")
     eq(GK1.char.letters[4].news, "1.9.0")
     eq(GK1.char.letters[5].news, "1.12.0")
+    eq(GK1.char.letters[6].news, "1.13.0")
 
     local GK2 = bootSheets({ me = ME })
     function GK2.NoticeUpdate() end
     GK2.DeliverNews(true)
     W.advance(6)
     eq(#GK2.char.letters, 0, "a first install: nothing is new")
-    eq(GK2.db.newsSeen, "1.12.0", "and not later either")
+    eq(GK2.db.newsSeen, "1.13.0", "and not later either")
 
     local GK3 = bootSheets({ me = ME })
     function GK3.NoticeUpdate() end
@@ -2835,7 +2845,7 @@ test("what's new: every letter missed, oldest first, once; none on a first insta
     GK3.DeliverNews(false)
     W.advance(6)
     eq(#GK3.char.letters, 0, "letters off: none")
-    eq(GK3.db.newsSeen, "1.12.0")
+    eq(GK3.db.newsSeen, "1.13.0")
 
     local GK4 = bootSheets({ me = ME })
     function GK4.NoticeUpdate() end
@@ -2851,12 +2861,13 @@ end)
 test("what's new: short notes from him about no one, each with a button to where it is", function()
     local GK = bootSheets({ me = ME })
     local want = { ["1.4.0"] = { "A word from the keeper", "assists", "Leaderboard" },
-        ["1.5.0"] = { "Eyes on them", "Put an enemy on your Death list", "Death list" },
+        ["1.5.0"] = { "Eyes on them", "Put an enemy in your Death Note", "Death Note" },
         ["1.6.0"] = { "Blood in a row", "String your kills together", "Settings" },
         ["1.7.0"] = { "Who's slacking?", "puts my ledger beside guild chat", "Settings" },
         ["1.9.0"] = { "Louder now", "a fanfare of its own", "Leaderboard" },
         -- drawn as a scroll only in a picture or a test: opened, it is the patch notes (2026-11-23)
-        ["1.12.0"] = { "Patch notes", "A new version of Grudgekeeper is here", "Patch notes" } }
+        ["1.12.0"] = { "Patch notes", "A new version of Grudgekeeper is here", "Patch notes" },
+        ["1.13.0"] = { "Patch notes", "a quick setup for your settings", "Patch notes" } }
     for id, w in pairs(want) do
         local d = GK.LetterContent({ id = 1, kind = "news", news = id })
         eq(d.note, true, id)
@@ -4106,6 +4117,9 @@ local function bootSettings()
         for _, ch in ipairs(chapters) do
             for _, r in ipairs(ch.rows) do
                 if r.key == key then return r, ch end
+                if r.cell and r.cell.key == key then return r.cell, ch end           -- Quick setup's choices
+                if r.left and r.left.key == key then return r.left, ch end           -- the right-click menu's pairs
+                if r.right and r.right.key == key then return r.right, ch end
                 for _, part in ipairs(r.parts or {}) do
                     if part.cell and part.cell.key == key then return part.cell, ch end
                     if part.check and part.check.key == key then return part.check, ch end
@@ -4127,29 +4141,37 @@ end
 
 -- The dark pages (the owner's pick A, 2026-11-22): a thing and its sound on one row. "det er cramped, vanskelig å
 -- forstå, spesielt lyder og notifications." Sounds was a page of its own from 2026-11-20 until then.
-test("settings: seven chapters in two groups, Mine first, and every saved setting has its place", function()
+test("settings: Quick setup first, nine chapters in two groups, and every saved setting has its place", function()
     local _, chapters, Find = bootSettings()
     local names = {}
     for i, ch in ipairs(chapters) do names[i] = ch.name end
-    eq(table.concat(names, ", "), "Mine, Guildies, Warnings, Letters, Sharing, In the game, Appearance")
-    eq(chapters[3].group .. "/" .. chapters[4].group, "NOTIFICATIONS/GENERAL", "two groups in the menu")
+    eq(table.concat(names, ", "), "Quick setup, Mine, Guildies, Warnings, Letters, Death Note, Sharing, "
+        .. "Nameplates & map, Right-click menu, Buttons & tabs, Appearance")
+    eq(tostring(chapters[1].group) .. "/" .. chapters[4].group .. "/" .. chapters[5].group, "nil/NOTIFICATIONS/GENERAL",
+        "Quick setup over the two groups")
     local where = { spreeMine = "Mine", rankMine = "Mine", orderMine = "Mine", revengeMine = "Mine",
         grudgeMine = "Mine", spreeEnded = "Mine", spreeTormentor = "Mine", announceWhenMine = "Mine",
         announceTime = "Mine", mineSounds = "Mine", rankSound = "Mine", orderSound = "Mine", revengeSound = "Mine",
         grudgeSound = "Mine", endedSound = "Mine", tormentorSound = "Mine",
         spreeGuild = "Guildies", spreeGuildFrom = "Guildies", rankGuild = "Guildies", rankGuildFrom = "Guildies",
         orderDone = "Guildies", revengeGuild = "Guildies", spreeEndedGuild = "Guildies",
-        spreeTormentorGuild = "Guildies", guildZoneOnly = "Guildies", announceWhenGuild = "Guildies", mode = "Guildies",
+        spreeTormentorGuild = "Guildies", guildZoneOnly = "Guildies", announceWhenGuild = "Guildies",
+        mode = "Quick setup", see = "Quick setup",
         guildSounds = "Guildies", spreeSoundGuild = "Guildies", rankSoundGuild = "Guildies",
         orderSoundGuild = "Guildies", revengeSoundGuild = "Guildies", endedSoundGuild = "Guildies",
         tormentorSoundGuild = "Guildies",
         spreeSound = "Mine", warnSounds = "Warnings", sound = "Appearance",
         alertNear = "Warnings", watchNearby = "Warnings", watchGroup = "Warnings", kudosGroup = "Warnings",
+        targetedBy = "Warnings",
         near = "Warnings", shame = "Warnings",
         anyLetters = "Letters", letters = "Letters", myLetters = "Letters", keepLetters = "Letters",
+        deathNoteShared = "Death Note",
         share = "Sharing", shareOutside = "Sharing", autoOrders = "Sharing",
-        tooltip = "In the game", unitMenu = "In the game", plateMarks = "In the game", plateNotes = "In the game",
-        mapPins = "In the game", inspectTab = "In the game", guildButton = "In the game", minimap = "In the game",
+        tooltip = "Nameplates & map", plateMarks = "Nameplates & map", plateNotes = "Nameplates & map",
+        mapPins = "Nameplates & map", inspectTab = "Buttons & tabs", guildButton = "Buttons & tabs",
+        minimap = "Buttons & tabs", menuFile = "Right-click menu", menuOrder = "Right-click menu",
+        menuDeathNote = "Right-click menu", menuGuild = "Right-click menu", menuProfile = "Right-click menu",
+        menuShame = "Right-click menu", menuKudos = "Right-click menu", menuNotes = "Right-click menu",
         look = "Appearance", oldPortraits = "Appearance", shotFulfil = "Appearance", shotEveryKill = "Appearance" }
     for key, chapter in pairs(where) do
         local _, ch = Find(key)
@@ -4312,7 +4334,15 @@ test("settings: no surprise given away - no Test, no page of the spree's steps, 
     local GK, chapters = bootSettings()
     for _, ch in ipairs(chapters) do
         for _, r in ipairs(ch.rows) do
-            local words = { r.label or "", r.help or "", r.text or "" }
+            local help = r.help
+            if type(help) == "function" then help = help() end
+            local words = { r.label or "", help or "", r.text or "" }
+            if r.cell then
+                for _, o in ipairs(r.cell.choices()) do words[#words + 1] = o[2] .. " " .. (o.tip or "") end
+            end
+            for _, side in ipairs({ r.left or false, r.right or false }) do
+                if side then words[#words + 1] = side.label .. " " .. (side.help or "") end
+            end
             for _, p in ipairs(r.parts or {}) do
                 assert(p.kind ~= "button", ch.name .. ": a button on a row")
                 if p.text then words[#words + 1] = p.text end
@@ -4538,7 +4568,7 @@ test("settings: a sound to pick for the warnings alone; what is a splash or toas
             end
         end
     end
-    eq(table.concat(menus, ", "), "Warnings:near, Warnings:shame", "the sounds to pick")
+    eq(table.concat(menus, ", "), "Warnings:near, Warnings:shame, Warnings:target", "the sounds to pick")
     for _, key in ipairs({ "spreeSound", "rankSound", "orderSound", "revengeSound", "grudgeSound", "endedSound",
             "tormentorSound" }) do
         local box = Find(key)
@@ -4612,6 +4642,43 @@ test("warning sounds: War horn rush and the Alliance bell, every account moved t
     eq(GK.db.sounds112, true, "...once")
     GK = boot({ me = ME, db = { share = true, sounds112 = true, nearSound = "game:569112", shameSound = "off" } })
     eq(GK.db.nearSound .. "/" .. GK.db.shameSound, "game:569112/off", "picked after that: kept")
+end)
+
+-- Mode's halves apart (2026-11-24): what you share is still db.mode, what you see is the rows (Quick setup). Streamer
+-- and Private told nothing of a guildie's until then: such an account has the guildies' toasts and the kill order
+-- letters turned off once. The right-click menu's one box off is every line off.
+test("What you see and share: Standard to begin with; Streamer, Private and a menu that was off moved once", function()
+    local GK = boot({ me = ME })
+    eq(GK.SeeChoice(), "standard", "a new install: Standard")
+    eq(GK.MenuAny() and GK.MenuLine("menuShame") and GK.MenuLine("menuGuild"), true, "...every menu line on")
+    eq(GK.db.unitMenu, nil, "...and no one box for the menu")
+    for _, mode in ipairs({ "streamer", "private" }) do
+        GK = boot({ me = ME, db = { share = true, mode = mode, spreeGuild = "toast", orderDone = "toast", letters = true } })
+        eq(GK.db.mode, mode, mode .. ": what you share kept")
+        eq(GK.db.spreeGuild .. "/" .. GK.db.orderDone .. "/" .. tostring(GK.db.letters), "off/off/false",
+            mode .. ": the guildies' toasts and the kill order letters off")
+        eq(GK.SeeChoice(), "mine", mode .. ": Only mine")
+        eq(GK.db.modesSplit, true, mode .. ": once")
+    end
+    GK = boot({ me = ME, db = { share = true, mode = "streamer", modesSplit = true, spreeGuild = "toast", letters = true } })
+    eq(GK.db.spreeGuild .. "/" .. tostring(GK.db.letters), "toast/true", "picked after the move: kept")
+    GK = boot({ me = ME, db = { share = true, mode = "normal", spreeGuild = "toast", letters = true } })
+    eq(GK.db.spreeGuild .. "/" .. tostring(GK.db.letters), "toast/true", "Normal: nothing moved")
+    GK = boot({ me = ME, db = { share = true, unitMenu = false } })
+    for _, key in ipairs(GK.MENU_LINES) do eq(GK.db[key], false, "the menu was off: " .. key) end
+    eq(GK.MenuAny(), false, "...so nothing is added to it")
+    eq(GK.db.unitMenu, nil, "...and the one box gone")
+    GK = boot({ me = ME, db = { share = true, unitMenu = true } })
+    eq(GK.MenuAny() and GK.MenuLine("menuNotes"), true, "the menu was on: every line on")
+    -- a choice and its rows
+    eq(GK.SetSee("orders"), true, "Kill orders set")
+    eq(GK.SeeChoice(), "orders", "...and matched")
+    eq(GK.db.orderDone .. "/" .. GK.db.spreeGuild .. "/" .. GK.db.spreeMine, "toast/off/splash", "Kill orders' rows")
+    GK.db.alertNear = true                   -- an older file's true is the row's own way, on screen
+    eq(GK.SeeChoice(), "orders", "a warning's old true counts as on screen")
+    GK.db.spreeMine = "toast"
+    eq(GK.SeeChoice(), "custom", "a row changed: Custom")
+    eq(GK.SetSee("nope"), false, "no such choice")
 end)
 
 test("effects: Grudgebound's crown at 15, the number on every 5 after it, the hundred at 100", function()

@@ -297,6 +297,8 @@ local function Begin()
         look = db.look, folded = db.ledgerFolded }
     GK.testMode, GK.shotMode = true, true
     GK.shotNames, GK.shotGuild = { [LIB.Me()] = ME }, GUILD
+    -- and the samples on the splash and the toasts name the made-up guild's, not their own (Announce.lua)
+    GK.shotSample = { enemy = ENEMIES.thazrak[1], guildie = GUILDIES.fenna[1] }
     db.looks = db.looks or {}
     db.sortBy, db.mineOnly = {}, false
     -- the best the game's JPEG does, for text that stays sharp when the page shrinks it
@@ -316,6 +318,7 @@ local function Restore()
     running = nil
     GK.shotMode, GK.testMode = false, false
     GK.shotNames, GK.shotGuild = nil, nil
+    GK.shotSample = nil
     local s = saved
     saved = nil
     if s then
@@ -340,18 +343,32 @@ end
 -- ---------------------------------------------------------------------------
 --- Where the frames are on the screen together, as fractions of it: left, right, top, bottom, from the
 --- screen's bottom left. nil when none of them is on the screen.
+--- frames.drawn: and what each frame draws past itself. A splash and a toast do: an effect's art and words are
+--- the frame's regions, placed from its top (Effects.lua), and the frame's own place cut the spree's ring,
+--- REVENGE and the WANTED poster off at the top (the owner's pictures, 2026-11-23). Every region it shows then
+--- counts, as it stands when the picture is taken - all but the lights, drawn additively (a glow, the embers, a
+--- shine), which fade to nothing at their edges and would only widen the picture with the world around it.
 function GK.ShotRect(frames)
     local ui = UIParent:GetEffectiveScale()
     local sw, sh = (UIParent:GetWidth() or 0) * ui, (UIParent:GetHeight() or 0) * ui
     if sw <= 0 or sh <= 0 then return nil end
     local l, r, t, b
-    for _, f in ipairs(frames or {}) do
+    local function Take(f)
         if f and f:IsVisible() then
             local k = f:GetEffectiveScale()
             local fl, fr, ft, fb = f:GetLeft(), f:GetRight(), f:GetTop(), f:GetBottom()
             if fl and fr and ft and fb then
                 l, r = math.min(l or fl * k, fl * k), math.max(r or fr * k, fr * k)
                 t, b = math.max(t or ft * k, ft * k), math.min(b or fb * k, fb * k)
+            end
+        end
+    end
+    for _, f in ipairs(frames or {}) do
+        Take(f)
+        if frames.drawn and f and f:IsVisible() then
+            for _, region in ipairs({ f:GetRegions() }) do
+                local light = region.GetBlendMode and region:GetBlendMode() == "ADD"
+                if (region:GetAlpha() or 0) > 0.05 and not light then Take(region) end
             end
         end
     end
@@ -392,7 +409,7 @@ end
 local SHOTS = {
     { "orders", "Kill orders", Ledger("Kill orders", { "o", "bounty" }, false) },
     { "leaderboard", "Leaderboard", Ledger("Leaderboard", { "b", "top" }, false, true) },
-    { "death-list", "Death list", Ledger("Death list", nil, false) },
+    { "death-note", "Death Note", Ledger("Death Note", nil, false) },
     -- the one you owe most on the card: Killed me is who you owe first
     { "grudges", "Grudges", Ledger("Grudges", { "f", "wanted" }, false, nil, "me") },
     { "killed-us", "Killed us", Ledger("Grudges", { "w", "wanted" }, false, nil, "killed") },
@@ -430,18 +447,19 @@ local SHOTS = {
         GK.ShowProfile({ kind = "record", key = cast.top })
         return { _G.GrudgekeeperProfile }
     end },
-    -- what shows on the screen, each once its effect has landed: a spree, the WANTED poster, a revenge
+    -- what shows on the screen, each once its effect has landed: a spree, the WANTED poster, a revenge - with
+    -- all it draws past its frame (GK.ShotRect)
     { "splash-spree", "Spree splash", function()
         GK.AnnounceSample("grudgebound")
-        return { _G.GrudgekeeperSplash }
+        return { _G.GrudgekeeperSplash, drawn = true }
     end, 2.2 },
     { "splash-wanted", "WANTED splash", function()
         GK.AnnounceSample("fulfilled")
-        return { _G.GrudgekeeperSplash }
+        return { _G.GrudgekeeperSplash, drawn = true }
     end, 2.0 },
     { "splash-revenge", "Revenge splash", function()
         GK.AnnounceSample("revenge")
-        return { _G.GrudgekeeperSplash }
+        return { _G.GrudgekeeperSplash, drawn = true }
     end, 1.6 },
     -- a guildie's toasts, stacked under the letter icon: a spree, a new title, a revenge
     { "toasts", "Toasts", function()
@@ -450,6 +468,7 @@ local SHOTS = {
         GK.AnnounceSample("revenge")
         local frames = GK.ToastFrames()
         frames[#frames + 1] = GK.NoticeFrame()
+        frames.drawn = true
         return frames
     end, 1.4 },
 }

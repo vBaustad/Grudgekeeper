@@ -118,8 +118,10 @@ local defaults = {
     shotEveryKill = false,   -- a screenshot at every kill
     share = true,            -- tell the guild your kills, deaths and score, and where targets are seen
     shareOutside = true,     -- answer a player on your side outside the guild who asks for your score (Profile.lua)
-    mode = "normal",         -- Normal, Streamer or Private: whose news is told, and what is shared (GK.Mode)
+    mode = "normal",         -- What you share: "normal" everything, "streamer" all but where, "private" nothing (GK.Mode)
     autoOrders = true,       -- your death to someone on a rampage or camping you posts a kill order (Guild.lua)
+    deathNoteShared = false, -- one Death Note for every character of the account on the same side (GK.TrackedList)
+    deathNotes = {},         -- [faction] = { [key] = entry }: those lists (Sightings.lua)
     sound = true,            -- the ledger's and the letters' own sounds (GK.Sound; Settings, Appearance)
     oldPortraits = true,     -- race faces from the old character-creation screen, not today's race icons (GK.SetPortrait);
                              -- on by default, whichever skin (the owner, 2026-11-11)
@@ -127,7 +129,9 @@ local defaults = {
     guildButton = true,      -- a Grudgekeeper tab among the guild window's own (GuildTab.lua)
     minimap = {},            -- LibDBIcon's own record: where the button sits, whether it is hidden
     mapPins = true,          -- where an order's target was last seen, on the world map
-    unitMenu = true,         -- our lines in the game's right-click menu on a player: profile, and kill order on an enemy
+    -- our lines in the game's right-click menu on a player, each its own (Settings, Right-click menu, GK.MENU_LINES)
+    menuFile = true, menuOrder = true, menuDeathNote = true, menuGuild = true,
+    menuProfile = true, menuShame = true, menuKudos = true, menuNotes = true,
     inspectTab = true,       -- a tab of ours on the game's Inspect window: a guildie's record, an enemy's poster
     sortBy = {},             -- [ledger page name] = the column heading its rows are sorted by (none: the page's own order)
     mineOnly = false,        -- whether the ledger's sortable pages list only the rows that are yours
@@ -136,6 +140,9 @@ local defaults = {
     shameSound = "game:566564", -- and the sound it plays (GK.SoundChoices; "off" for none): the Alliance bell
     nearSound = "call:horn_rush", -- the sound of a target near: War horn rush (GK.NearSound; both the owner's, 2026-11-23)
     kudosGroup = "off",      -- a Kudos player joins your group (off: the owner doesn't read chat lines)
+    targetedBy = "off",      -- one in your Death Note you can see targets you, out of a fight (Sightings.lua, TargetedBy)
+    targetSound = "call:heartbeat", -- and its own sound, short: Heartbeat ("jeg vil ikke ha 10s dark souls musikk
+                             -- hver gang noen targeter meg", the owner, 2026-11-24)
     plateNotes = true,       -- on a noted player's nameplate: Kudos' medals, Shame's small mark
     guilds = {},             -- [guild key] = { board, orders, wanted, slain, feed, nextId } (Guild.lua)
     -- What is told on screen (Announce.lua; Settings, Mine and Guildies), yours and a guildie's each on its own:
@@ -231,6 +238,105 @@ function GK.SharesPlace() return GK.Mode() == "normal" end
 
 --- Whether a player on our side outside the guild who asks is answered (Profile.lua).
 function GK.SharesOutside() return GK.db.shareOutside ~= false and GK.Mode() ~= "private" end
+
+-- The right-click menu's lines, each on or off (Settings, Right-click menu, 2026-11-24): "legg til settings for hva du
+-- ønsker å se ved dropdown på enemies og friendlies. kanskje noen bare vil se KoS eller Shame osv" (the owner). One
+-- box was every line until then. An enemy's four (Profile.lua), then a friendly player's (Profile.lua, NotesUI.lua).
+GK.MENU_LINES = { "menuFile", "menuOrder", "menuDeathNote", "menuGuild", "menuProfile", "menuShame", "menuKudos",
+    "menuNotes" }
+
+--- Whether this line of ours goes in the game's right-click menu.
+function GK.MenuLine(key) return GK.db ~= nil and GK.db[key] ~= false end
+
+--- Whether any does: with none, the menus are left alone altogether.
+function GK.MenuAny()
+    for _, key in ipairs(GK.MENU_LINES) do
+        if GK.MenuLine(key) then return true end
+    end
+    return false
+end
+
+-- What you see (Settings, Quick setup, 2026-11-24): one choice that sets the rows of Mine, Guildies and Warnings, and
+-- is Custom when they match none of these. Those rows only: a guildie's thresholds, the sounds, the letters and the
+-- rest stay as they are. Standard is the rows as installed. What you share (GK.Mode) turns none of it down: Streamer
+-- and Private told nothing of a guildie's until then, and the rows say that now. In a block: Core.lua's locals.
+do
+    local MINE = { "spreeMine", "rankMine", "orderMine", "revengeMine", "grudgeMine", "spreeEnded", "spreeTormentor" }
+    local GUILD = { "spreeGuild", "rankGuild", "orderDone", "revengeGuild", "spreeEndedGuild", "spreeTormentorGuild" }
+    local WARN = { "alertNear", "watchNearby", "watchGroup", "kudosGroup", "targetedBy" }
+    GK.SEE_MINE, GK.SEE_GUILD, GK.SEE_WARN = MINE, GUILD, WARN
+    local function All(keys, v)
+        local t = {}
+        for _, k in ipairs(keys) do t[k] = v end
+        return t
+    end
+    local function Rows(...)
+        local t = {}
+        for i = 1, select("#", ...) do
+            for k, v in pairs((select(i, ...))) do t[k] = v end
+        end
+        return t
+    end
+    local MINE_ON = { spreeMine = "splash", rankMine = "splash", orderMine = "splash", revengeMine = "splash",
+        grudgeMine = "toast", spreeEnded = "toast", spreeTormentor = "toast" }
+    local GUILD_STANDARD = { spreeGuild = "toast", rankGuild = "toast", orderDone = "toast", revengeGuild = "off",
+        spreeEndedGuild = "off", spreeTormentorGuild = "toast" }
+    local WARN_STANDARD = { alertNear = "screen", watchNearby = "off", watchGroup = "screen", kudosGroup = "off",
+        targetedBy = "off" }
+    local ORDERS_ONLY = All(GUILD, "off")
+    ORDERS_ONLY.orderDone = "toast"
+    GK.SEE = {
+        { id = "standard", name = "Standard", says = "Your big moments, the guild's biggest, and warnings.",
+          rows = Rows(MINE_ON, GUILD_STANDARD, WARN_STANDARD) },
+        { id = "all", name = "Everything", says = "Every moment of yours and the guild's, every warning.",
+          rows = Rows(MINE_ON, All(GUILD, "toast"), All(WARN, "screen")) },
+        { id = "orders", name = "Kill orders", says = "Your moments. From the guild only kill orders fulfilled.",
+          rows = Rows(MINE_ON, ORDERS_ONLY, WARN_STANDARD) },
+        { id = "mine", name = "Only mine", says = "Your moments and warnings. Nothing from the guild.",
+          rows = Rows(MINE_ON, All(GUILD, "off"), WARN_STANDARD) },
+        { id = "warn", name = "Warnings only", says = "Who is near and who joins your group. No splashes or toasts.",
+          rows = Rows(All(MINE, "off"), All(GUILD, "off"), WARN_STANDARD) },
+        { id = "none", name = "Nothing on screen", says = "No splashes, toasts or warnings. Letters still come.",
+          rows = Rows(All(MINE, "off"), All(GUILD, "off"), All(WARN, "off")) },
+    }
+    local isGuild, isWarn = All(GUILD, true), All(WARN, true)
+
+    --- A row as What you see compares it: a guildie's splash is a toast (Announce.lua, Style), and a warning's old
+    --- true or false is its way now (GK.WarnStyle).
+    local function Value(key)
+        if isWarn[key] then return GK.WarnStyle(key) end
+        local v = GK.db[key]
+        if isGuild[key] and v ~= "off" then return "toast" end
+        return v
+    end
+
+    --- What you see now: the id of the choice the rows match, or "custom".
+    function GK.SeeChoice()
+        if not GK.db then return "custom" end
+        for _, c in ipairs(GK.SEE) do
+            local same = true
+            for key, v in pairs(c.rows) do
+                if Value(key) ~= v then
+                    same = false
+                    break
+                end
+            end
+            if same then return c.id end
+        end
+        return "custom"
+    end
+
+    --- Set the rows a choice names. Returns whether there is such a choice.
+    function GK.SetSee(id)
+        for _, c in ipairs(GK.SEE) do
+            if c.id == id then
+                for key, v in pairs(c.rows) do GK.db[key] = v end
+                return true
+            end
+        end
+        return false
+    end
+end
 
 -- ---------------------------------------------------------------------------
 -- Values from the client and from other players
@@ -993,10 +1099,11 @@ end
 
 -- GetCoinTextureString is not a global in Forever: it lives in C_CurrencyInfo. Called through pcall, plain
 -- text when it isn't there. Looked up at each call - two table reads - so nothing is kept from before it was.
-function GK.Coins(copper)
+-- height: the coins' size, as the words beside them (the game's default 14).
+function GK.Coins(copper, height)
     local coinString = C_CurrencyInfo and C_CurrencyInfo.GetCoinTextureString
     if coinString then
-        local ok, s = pcall(coinString, math.floor(tonumber(copper) or 0))
+        local ok, s = pcall(coinString, math.floor(tonumber(copper) or 0), height or 14)
         if ok and type(s) == "string" then return s end
     end
     return GK.MoneyText(copper)
@@ -1297,6 +1404,15 @@ function GK.NearSound()
     if not GK.PlayChoice(key) then GK.PlayChoice("kit:PVP_THROUGH_QUEUE") end
 end
 
+--- The sound of one in your Death Note targeting you (Sightings.lua): the one picked on its row, the horn when it
+--- can't be played, nothing for None or with Warnings' Play sounds off.
+function GK.TargetSound()
+    if not GK.db or GK.db.warnSounds == false then return end
+    local key = GK.db.targetSound or defaults.targetSound
+    if key == "off" then return end
+    if not GK.PlayChoice(key) then GK.PlayChoice("kit:PVP_THROUGH_QUEUE") end
+end
+
 --- The sound a Shame player joining plays: the one picked in the settings, else the Alliance bell. "auto" - the
 --- clip of a guild we are in, or the troll gong - was where it started until 1.12.0 moved everyone to the bell.
 function GK.ShameSoundKey()
@@ -1394,10 +1510,11 @@ function GK.Foe(key, info)
         f = { k = 0, d = 0, hits = {}, last = time() }
         foes[key] = f
         local n, oldest, oldKey = 0, nil, nil
+        local tracked = GK.TrackedList and GK.TrackedList()
         for k2, v in pairs(foes) do
             n = n + 1
-            -- never one on your Death list: their score is what its row says
-            if k2 ~= key and not (GK.char.tracked and GK.char.tracked[k2]) and (not oldest or (v.last or 0) < oldest) then
+            -- never one in your Death Note: their score is what its row says
+            if k2 ~= key and not (tracked and tracked[k2]) and (not oldest or (v.last or 0) < oldest) then
                 oldest, oldKey = v.last or 0, k2
             end
         end
@@ -1525,7 +1642,7 @@ end
 
 local function Help()
     print(TAG .. " v" .. GK.addonVersion .. " commands:")
-    print("  /grudge  - open the window: kill orders, the leaderboard, your Death list, grudges")
+    print("  /grudge  - open the window: kill orders, the leaderboard, your Death Note, grudges")
     print("  /grudge post  - write a kill order on your target (no enemy targeted: it asks who)")
     print("  /grudge letters  - read your letters")
     print("  /grudge test  - four sample letters, to see what they look like")
@@ -1571,6 +1688,9 @@ SlashCmdList.GRUDGEKEEPER = function(msg)
         -- Not "watch": that is the Shame list's word (NotesUI.lua)
         if GK.CanWatchGuild() then GK.OpenPicker("guild")
         else print(TAG .. ": only an officer or the guild master can track a guild.") end
+    elseif cmd == "owe" or cmd:match("^owe ") then
+        -- the test panel's debt to a name and money you give, written in full at a mailbox (Debug.lua)
+        if GK.TestOwe then GK.TestOwe(strtrim(msg or ""):sub(4)) else Help() end
     elseif cmd == "debug meter" then
         GK.MeterProbe()               -- the game's damage meter after a fight (Kills.lua)
     elseif cmd == "debug" then
@@ -1926,7 +2046,8 @@ end
 
 -- A warning's row: "screen" by the letter icon, "chat" one line, or "off". true and false are an older saved
 -- file's, from when each row was a box to tick: true is the row's own way, as it was then.
-local WARN_WAY = { alertNear = "screen", watchNearby = "chat", watchGroup = "screen", kudosGroup = "chat" }
+local WARN_WAY = { alertNear = "screen", watchNearby = "chat", watchGroup = "screen", kudosGroup = "chat",
+    targetedBy = "screen" }
 
 --- How a warning is told now: "screen", "chat" or "off".
 function GK.WarnStyle(key)
@@ -1991,6 +2112,22 @@ LIB.On("PLAYER_LOGIN", function()
     if not GK.db.sounds112 then
         GK.db.nearSound, GK.db.shameSound, GK.db.sounds112 = defaults.nearSound, defaults.shameSound, true
     end
+    -- Mode's halves apart (2026-11-24): what you share is still db.mode, what you see is the rows (Quick setup).
+    -- Streamer and Private told nothing of a guildie's until then, and a guildie's kill order came as a letter only
+    -- when it was about you: each such account has the guildies' toasts and the kill order letters turned off once,
+    -- so nothing new shows up, and keeps what it picks after. And the right-click menu's one box is a box a line:
+    -- one that was off is every line off.
+    if not GK.db.modesSplit then
+        if GK.db.mode == "streamer" or GK.db.mode == "private" then
+            for _, key in ipairs(GK.SEE_GUILD) do GK.db[key] = "off" end
+            GK.db.letters = false
+        end
+        if GK.db.unitMenu == false then
+            for _, key in ipairs(GK.MENU_LINES) do GK.db[key] = false end
+        end
+        GK.db.modesSplit = true
+    end
+    GK.db.unitMenu = nil
     GK.ClaimPC(GK.char)
     GK.ForgetGoneSounds(GK.db)
     SplitSides(GK.db)                                -- after it: a None picked is a box off by then

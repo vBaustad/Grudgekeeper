@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+- **A warning when someone in your Death Note targets you.** Out of a fight, and only one you can see: their nameplate has to be up. Once a minute for each, with a short sound of its own you can pick, Heartbeat to begin with. Off to begin with, under Settings, Warnings.
+- **The test panel shows two more of them.** /grudge debug: They answer your login puts two fights you missed in the News, and Death Note: targets you shows its warning. With it open, /grudge owe First Surname 50c makes a debt to one of your own characters that Fill in mail writes in full, so a real payment can be tried alone.
+- **Guild chat is kept after the test panel.** Once /grudge debug had been closed, the guild window's Grudgekeeper page stopped saving guild chat, so what was said after it was gone at the next login.
+- **What you owe works with TSM's mailbox too.** With TSM's mail window, the card of bounties you owe never came, and gold you mailed from it was never marked paid. Now the card comes whatever window the mailbox opens in, and gold you mail from any of them pays. Its button, Fill in mail, fills the game's own window, which TSM has a button to switch to. The card shows the gold as coins.
+- **A login hears what it missed.** A kill or a death was heard only by whoever was online, so after a while away the News and the Versus tab had none of it, and two guildies saw different scores. Now each guildie online answers your login with their own kills and deaths since you were last on (half a day at most) and their count against the guild your officers track, and none of it comes as a toast. A guildie who is offline when you log in tells you when they log in while you are on.
+- **Quick setup.** The settings open on a page of two choices. **What you see** sets the rows of Mine, Guildies and Warnings at once: Standard, Everything, Kill orders, Only mine, Warnings only or Nothing on screen. Change a row yourself and it says Custom. **What you share** is what Mode was, by what each does: Everything, All but where I am, or Nothing.
+- **What you share no longer decides what you see.** Streamer and Private also hid your guildies' notifications and their kill orders' letters, which no setting said. Now only your rows do that. If you had Streamer or Private, your guildies' toasts and the kill order letters are turned off once, so nothing new turns up, and you can turn any of them back on.
+- **The right-click menu, a line at a time.** A page of its own in the settings has a box for each of our lines: on an enemy the Grudge file, the kill order, the Death Note and their guild for an officer; on a player on your side the profile, Shame, Kudos and their notes. It was one box for all of them, and if you had it off, every line stays off.
+- **In the game is two pages,** Nameplates & map and Buttons & tabs, beside the Right-click menu.
+- **The Death list is the Death Note.** The same list, with a new line at the top of its page.
+- **One Death Note for all your characters, if you want it.** Off to begin with, on the settings' new Death Note page. On, every character of yours on the same side shares the names, your notes and the warning, so the ones you hate are there on the alt you level. Each character's own list joins it, and is back as it was if you turn it off.
+- **One in your Death Note warns you even with Kill order target near off.** With a kill order on them, only the kill order's warning could tell you, so turning it off left them silent.
+- **`/grudge shots` takes the splash and the toasts whole.** Their pictures were cut off at the top, where the art stands over them, and they named other players than the made-up guild's.
+- **A death that ends a kill spree is one line in the News.** The News said both who fell to whom and who ended whose spree, so one death read as two. Now it is the one line: who ended whose spree.
+
 ## 1.12.0
 
 - **Patch notes.** After an update the letter by the icon opens the patch notes, in the game's bronze frame and your skin, with a list of what is new and what changed. `/grudge news` opens them any time.

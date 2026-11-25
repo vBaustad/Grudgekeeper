@@ -1,5 +1,5 @@
 -- Grudgekeeper - the who-picker: who a page's own action is for. The ledger's "Post a kill order",
--- "Add someone" on the Death list, "Put someone on Shame" and "Give someone kudos" open it, and so does /grudge post with
+-- "Add someone" in the Death Note, "Put someone on Shame" and "Give someone kudos" open it, and so does /grudge post with
 -- no enemy targeted (it used to do nothing but print a line: "trykke post a kill order gjør ingenting
 -- fordi man må ha et target", the owner, 2026-11-06).
 -- A small window with a name box and the people you most likely mean: your target, then for Shame and
@@ -26,7 +26,7 @@ local MAX_RECENT = 40           -- and at most this many of them are remembered
 -- What each kind asks, and whom it suggests: enemies (orders, tracking) or the people you group with.
 local KINDS = {
     order = { title = "Post a kill order", enemy = true, wide = true },
-    track = { title = "Add to Death list", enemy = true, wide = true },
+    track = { title = "Add to Death Note", enemy = true, wide = true },
     watch = { title = "Who goes on Shame?", list = "watch" },
     kudos = { title = "Who gets kudos?", list = "kudos" },
     guild = { title = "Which guild do we track?", guild = true, hint = "Type the guild's name",
@@ -509,7 +509,7 @@ do
         if not mini then BuildMini() end
         noting = t
         local on = GK.IsTracked(t.key)
-        mini.title:SetText(on and "Death list note" or "Add to Death list")
+        mini.title:SetText(on and "In your Death Note" or "Add to Death Note")
         mini.who:SetText(GK.Show(t.key))
         mini.ok:SetText(on and "Save" or "Add")
         mini.box:SetText(on and GK.DeathNote(t.key) or "")

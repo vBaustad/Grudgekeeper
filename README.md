@@ -3,14 +3,12 @@
 World PvP score-keeping for WoW: Forever: who you killed, who killed you and how often, a guild
 leaderboard, and kill orders with a bounty on them.
 
-- `/grudge` opens the window: kill orders, the leaderboard, your Death list, the grudges, the guild's news
+- `/grudge` opens the window: kill orders, the leaderboard, your Death Note, the grudges, the guild's news
   and your own page. Letters and the settings are the two red buttons beside the X.
 - The kill orders page lists the open orders: those with gold first, the biggest first, then those with
   none, the newest first, with how long ago each was posted.
 - The kill orders page has **All**, **Bounties** and **Mine** under its title. An order is a letter, a warning and a pin when it has gold on it, is a friend's, or is about you
-  (yours, backed by you, on your Death list, or on someone who killed you). **Mode** in the settings turns the
-  guild down further: Streamer shows nothing of your guildies' but your own kill orders and never sends where you are,
-  and Private hears only what is about you and shares nothing but your kill orders.
+  (yours, backed by you, in your Death Note, or on someone who killed you).
 - Where a page shows more than one thing - this week or all time, who killed you or the guild, all the news
   or only the kill orders - tabs under the title switch between them.
 - `/grudge post` writes a kill order on your target, or asks who when you have none. Posted on someone
@@ -18,15 +16,16 @@ leaderboard, and kill orders with a bounty on them.
 - Each page of the window that you can add to has its action at the top - **Post a kill order**, **Add
   someone**, **Put someone on Shame** and **Give someone kudos**. It asks who:
   your target, the enemies you met lately, your group and who just left it, or a name you type. For a kill
-  order and the Death list the search has the WANTED poster on its right, and stays open for the next one. Where a list
+  order and the Death Note the search has the WANTED poster on its right, and stays open for the next one. Where a list
   has column headings, click one to sort by it; the kill orders page keeps its own order.
-- **Death list** is your own list, and holds only who you put there: **Add someone** on its page, **Add to
-  Death list** on their card or in the right-click menu on an enemy. Up to 100, never shared, and nobody leaves
-  it unless you take them off. One of them near warns you and wears an eye over their nameplate. Adding one
+- **Death Note** is your own list, and holds only who you put there: **Add someone** on its page, **Add to
+  Death Note** on their card or in the right-click menu on an enemy. Up to 100, never shared, and nobody leaves
+  it unless you take them off. With **One Death Note for all my characters** on (Settings, Death Note), your
+  characters on the same side share it, notes and warning too. One of them near warns you and wears an eye over their nameplate. Adding one
   opens a small window for a note, if you want one: Add works without. The note shows on their row and card,
   where **Edit** changes it, and is never sent. Killing one is a toast of yours, with no letter and nothing
   said to the guild beyond the kill itself. It was called
-  Track before, and whoever you tracked is on it.
+  Track before, then the Death list, and whoever you tracked is on it.
 - **Grudges** is what came by itself. **Killed me** has who killed you: those who lead over you first, the one
   you owe most at the top ("owed 3"), and under a faint line those you stand even with and those you lead.
   **Killed us** has who killed the guild most. The third tab is **Versus**, for the guild yours tracks. Kill one who
@@ -39,18 +38,30 @@ leaderboard, and kill orders with a bounty on them.
   each tier with an effect and sounds of its own. `/grudge spree` shows a sample of both, and `/grudge spree
   merciless` (or bloodied, butcher, smoke, scythe, grudgebound, 20, 100, ended, tormentor, revenge) that one's
   splash, and `/grudge spree grudge` a grudge evened up. Each milestone is a line in the News as well, with a spree an enemy ended and a tormentor put down.
+- The settings open on **Quick setup**. **What you see** sets the rows of Mine, Guildies and Warnings at once -
+  Standard, Everything, Kill orders, Only mine, Warnings only or Nothing on screen - and says Custom once you change a
+  row yourself. **What you share** is Everything, All but where I am (your score, never your zone or where you see a
+  target), or Nothing (no score, no zone, no profile; only what a kill order needs). Neither turns down the other.
 - In the settings, **Mine** has each of your own moments on a row: splash, toast or off, and its sound.
   **Guildies** has theirs: a toast or not, its sound, a threshold for sprees and titles, and whether only from
-  your zone. **Warnings** has who is near or joins your group, and the two with a sound let you pick it, with
+  your zone. **Warnings** has who is near or joins your group, and one in your Death Note targeting you (out of a
+  fight, one whose nameplate is up, with a sound of its own; off to begin with), and the two with a sound let you pick it, with
   a play button beside each sound in the menu. Each of the three has a Play sounds of its own, which turns
   off and greys out the sounds on that page.
 - A kill order fulfilled is told the same way - yours as a splash, with the bounty - and it is in the News's
   Kill orders tab, and for a day first on the guild window's tab: who got them, where and when.
+- At a mailbox a card beside it lists the bounties you owe - each hunter and their part, in coins - in the game's
+  mail window or another addon's, such as TSM's. **Fill in mail** writes the letter in the game's own window (hover
+  it to see the letter first), and you press Send. Gold you mail or trade someone you owe marks it paid by itself;
+  **Paid** marks one paid another way.
 - `/grudge options` opens the settings, a page of the ledger with its tabs still under it. **Arrange on screen** there, or
   `/grudge arrange`, lets you drag the letter icon, the splash and the toasts where you want them.
 - `/grudge test` puts four sample letters in your pile.
 - `/grudge news` opens the patch notes of this version.
 - The **You** tab is your own page: your card, and your latest kills, assists and deaths.
+- Each of our lines in the game's right-click menu on a player has a box of its own under Settings, **Right-click
+  menu**: on an enemy the Grudge file, the kill order, the Death Note and, for an officer, their guild; on a player on
+  your side the profile, Shame, Kudos and their notes.
 - Right-click a player on your side and pick **Grudgekeeper profile**: their profile in a window of its own -
   title, points, kills and deaths - with the way to the ledger under it. A player outside your guild is asked
   for theirs as it opens, and it fills in when they answer. On an enemy the line is **Grudge file**: what your
@@ -63,6 +74,9 @@ leaderboard, and kill orders with a bounty on them.
   opens no card. Folded, a click turns to the versus page. With no guild tracked, the tab says how one is.
   It is what your client heard. A player counts once we know they are in that guild - seen with it while it is
   tracked, or named so by a guildie - and so do the kills and deaths against them your client heard of before.
+- When you log in, each guildie online sends you their own kills and deaths since you were last on (half a day at
+  most) and their count against the guild on watch, so the News and Versus fill in what you missed. None of it is
+  a toast. A guildie who is offline then tells you when they log in while you are on.
 - A grudge that is wrong goes with **Forget grudge** on that player's card (two clicks): your record of
   them, here and in the guild's lists. Your score stays.
 - Inspect a guildie and the **Grudgekeeper** tab below the game's own shows their page of the ledger. Inspect a
