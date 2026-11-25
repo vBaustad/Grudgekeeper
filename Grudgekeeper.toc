@@ -61,5 +61,8 @@ Inspect.lua
 MapPins.lua
 MapPins.xml
 Options.lua
+# the test panel (/grudge debug) and the store page's pictures (/grudge shots): ours, not in the download
+#@do-not-package@
 Debug.lua
 Shots.lua
+#@end-do-not-package@

@@ -19,3 +19,8 @@ ignore:
   - "*.png"
   - "tests"
   - "docs"
+  - ".claude"
+  - "CLAUDE.md"
+  - "CONTRIBUTING.md"
+  - "Debug.lua"
+  - "Shots.lua"

@@ -90,7 +90,8 @@ leaderboard, and kill orders with a bounty on them.
   `/grudge note`, `/grudge shame` and `/grudge kudos` do the same from chat. The notes
   came from Guild Grudge, by dakristia; `/grudge import` takes over its saved notes.
 - A Kudos player wears a medal for each tag over their nameplate, out of combat and out in the world, and a
-  Shame player a small mark.
+  Shame player a badge for each of theirs, in a fight too. One player can be on both lists, with a row for each
+  (Shame's on top), and each list keeps its own tags. The badges and both lists are dakristia's.
 
 Forever closes the combat log to addons. Grudgekeeper counts what the client does hand over: your
 group's killing blows (`PARTY_KILL`), an enemy player's death when someone else finished them (`UNIT_DIED`),
