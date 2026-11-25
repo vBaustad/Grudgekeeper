@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.13.1
+
+- **Told when a newer version is out.** When a guildie has a newer Grudgekeeper than yours, one line in chat says so: the version you have and the new one. It works from this version on, so you hear of the next one.
+- **Versus hears your guildies' fights, however old.** A guildie said only what had happened since you were last on, so a fight from while you were away and they were on never reached you, and two of you saw different scores. Now each guildie online when you log in, and each who logs in while you are on, says their count against the guild your officers track, up to 40 of them, and their latest 20 fights against them, however old. The one who tells needs this version; for the older fights in the list, so do you.
+
 ## 1.13.0
 
 - **Shame players wear a badge for each tag** over their nameplate, in the row with the Kudos medals: a tarnished medal with the tag's symbol, three at most. They stay in a fight, as a warning; Kudos' medals still go. By dakristia.

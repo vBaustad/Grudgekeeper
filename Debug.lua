@@ -874,6 +874,19 @@ function GK.TestOwe(text)
         GK.Show(key), GK.MoneyText(copper)))
 end
 
+--- /grudge newer: a guildie with a newer Grudgekeeper than ours, as its line in chat reads (Guild.lua,
+--- GK.HeardVersion). One newer still each time, so the line comes again.
+local newer = 0
+function GK.TestNewer()
+    local a, b, c = tostring(GK.addonVersion):match("^(%d+)%.(%d+)%.(%d+)$")
+    if not a then
+        Say("this copy is no release (" .. tostring(GK.addonVersion) .. "), so it hears of none.")
+        return
+    end
+    newer = newer + 1
+    GK.HeardVersion(("%d.%d.%d"):format(tonumber(a), tonumber(b), tonumber(c) + newer))
+end
+
 --- /grudge debug: open the test panel, and test mode with it.
 function GK.OpenDebug()
     if not GK.char then return end

@@ -76,7 +76,10 @@ leaderboard, and kill orders with a bounty on them.
   tracked, or named so by a guildie - and so do the kills and deaths against them your client heard of before.
 - When you log in, each guildie online sends you their own kills and deaths since you were last on (half a day at
   most) and their count against the guild on watch, so the News and Versus fill in what you missed. None of it is
-  a toast. A guildie who is offline then tells you when they log in while you are on.
+  a toast. A guildie who is offline then tells you when they log in while you are on. For Versus they
+  also say their count against up to 40 of the guild on watch and their latest 20 fights against them,
+  however old.
+- When a guildie has a newer Grudgekeeper than yours, one line in chat says which version you have and which is new.
 - A grudge that is wrong goes with **Forget grudge** on that player's card (two clicks): your record of
   them, here and in the guild's lists. Your score stays.
 - Inspect a guildie and the **Grudgekeeper** tab below the game's own shows their page of the ledger. Inspect a

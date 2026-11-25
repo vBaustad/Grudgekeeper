@@ -5,14 +5,17 @@
 -- Messages, fields separated by ';' (every text field goes through GK.Clean on the way in). A field
 -- added later goes on the END, so an older client reads what it knows and ignores the rest:
 --   B;1;points;kills;deaths;level;class;weekPoints;weekKills;weekDeaths;weekId;streak;bestStreak;
---       ordersDone;bountyWon;nemesis;nemesisTimes;race;sex;assists;weekAssists;parts
+--       ordersDone;bountyWon;nemesis;nemesisTimes;race;sex;assists;weekAssists;parts;version
 --                                                              my score, my profile's numbers, and
 --                                                              my race (file token) and sex (2 or 3),
 --                                                              for my portrait in the ledger; parts:
 --                                                              what each of my PCs made of the score
---                                                              ("One character, more than one PC")
---   Q;1;since                                                  tell me everything (at login); since: when I was
---                                                              last online, for what I missed (G, V)
+--                                                              ("One character, more than one PC");
+--                                                              version: my Grudgekeeper's, as in Q
+--   Q;1;since;version                                          tell me everything (at login); since: when I was
+--                                                              last online, for what I missed (G, V); version:
+--                                                              my Grudgekeeper's, a release's (1.13.1) or none,
+--                                                              so a guildie on an older one hears of it
 --   K;1;name;class;race;level;zone;points;avenged;times;raceFile;sex;spree
 --                                                              I killed someone (avenging a guildie;
 --                                                              times: how often I have, in all; raceFile
@@ -1205,6 +1208,41 @@ function GK.SendSighting(o)
     Send(Msg("S", PROTO, o.by, o.id, s.z, s.l, s.m, s.x, s.y))
 end
 
+-- ---------------------------------------------------------------------------
+-- A newer Grudgekeeper in the guild
+-- ---------------------------------------------------------------------------
+-- "kan vi legge til en sånn "you have version X and there's a new version Y" som kommer i chatten hvis noen
+-- andre har en nyere versjon?" (the owner, 2026-11-25). Our Q and our B carry our version as their last field - a
+-- release's only (1.13.1), never a beta's or a test build's - and a guildie's newer one is said in chat once, and
+-- again only for one newer still: a line a session. Never from a copy passed on (R): that is the relayer's
+-- word about somebody else. It reaches only a client with this code, so from 1.13.1 on.
+
+--- A release's version as one number to compare, and as it is written; nil for anything else.
+local function Release(v)
+    if type(v) ~= "string" then return nil end
+    local a, b, c = v:match("^(%d+)%.(%d+)%.(%d+)$")
+    a, b, c = tonumber(a), tonumber(b), tonumber(c)
+    if not (a and a < 1000 and b < 1000 and c < 1000) then return nil end
+    return a * 1000000 + b * 1000 + c, ("%d.%d.%d"):format(a, b, c)
+end
+
+--- Ours as it goes out: nil when this copy is no release.
+local function MyRelease()
+    local _, text = Release(GK.addonVersion)
+    return text
+end
+
+local toldVersion                 -- the newest a guildie had that we said in chat, this session
+
+--- A guildie's version, from their own Q or B: newer than ours, and than any we told of, it is said in chat.
+function GK.HeardVersion(v)
+    local theirs, text = Release(v)
+    local ours = Release(GK.addonVersion)
+    if not (theirs and ours) or theirs <= ours or (toldVersion and theirs <= toldVersion) then return end
+    toldVersion = theirs
+    print(("%s: you have version %s, and there is a new version %s."):format(GK.TAG, GK.addonVersion, text))
+end
+
 local function SendBoardNow()
     if not GK.SharesScore() then return end
     local _, class = UnitClass("player")
@@ -1213,7 +1251,7 @@ local function SendBoardNow()
     local _, raceFile = UnitRace("player")
     local text = Msg("B", PROTO, c.points, c.kills, c.deaths, UnitLevel("player"), class,
         w.p, w.k, w.d, w.id, c.streak or 0, c.bestStreak or 0, c.done or 0, c.won or 0,
-        nemesis, f and f.d or nil, raceFile, UnitSex("player"), c.assists or 0, w.a or 0, GK.MyPartsText())
+        nemesis, f and f.d or nil, raceFile, UnitSex("player"), c.assists or 0, w.a or 0, GK.MyPartsText(), MyRelease())
     Send(text)
     GK.StoreOwnRow(text)
 end
@@ -1692,6 +1730,7 @@ end
 --- parts - an older client - the row is what it says, as before parts.
 local function OnBoard(sender, f)
     heard["b:" .. sender] = GetTime()
+    GK.HeardVersion(f[23])                          -- theirs (A newer Grudgekeeper in the guild)
     local was = GK.Store().board[sender]
     local had = was and was.parts
     local before = was and was.p
@@ -2159,7 +2198,13 @@ end
 -- again: on within LOGIN_GAP of when we were last online, all who are on now heard us then. Nothing of it is
 -- announced - it is old news - and a line already heard, live or in another answer, is not taken again
 -- (FeedCaughtUp).
-local CATCH_UP, MAX_CAUGHT, MAX_TOTALS = 12 * 3600, 10, 15
+-- The versus page wants every fight between the two guilds ("vi vil prøve å få alle kamper mellom vår guild og
+-- versus guilden", the owner, 2026-11-25), and "since you were last here" lost the ones from while the asker was
+-- away and we were not. So, for the guild on watch, every answer and every login says our count against each of
+-- them (the newest MAX_TOTALS) and our newest OLD_FIGHTS fights against them, however old: a count only ever goes up
+-- where it lands and a fight is taken once, so saying them again costs nothing.
+local CATCH_UP, MAX_CAUGHT, MAX_TOTALS = 12 * 3600, 10, 40
+local OLD_FIGHTS = 20                -- as many as the versus page keeps (MAX_FIGHTS)
 local LOGIN_GAP = 15 * 60            -- the sweep keeps when we were last online to ten minutes: a /reload is inside
 local SAME_LINE = 120                -- a line heard live and the same said again: one, the clocks a little apart
 local CAUGHT_FOR, MAX_SENDERS = 900, 500
@@ -2234,15 +2279,18 @@ local function FeedCaughtUp(e)
     return true
 end
 
---- G: a kill or a death of the sender's, said again. Theirs alone (who is the sender), within CATCH_UP, and
---- nothing announced: no toast, no spree, no letter.
+--- G: a kill or a death of the sender's, said again. Theirs alone (who is the sender), within CATCH_UP - or older, a
+--- fight against the guild on watch, for the versus page - and nothing announced: no toast, no spree, no letter.
 local function OnCaughtUp(sender, f)
     local kind = f[3]
     if kind ~= "K" and kind ~= "D" then return end
     local name = GK.PlayerKey(GK.Clean(f[4], 64))
     local now = time()
-    local t = Int(f[9], now - CATCH_UP - 600, now + 60)
-    if not (name and t) or not Allowed(sender, "g", 2 * MAX_CAUGHT) then return end
+    local t = Int(f[9], 0, now + 60)
+    if not (name and t) then return end
+    local watched = GK.WatchedGuild and GK.WatchedGuild()
+    if t < now - CATCH_UP - 600 and not (watched and GK.SameGuild(f[10], watched)) then return end
+    if not Allowed(sender, "g", 2 * (MAX_CAUGHT + OLD_FIGHTS)) then return end
     t = math.min(t, now)
     local c, r, l = GK.ValidClass(f[5]), GK.Clean(f[6], 20), GK.ValidLevel(f[7])
     GK.NoteEnemyGuild(name, f[10])
@@ -2266,33 +2314,39 @@ local function OnTotals(sender, f)
 end
 
 --- Ours, for the guildies who asked since our last answer: our kills and deaths since the earliest of them was
---- here (from our own log, at most the last CATCH_UP and MAX_CAUGHT of them), and our count against each of the
---- guild on watch we fought since. Only with our score shared, as the K and D themselves; where only in Normal.
---- since: from when, at our own login (SayOwn), where nobody asked; the asks' are left for the next answer.
+--- here (from our own log, at most the last CATCH_UP and MAX_CAUGHT of them); and for the guild on watch, our older
+--- fights against them and our count against each of them, whoever asked. Only with our score shared, as the K and
+--- D themselves; where only in Normal. since: from when, at our own login (SayOwn), where nobody asked; the asks'
+--- are left for the next answer.
 local function SayMissed(since)
     if since == nil then
         since = wantSince
         wantSince = nil
     end
     if not since or not GK.SharesScore() then return end
-    local from, sent = math.max(since, time() - CATCH_UP), 0
+    local guild = GK.WatchedGuild and GK.WatchedGuild()
+    local from, sent, old = math.max(since, time() - CATCH_UP), 0, 0
     for _, e in ipairs(GK.char.log) do                  -- the newest first
-        if (e.t or 0) <= from or sent >= MAX_CAUGHT then break end
+        if sent >= MAX_CAUGHT and old >= OLD_FIGHTS then break end
         if (e.k == "K" or e.k == "D") and type(e.n) == "string" then
-            local f = GK.char.foes[e.n]
-            local times = f and (e.k == "K" and f.k or f.d) or nil
-            sent = sent + 1
-            Paced(function()
-                return Msg("G", PROTO, e.k, e.n, e.c, e.r, e.l, Place(e.z), e.t, GK.EnemyGuild(e.n), times,
-                    e.k == "K" and e.p or nil)
-            end)
+            local new = (e.t or 0) > from
+            -- older than that: only a fight against the guild on watch, for the versus page
+            local fight = not new and guild and GK.SameGuild(GK.EnemyGuild(e.n), guild)
+            if (new and sent < MAX_CAUGHT) or (fight and old < OLD_FIGHTS) then
+                if new then sent = sent + 1 else old = old + 1 end
+                local f = GK.char.foes[e.n]
+                local times = f and (e.k == "K" and f.k or f.d) or nil
+                Paced(function()
+                    return Msg("G", PROTO, e.k, e.n, e.c, e.r, e.l, Place(e.z), e.t, GK.EnemyGuild(e.n), times,
+                        e.k == "K" and e.p or nil)
+                end)
+            end
         end
     end
-    local guild = GK.WatchedGuild and GK.WatchedGuild()
     if not guild then return end
     local list = {}
     for key, f in pairs(GK.char.foes) do
-        if (f.last or 0) > since and ((f.k or 0) > 0 or (f.d or 0) > 0) and GK.SameGuild(GK.EnemyGuild(key), guild) then
+        if ((f.k or 0) > 0 or (f.d or 0) > 0) and GK.SameGuild(GK.EnemyGuild(key), guild) then
             list[#list + 1] = { key = key, f = f }
         end
     end
@@ -2311,11 +2365,6 @@ end
 --- happens (toast, News), so it stays the answer's.
 local function SayOwn(atLogin)
     local me, now, s = LIB.Me(), time(), GK.Store()
-    if not atLogin then
-        SayMissed()                                     -- what the guildies who asked missed of ours
-    elseif type(missedSince) ~= "number" or now - missedSince > LOGIN_GAP then   -- the saved file is data
-        SayMissed(now - CATCH_UP)                       -- half a day of ours, for who came while we were away
-    end
     for _, o in pairs(s.orders) do
         local recent = o.state == "o" or now - (o.doneAt or o.t or 0) < ORDER_DAYS * GK.DAY
         if atLogin and o.state ~= "o" and o.state ~= "x" then recent = false end
@@ -2343,6 +2392,12 @@ local function SayOwn(atLogin)
                 end
             end
         end
+    end
+    -- what we say for others last, so a full queue (MAX_PACED) never drops one of our orders for it
+    if not atLogin then
+        SayMissed()                                     -- what the guildies who asked missed of ours
+    elseif type(missedSince) ~= "number" or now - missedSince > LOGIN_GAP then   -- the saved file is data
+        SayMissed(now - CATCH_UP)                       -- half a day of ours, for who came while we were away
     end
 end
 
@@ -2444,6 +2499,7 @@ local function SayOwnSoon()
 end
 
 local function OnAsk(sender, f)
+    GK.HeardVersion(f and f[4])                     -- theirs (A newer Grudgekeeper in the guild)
     -- Everyone logging in at once asks at once: one answer, a few seconds later. An ask inside the gap
     -- after an answer waits for the gap to end; it used to get no answer at all, so a guildie who logged
     -- in half a minute after another heard nothing.
@@ -2530,7 +2586,8 @@ local function Ask()
     -- our row first, then the ask: a guildie who answers has our parts by then, joined to the ones they
     -- had, and passes the whole back to us
     GK.SendBoard(true)
-    Send(Msg("Q", PROTO, missedSince))                -- and since when, for what we missed (SayMissed)
+    -- and since when, for what we missed (SayMissed); and our version, for a guildie on an older one
+    Send(Msg("Q", PROTO, missedSince, MyRelease()))
     C_Timer.After(OWN_AFTER, SayOwnAtLogin)
 end
 

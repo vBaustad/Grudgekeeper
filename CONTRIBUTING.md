@@ -60,7 +60,8 @@ and the claim that you did not walk). The third line is never "nothing".
   `Notes.lua`).
 - **Saved data:** new keys only, old keys keep their meaning, and a migration runs once behind a flag.
 - **Quiet by default.** Anything that acts for the player or adds to the screen starts off. No chat line at login
-  and no popups: news waits as a letter. Chat is for answers, errors and money handled.
+  and no popups: news waits as a letter. Chat is for answers, errors, money handled, and a newer version in the
+  guild (the owner asked for that line).
 - Grudgekeeper is not a YippYapp addon. It shares only LibForever-1.0, which is its own repository: a change there
   goes there, stays backwards compatible and bumps the version.
 

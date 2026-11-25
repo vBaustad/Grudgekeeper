@@ -1691,6 +1691,8 @@ SlashCmdList.GRUDGEKEEPER = function(msg)
     elseif cmd == "owe" or cmd:match("^owe ") then
         -- the test panel's debt to a name and money you give, written in full at a mailbox (Debug.lua)
         if GK.TestOwe then GK.TestOwe(strtrim(msg or ""):sub(4)) else Help() end
+    elseif cmd == "newer" and GK.TestNewer then
+        GK.TestNewer()                -- a guildie with a newer Grudgekeeper, its line in chat (Debug.lua)
     elseif cmd == "debug meter" then
         GK.MeterProbe()               -- the game's damage meter after a fight (Kills.lua)
     elseif cmd == "debug" then
