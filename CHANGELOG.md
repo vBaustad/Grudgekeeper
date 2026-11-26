@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Search the settings.** A search box beside the page title finds a setting by its name, its help or a choice in its dropdown, wherever it lives. Click a result, or press Enter for the first one, to go to its page, where the row lights up for a moment. By dakristia.
+
 ## 1.13.1
 
 - **Told when a newer version is out.** When a guildie has a newer Grudgekeeper than yours, one line in chat says so: the version you have and the new one. It works from this version on, so you hear of the next one.
