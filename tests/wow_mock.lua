@@ -164,7 +164,7 @@ function M.boot(opts)
     M.rankFlags = nil
 
     local GK = {}
-    for _, file in ipairs({ "Core.lua", "Notes.lua", "Import.lua" }) do
+    for _, file in ipairs({ "Core/Core.lua", "Core/Notes.lua", "Core/Import.lua" }) do
         local chunk = assert(loadfile(M.dir .. file))
         chunk("Grudgekeeper", GK)
     end

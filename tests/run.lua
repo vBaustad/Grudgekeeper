@@ -933,7 +933,7 @@ end)
 -- ---------------------------------------------------------------------------
 local function bootSheets(opts)
     local GK = boot(opts)
-    for _, file in ipairs({ "Letters.lua", "Post.lua" }) do
+    for _, file in ipairs({ "UI/Letters.lua", "UI/Post.lua" }) do
         assert(loadfile(W.dir .. file))("Grudgekeeper", GK)
     end
     GK.orders = {}                                     -- stand-ins for Guild.lua: the orders on a player
@@ -1774,7 +1774,7 @@ test("Mine only keeps a row I voted on, and a vote taken back lets it go", funct
 end)
 
 test("the note sheet and the small letter have frames of their own names", function()
-    local file = assert(io.open(W.dir .. "NotesUI.lua"))
+    local file = assert(io.open(W.dir .. "UI/NotesUI.lua"))
     local source = file:read("*a")
     file:close()
     assert(not source:find('"GrudgekeeperNote"', 1, true), "that name is the small letter's (Letters.lua)")
@@ -2215,7 +2215,7 @@ local function bootKills()
     function GK.SendAssist(v, zone, points) table.insert(GK.sentAssists, { v = v, p = points }) end
     function GK.SendBoard() end
     function GK.KillLetter() end
-    assert(loadfile(W.dir .. "Kills.lua"))("Grudgekeeper", GK)
+    assert(loadfile(W.dir .. "Core/Kills.lua"))("Grudgekeeper", GK)
     GK.StartKills()
     return GK, LIB
 end
@@ -2329,7 +2329,7 @@ end)
 --- Guild.lua over the plain client: a guildie's message goes through its reader (GK.ReceiveForTest).
 local function bootGuild()
     local GK = boot({ me = ME })
-    assert(loadfile(W.dir .. "Guild.lua"))("Grudgekeeper", GK)
+    assert(loadfile(W.dir .. "Core/Guild.lua"))("Grudgekeeper", GK)
     return GK
 end
 
@@ -2494,7 +2494,7 @@ end)
 --- Guild.lua with the letters an order would bring counted, not written (Letters.lua is not loaded).
 local function bootOrders()
     local GK, LIB = boot({ me = ME })
-    assert(loadfile(W.dir .. "Guild.lua"))("Grudgekeeper", GK)
+    assert(loadfile(W.dir .. "Core/Guild.lua"))("Grudgekeeper", GK)
     local letters = {}
     for _, kind in ipairs({ "OrderLetter", "CompleteLetter", "PaidLetter", "ExpiredLetter" }) do
         GK[kind] = function() letters[#letters + 1] = kind end
@@ -3669,9 +3669,9 @@ local function bootAnnounce()
         return true
     end
     LIB.fire("PLAYER_ENTERING_WORLD")
-    assert(loadfile("Notice.lua"))("Grudgekeeper", GK)     -- the toasts ask it where the letter icon is
-    for _, file in ipairs(EFFECT_FILES) do assert(loadfile(file))("Grudgekeeper", GK) end
-    assert(loadfile("Announce.lua"))("Grudgekeeper", GK)
+    assert(loadfile("UI/Notice.lua"))("Grudgekeeper", GK)     -- the toasts ask it where the letter icon is
+    for _, file in ipairs(EFFECT_FILES) do assert(loadfile("Effects/" .. file))("Grudgekeeper", GK) end
+    assert(loadfile("Effects/Announce.lua"))("Grudgekeeper", GK)
     return GK, LIB, A
 end
 local MEDIA = "Interface\\AddOns\\Grudgekeeper\\Media\\"
@@ -4278,7 +4278,7 @@ end)
 local function bootSettings()
     local GK = boot({ me = ME })
     _G.SOUNDKIT = { RAID_WARNING = 1, PVP_THROUGH_QUEUE = 2 }
-    assert(loadfile("Options.lua"))("Grudgekeeper", GK)
+    assert(loadfile("UI/Options.lua"))("Grudgekeeper", GK)
     local chapters = GK.SettingsChapters()
     -- a check row with that key, or a dropdown's cell or a tick on a line with it
     local function Find(key)

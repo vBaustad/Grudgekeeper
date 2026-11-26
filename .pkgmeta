@@ -22,5 +22,4 @@ ignore:
   - ".claude"
   - "CLAUDE.md"
   - "CONTRIBUTING.md"
-  - "Debug.lua"
-  - "Shots.lua"
+  - "Dev"

@@ -11,20 +11,21 @@ Read `CONTRIBUTING.md` first: the rules there hold for every step below. This fi
 
 | File | What it holds |
 |---|---|
-| `Core.lua` | `defaults` (every saved setting), migrations, names (`GK.KeyOf`, `GK.Show`, `GK.SameName`), sounds (`GK.SoundChoices`, `GK.PlayChoice`), warnings (`WARN_WAY`, `GK.WarnStyle`, `GK.WarnAs`), `GK.Changed`, `GK.Store`, the `/grudge` commands and their help |
-| `Guild.lua` | the guild's wire: protocol header at the top, `Msg`, `Int`, `HANDLERS`, `Paced`, rate limits (`Allowed`); leaderboard, kill orders, the feed, the login catch-up |
-| `Kills.lua` | your kills and deaths: `PARTY_KILL`, `UNIT_DIED`, the death recap, the damage meter after a fight, points and streaks |
-| `Sightings.lua` | enemy players in sight: nameplates, the seal and the eye, the Death Note, warnings when one is near or targets you |
-| `Notes.lua` / `NotesUI.lua` | Shame and Kudos: the data and its own wire (`HANDLERS` in Notes.lua), then the ledger pages, cards, tooltip lines and nameplate rows |
-| `Options.lua` | the settings as data (`GK.SettingsChapters`: chapters of rows built with `Check`, `WarnRow`, `SoundCell`, `Choice`, ...) and the pages drawn from it |
-| `Window.lua` | the ledger window and its pages |
-| `Letters.lua` | letters (news that waits), `NEWS` and the patch notes (`PATCH_NOTES`, `PATCH_LATEST`) |
-| `Announce.lua`, `Effects.lua`, `Fx*.lua` | splashes and toasts, and each tier's effect |
-| `Notice.lua`, `Move.lua` | the letter icon, and Arrange on screen |
-| `Post.lua`, `Pick.lua`, `Profile.lua` | writing a kill order, the who-picker, a player's card |
-| `Mail.lua` | the card of bounties you owe at a mailbox, and money given by mail or trade |
-| `Social.lua`, `GuildTab.lua`, `Inspect.lua`, `MapPins.lua` | the tooltip line, our tab on the guild window and on Inspect, the map pins |
-| `Debug.lua`, `Shots.lua` | the test panel and the store page's pictures: in the repository, never in the download |
+| `Core/Core.lua` | `defaults` (every saved setting), migrations, names (`GK.KeyOf`, `GK.Show`, `GK.SameName`), sounds (`GK.SoundChoices`, `GK.PlayChoice`), warnings (`WARN_WAY`, `GK.WarnStyle`, `GK.WarnAs`), `GK.Changed`, `GK.Store`, the `/grudge` commands and their help |
+| `Core/Guild.lua` | the guild's wire: protocol header at the top, `Msg`, `Int`, `HANDLERS`, `Paced`, rate limits (`Allowed`); leaderboard, kill orders, the feed, the login catch-up |
+| `Core/Kills.lua` | your kills and deaths: `PARTY_KILL`, `UNIT_DIED`, the death recap, the damage meter after a fight, points and streaks |
+| `Core/Sightings.lua` | enemy players in sight: nameplates, the seal and the eye, the Death Note, warnings when one is near or targets you |
+| `Core/Notes.lua` / `UI/NotesUI.lua` | Shame and Kudos: the data and its own wire (`HANDLERS` in Notes.lua), then the ledger pages, cards, tooltip lines and nameplate rows |
+| `Core/Import.lua` | the one-time import from Guild Grudge |
+| `UI/Options.lua` | the settings as data (`GK.SettingsChapters`: chapters of rows built with `Check`, `WarnRow`, `SoundCell`, `Choice`, ...) and the pages drawn from it |
+| `UI/Window.lua` | the ledger window and its pages |
+| `UI/Letters.lua` | letters (news that waits), `NEWS` and the patch notes (`PATCH_NOTES`, `PATCH_LATEST`) |
+| `Effects/Announce.lua`, `Effects/Effects.lua`, `Effects/Fx*.lua` | splashes and toasts, and each tier's effect |
+| `UI/Notice.lua`, `UI/Move.lua` | the letter icon, and Arrange on screen |
+| `UI/Post.lua`, `UI/Pick.lua`, `UI/Profile.lua` | writing a kill order, the who-picker, a player's card |
+| `UI/Mail.lua` | the card of bounties you owe at a mailbox, and money given by mail or trade |
+| `UI/Social.lua`, `UI/GuildTab.lua`, `UI/Inspect.lua`, `UI/MapPins.lua` | the tooltip line, our tab on the guild window and on Inspect, the map pins |
+| `Dev/Debug.lua`, `Dev/Shots.lua` | the test panel and the store page's pictures: in the repository, never in the download (`.pkgmeta` leaves out `Dev`) |
 
 The three stores: `GK.db` is the account's (settings), `GK.char` this character's (log, foes, Death Note),
 `GK.Store()` the current guild's (board, orders, feed). After changing any of them, call `GK.Changed()`; the

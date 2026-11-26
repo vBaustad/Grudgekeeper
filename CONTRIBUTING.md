@@ -56,8 +56,8 @@ and the claim that you did not walk). The third line is never "nothing".
   are range-checked. Cap what a peer can make us keep, and rate-limit per sender. A peer changes only their own
   records; a relay never overwrites the owner's newer data; no message makes us whisper or reply in a loop.
 - **The wire stays compatible.** New fields go at the end of a message, never reordered or reused, and an older
-  client must still parse it. Write the fields in the protocol header at the top of the file (`Guild.lua`,
-  `Notes.lua`).
+  client must still parse it. Write the fields in the protocol header at the top of the file
+  (`Core/Guild.lua`, `Core/Notes.lua`).
 - **Saved data:** new keys only, old keys keep their meaning, and a migration runs once behind a flag.
 - **Quiet by default.** Anything that acts for the player or adds to the screen starts off. No chat line at login
   and no popups: news waits as a letter. Chat is for answers, errors, money handled, and a newer version in the
@@ -67,6 +67,9 @@ and the claim that you did not walk). The third line is never "nothing".
 
 ## Code
 
+- **Four folders.** `Core/` counts, keeps and sends; `Effects/` plays the splashes and toasts; `UI/` draws the
+  windows and pages; `Dev/` is ours alone. The TOC loads them in its own order, so a new file goes in its folder
+  and on its line in the TOC.
 - **Lua 5.1.** A function holds at most 200 locals, and a `local function` must be defined above its first caller,
   or it is a nil global at runtime.
 - Comments say why. When a line exists because the owner asked for it, quote their words and the date.
@@ -83,8 +86,9 @@ and the claim that you did not walk). The third line is never "nothing".
 - `lua5.1 tests/run.lua` from the repository root. Add a test with every change, and say in the pull request how it
   fails without the change.
 - The addon loads with no Lua errors (wowless is fine for that).
-- `Debug.lua` (the test panel, `/grudge debug`) and `Shots.lua` (`/grudge shots`) are in the repository and not
-  in the download: the TOC lists them between `#@do-not-package@` tags. Nothing else may need them.
+- `Dev/Debug.lua` (the test panel, `/grudge debug`) and `Dev/Shots.lua` (`/grudge shots`) are in the repository
+  and not in the download: the TOC lists them between `#@do-not-package@` tags, and `.pkgmeta` leaves out `Dev`.
+  Nothing else may need them.
 
 ## Changelog
 

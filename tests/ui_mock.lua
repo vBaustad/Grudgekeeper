@@ -57,7 +57,7 @@ function U.load(M, GK)
     env.Menu = { ModifyMenu = function(tag, fn) M.menus[tag] = fn end }
     env.GameTooltip = {}
 
-    local chunk = assert(loadfile(M.dir .. "NotesUI.lua"))
+    local chunk = assert(loadfile(M.dir .. "UI/NotesUI.lua"))
     chunk("Grudgekeeper", GK)
 end
 
