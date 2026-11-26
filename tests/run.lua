@@ -4724,6 +4724,61 @@ test("settings: no chapter is taller than its page, no line's controls meet, and
     end
 end)
 
+-- Search (Options.lua, GK.SearchSettings): a row found by its words lands on its own chapter and row.
+test("settings search: every named row is found by its label, on its own page", function()
+    local GK, chapters = bootSettings()
+    local seen = 0
+    for ci, ch in ipairs(chapters) do
+        for ri, r in ipairs(ch.rows) do
+            local labels = r.kind == "pair" and { r.left.label, r.right.label }
+                or ((r.kind == "check" or r.kind == "line" or r.kind == "fact") and r.label ~= "" and { r.label }) or {}
+            for _, label in ipairs(labels) do
+                local found
+                for _, h in ipairs(GK.SearchSettings(label, chapters)) do
+                    if h.chapter == ci and h.row == ri and h.label == label then found = true end
+                end
+                assert(found, ("%s: %q is not found by its own words"):format(ch.name, label))
+                seen = seen + 1
+            end
+        end
+    end
+    assert(seen > 40, "only " .. seen .. " rows looked at")
+end)
+
+test("settings search: help and a dropdown's words find a row, every word must match, a name comes first", function()
+    local GK, chapters = bootSettings()
+    local function first(text) local h = GK.SearchSettings(text, chapters)[1] return h and h.label end
+    -- in the help alone ("A medal for each tag")
+    eq(first("medal"), "Mark over Shame and Kudos players")
+    -- in a dropdown's choices alone: "Not in combat in a dungeon or raid"
+    local dungeon = {}
+    for _, h in ipairs(GK.SearchSettings("dungeon", chapters)) do dungeon[h.label] = true end
+    assert(dungeon["Show my notifications"] and dungeon["Show guildie notifications"], "the When dropdowns")
+    -- each word, anywhere in it
+    eq(first("shame group"), "A Shame player joins my group")
+    -- a page's own name before rows that only say it
+    local warnings = GK.SearchSettings("warnings", chapters)[1]
+    eq(warnings.page, true)
+    eq(warnings.label, "Warnings")
+    eq(warnings.path, "Notifications")
+    -- each row says where it lives, as the menu shows it
+    eq(GK.SearchSettings("medal", chapters)[1].path, "General > Nameplates & map")
+    eq(GK.SearchSettings("what you see", chapters)[1].path, "Quick setup")
+    -- Quick setup's dropdowns, by the heading over them
+    eq(first("what you share"), "What you share")
+    -- nothing typed, nothing found; and what a pattern means is only words here
+    eq(#GK.SearchSettings("   ", chapters), 0)
+    eq(#GK.SearchSettings("%(", chapters), 0)
+    eq(#GK.SearchSettings("zzqx", chapters), 0)
+end)
+
+test("settings search: a sound's menu is not searched, and the results fit the page", function()
+    local GK, chapters = bootSettings()
+    function GK.SoundChoices() return { { "pack:x", "Zorblax Horn" } } end
+    eq(#GK.SearchSettings("zorblax", chapters), 0)
+    assert(GK.SEARCH_SHOWN * GK.SEARCH_ROW + 24 <= GK.SETTINGS_ROOM, "the results run past the page")
+end)
+
 test("settings: a sound to pick for the warnings alone; what is a splash or toast has a box", function()
     local GK, chapters, Find = bootSettings()
     local played = {}

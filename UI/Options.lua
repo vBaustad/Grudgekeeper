@@ -499,6 +499,86 @@ function GK.SettingsChapters()
 end
 
 -- ---------------------------------------------------------------------------
+-- Search: every row a player can find by its words
+-- ---------------------------------------------------------------------------
+-- What a search's list shows at most: it drops from the box over the page, and no taller than the page (tests/run.lua).
+GK.SEARCH_SHOWN, GK.SEARCH_ROW = 12, 32
+
+--- A row's words: what it is called, and what else it says (its help, its tip, a dropdown's choices). A sound's
+--- menu is left out: it holds every sound pack's names, and a search for "horn" is not a search for a setting.
+local function RowWords(r, into)
+    local function add(s) if type(s) == "string" and s ~= "" then into[#into + 1] = s:lower() end end
+    add(r.help)
+    add(r.tip)
+    add(r.name)
+    for _, part in ipairs(r.parts or {}) do
+        if part.check then add(part.check.name) add(part.check.tip) end
+        local cell = part.cell
+        if cell and not cell.scroll then
+            for _, o in ipairs(cell.choices()) do add(o[2]) add(o.tip) end
+        end
+    end
+    if r.cell then
+        for _, o in ipairs(r.cell.choices()) do add(o[2]) add(o.tip) end
+    end
+    return into
+end
+
+--- The rows that hold every word of text, best first: { chapter, row, label, where }. chapter and row are
+--- indexes into chapters (GK.SettingsChapters() when not given); a chapter's own name finds it with no row.
+function GK.SearchSettings(text, chapters)
+    local terms = {}
+    for word in tostring(text or ""):lower():gmatch("%S+") do terms[#terms + 1] = word end
+    if #terms == 0 then return {} end
+    chapters = chapters or GK.SettingsChapters()
+    local function has(words)
+        for _, term in ipairs(terms) do
+            local found = false
+            for _, w in ipairs(words) do
+                if w:find(term, 1, true) then found = true break end
+            end
+            if not found then return false end
+        end
+        return true
+    end
+    -- where a hit lives, as the menu shows it: "Notifications > Mine", and Quick setup with no group over it
+    local function Group(ch) return ch.group and (ch.group:sub(1, 1) .. ch.group:sub(2):lower()) end
+    local function Path(ch) return Group(ch) and (Group(ch) .. " > " .. ch.name) or ch.name end
+    local hits = {}
+    local function hit(ci, ri, label, rest)
+        local named = has({ label:lower() })
+        if named or has(RowWords(rest, { label:lower() })) then
+            hits[#hits + 1] = { chapter = ci, row = ri, label = label, path = Path(chapters[ci]),
+                best = named and 1 or 2, n = #hits }
+        end
+    end
+    for ci, ch in ipairs(chapters) do
+        if has({ ch.name:lower(), ch.title:lower(), (ch.intro or ""):lower() }) then
+            hits[#hits + 1] = { chapter = ci, label = ch.name, page = true, path = Group(ch) or "",
+                best = has({ ch.name:lower() }) and 0 or 3, n = #hits }
+        end
+        local head
+        for ri, r in ipairs(ch.rows) do
+            if r.kind == "head" then
+                head = r.label:sub(1, 1) .. r.label:sub(2):lower()           -- WHAT YOU SEE: What you see
+            elseif r.kind == "choice" and head then
+                hit(ci, ri, head, r)
+            elseif r.kind == "pair" then
+                hit(ci, ri, r.left.label, r.left)
+                hit(ci, ri, r.right.label, r.right)
+            elseif r.label and r.label ~= "" and (r.kind == "check" or r.kind == "line" or r.kind == "fact") then
+                hit(ci, ri, r.label, r)
+            end
+        end
+    end
+    table.sort(hits, function(a, b)
+        if a.best ~= b.best then return a.best < b.best end
+        return a.n < b.n
+    end)
+    return hits
+end
+
+-- ---------------------------------------------------------------------------
 -- The window
 -- ---------------------------------------------------------------------------
 -- The ledger open is 792 by 544; these are the mockup's own numbers (art/mockups/settings2), in points.
@@ -515,6 +595,7 @@ local win, chapters
 local current = 1
 local buttons, pages = {}, {}
 local pageTitle, pageIntro, host
+local search, results                    -- the search box over the page, and the page of what it found
 local reopen = false                     -- closed to move things on screen: open again when that is done
 local RefreshPage
 
@@ -793,8 +874,17 @@ RefreshPage = function()
     for _, row in ipairs(page.rows) do row:Refresh() end
 end
 
+--- The search done with: its list gone, and the box empty for the next one.
+local function EndSearch()
+    if not results then return end
+    results:Hide()
+    if search:GetText() ~= "" then search:SetText("") end
+    search:ClearFocus()
+end
+
 --- Turn to a chapter: its name in the menu lit, its settings beside it.
 local function Select(i)
+    EndSearch()
     current = chapters[i] and i or 1
     for n, b in ipairs(buttons) do
         local chosen = n == current
@@ -810,6 +900,116 @@ local function Select(i)
     if not pages[current] then BuildPage(current) end
     pages[current]:Show()
     RefreshPage()
+end
+
+--- A search's hit: turn to its chapter, and light its row a moment so the eye finds it.
+local function GoTo(hit)
+    Select(hit.chapter)
+    local row = hit.row and pages[current].rows[hit.row]
+    if not row then return end
+    if not row.found then
+        row.found = row:CreateTexture(nil, "BACKGROUND", nil, 1)
+        row.found:SetAllPoints()
+        row.found:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.18)
+    end
+    row.found:Show()
+    row.foundAt = GetTime()
+    local at = row.foundAt
+    C_Timer.After(1.6, function() if row.foundAt == at then row.found:Hide() end end)
+end
+
+--- One line of the list lit, for the arrow keys and Enter.
+local function Mark(i)
+    results.sel = i
+    for n, line in ipairs(results.lines) do line.wash:SetShown(n == i) end
+end
+
+--- What the search box holds, found: a list that drops down from the box over the page, as the game's own
+--- menus do, each line the setting and under it where it lives. The page under it stays as it was.
+local function ShowResults(text)
+    if text:match("^%s*$") then
+        results:Hide()
+        return
+    end
+    local hits = GK.SearchSettings(text, chapters)
+    results.hits = hits
+    local shown = math.min(#hits, GK.SEARCH_SHOWN)
+    for i = 1, GK.SEARCH_SHOWN do
+        local line, h = results.lines[i], hits[i]
+        line:SetShown(i <= shown)
+        if i <= shown then
+            line.label:SetText(h.page and ("|cffe6b35aPage:|r " .. h.label) or h.label)
+            line.where:SetText(h.path)
+            line.hit = h
+        end
+    end
+    local more = #hits - shown
+    local foot = #hits == 0 and "Nothing matches." or more > 0 and ("And %d more. Type another word."):format(more)
+    results.more:SetText(foot or "")
+    results.more:SetShown(foot ~= nil)
+    results:SetHeight(shown * GK.SEARCH_ROW + (foot and 24 or 0) + 12)
+    Mark(shown > 0 and 1 or nil)
+    results:Show()
+end
+
+local function BuildSearch()
+    search = CreateFrame("EditBox", nil, win, "SearchBoxTemplate")
+    search:SetSize(200, 20)
+    search:SetPoint("TOPRIGHT", win, "TOPLEFT", PAGE_X + PAGE_W - 6, -42)      -- beside the page's title
+    search:SetAutoFocus(false)
+    search:SetMaxLetters(40)
+
+    results = CreateFrame("Frame", nil, win, "BackdropTemplate")
+    results:SetWidth(310)
+    results:SetPoint("TOPRIGHT", search, "BOTTOMRIGHT", 4, -2)
+    results:SetFrameLevel(search:GetFrameLevel() + 10)          -- over the page's dropdowns and boxes
+    results:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        edgeSize = 14, insets = { left = 3, right = 3, top = 3, bottom = 3 } })
+    results:SetBackdropColor(0.04, 0.035, 0.03, 0.97)
+    results:SetBackdropBorderColor(0.55, 0.5, 0.42)
+    results:EnableMouse(true)                                   -- a click on the list never reaches the page under it
+    results:Hide()
+    results.lines = {}
+    for i = 1, GK.SEARCH_SHOWN do
+        local b = CreateFrame("Button", nil, results)
+        b:SetHeight(GK.SEARCH_ROW)
+        b:SetPoint("TOPLEFT", 6, -6 - (i - 1) * GK.SEARCH_ROW)
+        b:SetPoint("RIGHT", -6, 0)
+        b.wash = b:CreateTexture(nil, "BACKGROUND")
+        b.wash:SetAllPoints()
+        b.wash:SetColorTexture(1, 1, 1, 0.08)
+        b.wash:Hide()
+        b.label = Words(b, 13, WHITE)
+        b.label:SetPoint("TOPLEFT", 6, -3)
+        b.label:SetPoint("RIGHT", -6, 0)
+        b.where = Words(b, 11, QUIET)
+        b.where:SetPoint("TOPLEFT", 6, -18)
+        b.where:SetPoint("RIGHT", -6, 0)
+        b:SetScript("OnEnter", function() Mark(i) end)
+        b:SetScript("OnClick", function(self)
+            GK.Sound("IG_MAINMENU_OPTION_CHECKBOX_ON")
+            GoTo(self.hit)
+        end)
+        results.lines[i] = b
+    end
+    results.more = Words(results, 11, QUIET)
+    results.more:SetPoint("BOTTOMLEFT", 12, 10)
+
+    -- the template's own scripts keep its "Search" words and its clear button: ours go on after them
+    search:HookScript("OnTextChanged", function(self) ShowResults(self:GetText() or "") end)
+    search:HookScript("OnEnterPressed", function()
+        local h = results:IsShown() and results.sel and results.hits[results.sel]
+        if h then GoTo(h) end
+    end)
+    search:HookScript("OnArrowPressed", function(_, key)
+        if not results:IsShown() or not results.sel then return end
+        local last = math.min(#results.hits, GK.SEARCH_SHOWN)
+        if key == "DOWN" then Mark(results.sel % last + 1)
+        elseif key == "UP" then Mark((results.sel - 2) % last + 1) end
+    end)
+    -- the list goes when the box loses the cursor (Escape, a click elsewhere), but not to a click on the list itself
+    search:HookScript("OnEditFocusLost", function() if not results:IsMouseOver() then results:Hide() end end)
+    search:HookScript("OnEditFocusGained", function(self) ShowResults(self:GetText() or "") end)
 end
 
 --- Arrange on screen (Move.lua): these pages close, and open again at Done. The button was "Move things
@@ -910,6 +1110,7 @@ local function Build()
     host = CreateFrame("Frame", nil, win)
     host:SetSize(PAGE_W, PAGE_ROOM)
     host:SetPoint("TOPLEFT", PAGE_X, -PAGE_Y)
+    BuildSearch()
 
     win.chapters, win.pages, win.title = buttons, pages, pageTitle
     -- a setting changed from somewhere else (the minimap button's own menu): drawn again
