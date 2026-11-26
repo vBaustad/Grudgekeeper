@@ -501,7 +501,7 @@ end
 -- ---------------------------------------------------------------------------
 -- Search: every row a player can find by its words
 -- ---------------------------------------------------------------------------
--- What a search shows at most. A results page has no scrollbar either, so these must fit PAGE_ROOM (tests/run.lua).
+-- What a search's list shows at most: it drops from the box over the page, and no taller than the page (tests/run.lua).
 GK.SEARCH_SHOWN, GK.SEARCH_ROW = 12, 32
 
 --- A row's words: what it is called, and what else it says (its help, its tip, a dropdown's choices). A sound's
@@ -541,18 +541,21 @@ function GK.SearchSettings(text, chapters)
         end
         return true
     end
+    -- where a hit lives, as the menu shows it: "Notifications > Mine", and Quick setup with no group over it
+    local function Group(ch) return ch.group and (ch.group:sub(1, 1) .. ch.group:sub(2):lower()) end
+    local function Path(ch) return Group(ch) and (Group(ch) .. " > " .. ch.name) or ch.name end
     local hits = {}
     local function hit(ci, ri, label, rest)
         local named = has({ label:lower() })
         if named or has(RowWords(rest, { label:lower() })) then
-            hits[#hits + 1] = { chapter = ci, row = ri, label = label, where = chapters[ci].name,
+            hits[#hits + 1] = { chapter = ci, row = ri, label = label, path = Path(chapters[ci]),
                 best = named and 1 or 2, n = #hits }
         end
     end
     for ci, ch in ipairs(chapters) do
         if has({ ch.name:lower(), ch.title:lower(), (ch.intro or ""):lower() }) then
-            hits[#hits + 1] = { chapter = ci, label = ch.title, where = "Page", best = has({ ch.name:lower() }) and 0 or 3,
-                n = #hits }
+            hits[#hits + 1] = { chapter = ci, label = ch.name, page = true, path = Group(ch) or "",
+                best = has({ ch.name:lower() }) and 0 or 3, n = #hits }
         end
         local head
         for ri, r in ipairs(ch.rows) do
@@ -871,9 +874,9 @@ RefreshPage = function()
     for _, row in ipairs(page.rows) do row:Refresh() end
 end
 
---- The search's words gone, and its page with them: the chapter's own page shows again.
+--- The search done with: its list gone, and the box empty for the next one.
 local function EndSearch()
-    if not results or not results:IsShown() then return end
+    if not results then return end
     results:Hide()
     if search:GetText() ~= "" then search:SetText("") end
     search:ClearFocus()
@@ -915,76 +918,98 @@ local function GoTo(hit)
     C_Timer.After(1.6, function() if row.foundAt == at then row.found:Hide() end end)
 end
 
---- What the search box holds, found: a line for each row, its page's name after it in grey.
+--- One line of the list lit, for the arrow keys and Enter.
+local function Mark(i)
+    results.sel = i
+    for n, line in ipairs(results.lines) do line.wash:SetShown(n == i) end
+end
+
+--- What the search box holds, found: a list that drops down from the box over the page, as the game's own
+--- menus do, each line the setting and under it where it lives. The page under it stays as it was.
 local function ShowResults(text)
-    local hits = GK.SearchSettings(text, chapters)
     if text:match("^%s*$") then
         results:Hide()
-        for n, page in pairs(pages) do page:SetShown(n == current) end
-        pageTitle:SetText(chapters[current].title)
-        pageIntro:SetText(chapters[current].intro)
         return
     end
-    for _, page in pairs(pages) do page:Hide() end
-    pageTitle:SetText("Search")
-    pageIntro:SetText(#hits == 0 and "Nothing matches. Try fewer words, or other ones."
-        or #hits == 1 and "1 setting. Click it to go there." or (#hits .. " settings. Click one to go there."))
+    local hits = GK.SearchSettings(text, chapters)
     results.hits = hits
+    local shown = math.min(#hits, GK.SEARCH_SHOWN)
     for i = 1, GK.SEARCH_SHOWN do
         local line, h = results.lines[i], hits[i]
-        line:SetShown(h ~= nil)
-        if h then
-            line.label:SetText(h.label)
-            line.where:SetText(h.where)
+        line:SetShown(i <= shown)
+        if i <= shown then
+            line.label:SetText(h.page and ("|cffe6b35aPage:|r " .. h.label) or h.label)
+            line.where:SetText(h.path)
             line.hit = h
         end
     end
-    local more = #hits - GK.SEARCH_SHOWN
-    results.more:SetText(more > 0 and ("And %d more. Type another word to narrow it."):format(more) or "")
+    local more = #hits - shown
+    local foot = #hits == 0 and "Nothing matches." or more > 0 and ("And %d more. Type another word."):format(more)
+    results.more:SetText(foot or "")
+    results.more:SetShown(foot ~= nil)
+    results:SetHeight(shown * GK.SEARCH_ROW + (foot and 24 or 0) + 12)
+    Mark(shown > 0 and 1 or nil)
     results:Show()
 end
 
 local function BuildSearch()
     search = CreateFrame("EditBox", nil, win, "SearchBoxTemplate")
-    search:SetSize(170, 20)
+    search:SetSize(200, 20)
     search:SetPoint("TOPRIGHT", win, "TOPLEFT", PAGE_X + PAGE_W - 6, -42)      -- beside the page's title
     search:SetAutoFocus(false)
     search:SetMaxLetters(40)
-    -- the template's own scripts keep its "Search" words and its clear button: ours go on after them
-    search:HookScript("OnTextChanged", function(self) ShowResults(self:GetText() or "") end)
-    search:HookScript("OnEnterPressed", function()
-        local first = results.hits and results.hits[1]
-        if results:IsShown() and first then GoTo(first) end
-    end)
 
-    results = CreateFrame("Frame", nil, host)
-    results:SetAllPoints(host)
+    results = CreateFrame("Frame", nil, win, "BackdropTemplate")
+    results:SetWidth(310)
+    results:SetPoint("TOPRIGHT", search, "BOTTOMRIGHT", 4, -2)
+    results:SetFrameLevel(search:GetFrameLevel() + 10)          -- over the page's dropdowns and boxes
+    results:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        edgeSize = 14, insets = { left = 3, right = 3, top = 3, bottom = 3 } })
+    results:SetBackdropColor(0.04, 0.035, 0.03, 0.97)
+    results:SetBackdropBorderColor(0.55, 0.5, 0.42)
+    results:EnableMouse(true)                                   -- a click on the list never reaches the page under it
     results:Hide()
     results.lines = {}
     for i = 1, GK.SEARCH_SHOWN do
         local b = CreateFrame("Button", nil, results)
-        b:SetSize(PAGE_W, GK.SEARCH_ROW - 2)
-        b:SetPoint("TOPLEFT", 0, -(i - 1) * GK.SEARCH_ROW)
+        b:SetHeight(GK.SEARCH_ROW)
+        b:SetPoint("TOPLEFT", 6, -6 - (i - 1) * GK.SEARCH_ROW)
+        b:SetPoint("RIGHT", -6, 0)
         b.wash = b:CreateTexture(nil, "BACKGROUND")
         b.wash:SetAllPoints()
-        b.wash:SetColorTexture(1, 1, 1, 0.05)
+        b.wash:SetColorTexture(1, 1, 1, 0.08)
         b.wash:Hide()
-        b.label = Words(b, 13, GOLD)
-        b.label:SetPoint("LEFT", TEXT_X, 0)
-        b.label:SetWidth(360)
-        b.where = Words(b, 12, QUIET)
-        b.where:SetPoint("LEFT", 380, 0)
-        b.where:SetWidth(PAGE_W - 380 - TEXT_X)
-        b:SetScript("OnEnter", function(self) self.wash:Show() end)
-        b:SetScript("OnLeave", function(self) self.wash:Hide() end)
+        b.label = Words(b, 13, WHITE)
+        b.label:SetPoint("TOPLEFT", 6, -3)
+        b.label:SetPoint("RIGHT", -6, 0)
+        b.where = Words(b, 11, QUIET)
+        b.where:SetPoint("TOPLEFT", 6, -18)
+        b.where:SetPoint("RIGHT", -6, 0)
+        b:SetScript("OnEnter", function() Mark(i) end)
         b:SetScript("OnClick", function(self)
             GK.Sound("IG_MAINMENU_OPTION_CHECKBOX_ON")
             GoTo(self.hit)
         end)
         results.lines[i] = b
     end
-    results.more = Words(results, 12, QUIET)
-    results.more:SetPoint("TOPLEFT", TEXT_X, -GK.SEARCH_SHOWN * GK.SEARCH_ROW - 6)
+    results.more = Words(results, 11, QUIET)
+    results.more:SetPoint("BOTTOMLEFT", 12, 10)
+
+    -- the template's own scripts keep its "Search" words and its clear button: ours go on after them
+    search:HookScript("OnTextChanged", function(self) ShowResults(self:GetText() or "") end)
+    search:HookScript("OnEnterPressed", function()
+        local h = results:IsShown() and results.sel and results.hits[results.sel]
+        if h then GoTo(h) end
+    end)
+    search:HookScript("OnArrowPressed", function(_, key)
+        if not results:IsShown() or not results.sel then return end
+        local last = math.min(#results.hits, GK.SEARCH_SHOWN)
+        if key == "DOWN" then Mark(results.sel % last + 1)
+        elseif key == "UP" then Mark((results.sel - 2) % last + 1) end
+    end)
+    -- the list goes when the box loses the cursor (Escape, a click elsewhere), but not to a click on the list itself
+    search:HookScript("OnEditFocusLost", function() if not results:IsMouseOver() then results:Hide() end end)
+    search:HookScript("OnEditFocusGained", function(self) ShowResults(self:GetText() or "") end)
 end
 
 --- Arrange on screen (Move.lua): these pages close, and open again at Done. The button was "Move things

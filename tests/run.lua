@@ -4757,7 +4757,13 @@ test("settings search: help and a dropdown's words find a row, every word must m
     -- each word, anywhere in it
     eq(first("shame group"), "A Shame player joins my group")
     -- a page's own name before rows that only say it
-    eq(GK.SearchSettings("warnings", chapters)[1].where, "Page")
+    local warnings = GK.SearchSettings("warnings", chapters)[1]
+    eq(warnings.page, true)
+    eq(warnings.label, "Warnings")
+    eq(warnings.path, "Notifications")
+    -- each row says where it lives, as the menu shows it
+    eq(GK.SearchSettings("medal", chapters)[1].path, "General > Nameplates & map")
+    eq(GK.SearchSettings("what you see", chapters)[1].path, "Quick setup")
     -- Quick setup's dropdowns, by the heading over them
     eq(first("what you share"), "What you share")
     -- nothing typed, nothing found; and what a pattern means is only words here
