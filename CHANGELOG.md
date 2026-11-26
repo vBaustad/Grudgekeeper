@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- **Search the settings.** A search box beside the page title finds a setting by its name, its help or a choice in its dropdown, wherever it lives. Click a result, or press Enter for the first one, to go to its page, where the row lights up for a moment. By dakristia.
+- **Search the settings.** A search box beside the page title finds a setting by its name, its help or a choice in its dropdown, wherever it lives. The results drop down under the box, each with the page it is on. Click one, or pick it with the arrow keys and Enter, to go there, and the row lights up for a moment. By dakristia.
 
 ## 1.13.1
 
