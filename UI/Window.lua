@@ -512,8 +512,10 @@ local function DeathListItems()
         return a.key < b.key
     end)
     local clock, wall = GetTime(), time()
+    local foes, view = c.foes, nil
+    if GK.DeathNoteFoes then foes, view = GK.DeathNoteFoes() end
     for _, e in ipairs(tracked) do
-        local f = c.foes[e.key]
+        local f = foes[e.key]
         local sub
         if e.s then
             sub = "seen " .. GK.Ago(wall - (clock - e.s.t)) .. (e.s.z and (" \194\183 " .. e.s.z) or "")
@@ -526,9 +528,11 @@ local function DeathListItems()
         if note then sub = '"' .. note .. '"' end            -- when you saw them is on their card
         local look = f or e.t
         local you, they = f and (f.k or 0) or 0, f and (f.d or 0) or 0
+        local spec = PosterSpec(e.key, look)
+        if view then spec.t.alts = view end
         items[#items + 1] = { key = "t:" .. e.key, name = e.name, class = look.c, face = { key = e.key, c = look.c },
             desc = Short(look.l, look.c, look.r), sub = sub, noted = note ~= nil, score = { you, they },
-            select = PosterSpec(e.key, look), you = you, they = they, ts = f and f.last or e.t.t, own = true }
+            select = spec, you = you, they = they, ts = f and f.last or e.t.t, own = true }
     end
     return items, "No names written yet. Add someone, or right-click an enemy and pick Add to Death Note."
 end

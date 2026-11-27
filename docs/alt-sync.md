@@ -17,8 +17,10 @@ it reads this first.
 
 ### D1. The nudge
 
-- It shows on any character that is **not the first character the account has seen**, while `deathNoteShared` is
-  off and the account has never handled the nudge.
+- It shows on any character once the account has **two or more characters on the same side**, while
+  `deathNoteShared` is off and the account has never handled the nudge. **Changed 2026-11-27:** it first skipped the
+  account's first character (`altFirst`); "It's not important which one is main and which one is alt. The main
+  point is that you're logging in on separate characters" (the user). `altFirst` is still saved, and unused.
 - It does **not** depend on this character's list being empty, or on other characters having grudges.
 - **One time per account.** Clicking "Share" or "Keep separate" handles it, and it never shows again on any
   character. The setting then stays whatever the player picked until they change it in Settings. If
@@ -30,6 +32,13 @@ it reads this first.
   someone". Hovering shows a tooltip ("Share one Death Note?"). A click opens a small window of its own
   (`GK.OpenAltShare`, a frame sheet) with the panel's text and the two buttons. The list stays as it was. The
   "line next to the button" and "click opens a small panel" bullets below describe the first version.
+- **Then, from more testing the same day (the user):** the "?" sits in the game's round minimap button (the
+  `UI-Minimap-Background` disc in the `MiniMap-TrackingBorder` ring); a masked colour square drew as a hard box.
+  The title and tooltip say "Combined Death Note?", and the text is "Share one Death Note between every character?
+  Each character's list is combined into a shared list." The sheet drags on its own, not with the ledger
+  (`f.ownDrag`, which `Dragged` in `UI/Letters.lua` checks), and fits its height to its text each time it opens.
+- **Scores on a shared Death Note** count every character on the side (`GK.DeathNoteFoes`, the "All" view of D3),
+  and a row's card counts and forgets from "All". A name from the main read 0-0 on the alt before this.
 - **Look:** a small button with a breathing gold glow, a soft halo that fades in and out and never flashes (demo A
   at https://claude.ai/artifact/YDY6QxfKn62wvhi24DNwVV; the in-game version is a looping alpha animation on a glow
   texture). The glow stops while the player hovers it. Respect the same quiet-motion habits the addon already has.

@@ -5145,9 +5145,48 @@ test("alts: no realm known, the key is the name alone and never ends in -", func
     lib.Realm = realm
 end)
 
-test("alts: the nudge is off on the first character", function()
+test("alts: the nudge is off while the account has one character", function()
     local A = altBoot("Kari")
     eq(A.ShowAltNudge(), false)
+end)
+
+-- fails with the old rule (GK.db.altFirst == me), which hid it on the first character for good
+test("alts: the nudge shows on the first character too, once there is a second", function()
+    local _, sa = altBoot("Kari")
+    local _, sb = altBoot("Edvard", { db = sa.db })
+    local A2 = altBoot("Kari", { db = sb.db })
+    eq(A2.db.altFirst, "Kari-Realm")
+    eq(A2.ShowAltNudge(), true)
+end)
+
+-- fails when the Death Note reads only this character's grudges: Gank Master killed Kari, and Edvard's row read 0-0
+test("alts: a shared Death Note scores across characters", function()
+    local A, sa = altBoot("Kari")
+    A.char.foes["Gank Master"] = { n = "Gank Master", k = 1, d = 3, last = B }
+    A.WriteAltCopy()
+    local E = altBoot("Edvard", { db = sa.db })
+    E.char.foes["Gank Master"] = { n = "Gank Master", k = 0, d = 1, last = B }
+    local foes, view = E.DeathNoteFoes()
+    eq(foes["Gank Master"], E.char.foes["Gank Master"], "separate: this character's own")
+    eq(view, nil)
+    E.db.deathNoteShared = true
+    foes, view = E.DeathNoteFoes()
+    eq(foes["Gank Master"].k, 1); eq(foes["Gank Master"].d, 4)
+    eq(view, "all", "the card counts and forgets from All")
+end)
+
+-- the share sheet (UI/Window.lua, UI/Letters.lua) is not loaded by the mock, so its source is read: it drags on its
+-- own (ownDrag, which Dragged checks) and sets its height from its text each time it opens (Fit)
+test("alts: the share sheet drags alone and fits its text", function()
+    local function read(p) local fh = assert(io.open(W.dir .. p)); local s = fh:read("*a"); fh:close(); return s end
+    local win, letters = read("UI/Window.lua"), read("UI/Letters.lua")
+    assert(letters:find("f.onLedger and not f.ownDrag", 1, true), "Dragged skips the ledger for ownDrag")
+    local body = win:match("function GK%.OpenAltShare%(%)(.-)\nend\n")
+    assert(body, "GK.OpenAltShare")
+    assert(body:find("f.ownDrag = true", 1, true), "the sheet sets ownDrag")
+    assert(body:find("explain:GetStringHeight()", 1, true) and body:find("later:GetStringHeight()", 1, true),
+        "the height comes from the text")
+    assert(body:find("altShare.Fit()\n    GK.PlaceSheet", 1, true), "fitted on every open")
 end)
 
 test("alts: the nudge shows on a second character on the same side", function()

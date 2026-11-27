@@ -218,6 +218,15 @@ function GK.AltGrudges(which)
     return out
 end
 
+--- The grudges a Death Note row scores from, and the view its card counts and forgets from: every character's on
+--- this side while the Death Note is shared (a name from the main read 0-0 on the alt, the user in the game,
+--- 2026-11-27), else this character's own.
+function GK.DeathNoteFoes()
+    if not (GK.db and GK.char) then return {} end
+    if GK.db.deathNoteShared then return GK.AltGrudges("all"), "all" end
+    return GK.char.foes
+end
+
 --- Remove a grudge from a view (D4). "me" or my own key: as today (GK.ForgetGrudge), and my copy follows. Another
 --- character: a note it applies at its next login, and its row is hidden at once. "all": mine, and a note for
 --- each other character on my side that has the grudge.
@@ -256,8 +265,10 @@ end
 function GK.ShowAltNudge()
     if GK.testMode or not (GK.db and GK.char) then return false end
     if GK.db.deathNoteShared or GK.db.altNudged then return false end
+    -- any character, the first one too: "It's not important which one is main and which one is alt. The main point
+    -- is that you're logging in on separate characters" (the user, 2026-11-27). altFirst is still kept, unused here.
     local me = GK.MyAltKey()
-    if not me or GK.db.altFirst == me then return false end
+    if not me then return false end
     for _, e in ipairs(GK.AltsOnSide()) do
         if e.key ~= me then return true end
     end
