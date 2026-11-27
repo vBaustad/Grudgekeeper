@@ -1884,8 +1884,16 @@ function GK.OpenAltShare()
         f.share:SetPoint("TOPLEFT", later, "BOTTOMLEFT", 0, -16)
         f.keep = GK.FrameButton(f, "Keep separate", 120, function() Choose(GK.AltNudgeKeep) end)
         f.keep:SetPoint("LEFT", f.share, "RIGHT", 8, 0)
+        f.ownDrag = true
+        -- as tall as what is written on it, so no dead paper under the buttons (the user, 2026-11-27): the text's
+        -- top at 40, its three paragraphs and gaps, the buttons, and 20 under them
+        f.Fit = function()
+            f:SetHeight(40 + explain:GetStringHeight() + 12 + hint:GetStringHeight() + 12
+                + later:GetStringHeight() + 16 + 22 + 20)
+        end
         altShare = f
     end
+    altShare.Fit()
     GK.PlaceSheet(altShare)
     altShare:Show()
 end
