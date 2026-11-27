@@ -7,6 +7,9 @@ and for any AI agent working with you (`CLAUDE.md` loads it), so both start from
 
 - **Contributors open pull requests against `main`. Only the owner pushes to `main` and pushes tags.** A tag is a
   release: CurseForge builds and publishes from it, so a stray tag ships to every player.
+- **Start from the newest `main`, and check again before you hand anything over.** `git fetch` and compare with
+  `origin/main` before you begin, before you commit and before you push or open a pull request. If it moved, bring
+  it in first and run the tests again. Main can move while you work.
 - One feature or fix per pull request. Say what you checked in the game and what you did not. "Not tested in
   game" is a fine sentence; a guess presented as a result is not.
 - Before a merge we run a larger private smoke suite: it plays the addon against a mocked client, and every case
