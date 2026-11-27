@@ -3,6 +3,8 @@
 ## Unreleased
 
 - **Search the settings.** A search box beside the page title finds a setting by its name, its help or a choice in its dropdown, wherever it lives. The results drop down under the box, each with the page it is on. Click one, or pick it with the arrow keys and Enter, to go there, and the row lights up for a moment. By dakristia.
+- **Grudges across your characters.** On Grudges' Killed me, a box at the bottom left of the page shows this character's grudges, all your characters' on this side added up, or one other character's. The page opens on This character or All, whichever you used last. A grudge can be forgotten from any of them; another character forgets it the next time you log in on it. By dakristia.
+- **Combined Death Note, offered once.** Once you have played two characters on the same side, a glowing ? beside Add someone on the Death Note page asks whether they should share one Death Note. Share combines every character's list into one, and its scores count all your characters. Share or Keep separate, and it does not ask again on any character; Settings can change it later. By dakristia.
 - **A guildie's spree toast burns as yours does.** Its seal stamps in on fire, and from 20 kills the count slams on beside it (×20, ×25 and on). Its sounds go by your setting for guildies' sounds.
 - **No YippYapp page.** Grudgekeeper no longer adds a YippYapp page to Options or a /yippyapp command. They came with a library it shares with other addons, and it never used them.
 - **Under PvP in the AddOn list.** Grudgekeeper now sits in the PvP group of the game's AddOn list.

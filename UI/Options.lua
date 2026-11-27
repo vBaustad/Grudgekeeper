@@ -415,10 +415,7 @@ function GK.SettingsChapters()
             Check("deathNoteShared", "One Death Note for all my characters",
                 "Every character of yours on the same side shares the names, your notes and the warning.", false,
                 function(on)
-                    if on then
-                        GK.db.deathNoteTick = (GK.db.deathNoteTick or 0) + 1
-                        GK.JoinDeathNote()
-                    end
+                    if on then GK.DeathNoteTurnedOn() end
                 end),
             Ruled(),
             Note("The warning's sound is on Warnings, and the eye over their nameplate on Nameplates & map."),

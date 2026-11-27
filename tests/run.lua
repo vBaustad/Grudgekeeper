@@ -5121,5 +5121,412 @@ test("the AddOn list files Grudgekeeper under PvP, and never under YippYapp", fu
     eq(n, 1, "one group only, and never YippYapp: Grudgekeeper is not a YippYapp addon (DECISIONS.md)")
 end)
 
+-- ---------------------------------------------------------------------------
+-- Alt sync: the roster, each character's copy of its grudges, removal notes, the nudge (Core/Alts.lua)
+-- ---------------------------------------------------------------------------
+-- One account, many characters: a boot hands its saved tables on to the next.
+local function altBoot(name, prev, faction)      -- prev: { db = the account's, char = this character's, if it played }
+    local GK = boot({ me = name .. "-Realm", faction = faction, db = prev and prev.db, char = prev and prev.char })
+    -- Sightings.lua holds the Death Note (TrackedList, JoinDeathNote); the mock does not load it. Its login step
+    -- (StartSightings) is stubbed, so the one line of it that matters here is called by hand: GK.JoinDeathNote().
+    assert(loadfile(W.dir .. "Core/Sightings.lua"))("Grudgekeeper", GK)
+    GK.char.tracked = GK.char.tracked or {}
+    GK.JoinDeathNote()
+    return GK, { db = GK.db, char = GK.char }
+end
+local function altBootAgain(name, saved, faction) return altBoot(name, saved, faction) end
+
+test("alts: the roster and the first character across two boots", function()
+    local A, sa = altBoot("Kari")
+    eq(A.MyAltKey(), "Kari")
+    eq(A.db.altFirst, "Kari")
+    local B, sb = altBoot("Edvard", { db = sa.db })
+    eq(B.db.altFirst, "Kari", "the first stays the first")
+    eq(count(B.db.alts), 2)
+    eq(B.db.alts["Edvard"].side, "Alliance")
+    eq(B.db.alts["Edvard"].name, "Edvard")
+    eq(B.db.alts["Kari"].realm, nil, "no realm from LIB.Realm")
+    eq(#B.AltsOnSide(), 2)
+    eq(B.AltsOnSide()[1].name, "Edvard", "by name")
+end)
+
+test("alts: the copy has counts and times, and leaves out hits", function()
+    local A, sa = altBoot("Kari")
+    A.char.foes["Gank Master"] = { n = "Gank Master", c = "ROGUE", r = "Human", l = 70, k = 3, d = 5, a = 1,
+        last = B + 10, lastDeath = B + 9, hits = { B, B + 1, B + 2 } }
+    A.WriteAltCopy()
+    local row = A.db.alts["Kari"].copy["Gank Master"]
+    eq(row.k, 3); eq(row.d, 5); eq(row.a, 1); eq(row.c, "ROGUE"); eq(row.lastDeath, B + 9)
+    eq(row.hits, nil, "no hits in the copy")
+    eq(row.lastKill, nil, "only the fields the grudge has")
+end)
+
+test("alts: a change to the grudges updates the copy", function()
+    local A = altBoot("Kari")
+    A.char.foes["Nina Nice"] = { k = 1, d = 0, last = B }
+    W.advance(1)
+    A.Changed()
+    W.advance(1)
+    eq(A.db.alts["Kari"].copy["Nina Nice"].k, 1)
+end)
+
+test("alts: the key is the name alone and never asks LIB.Realm", function()
+    local A = altBoot("Kari")
+    local lib = W.LIB
+    local realm = lib.Realm
+    lib.Realm = function() return "Elsewhere" end
+    local me = W.me
+    W.me = "Kari"
+    eq(A.MyAltKey(), "Kari")
+    W.me = me
+    lib.Realm = realm
+end)
+
+test("alts: an old Name-Realm entry is folded into the name key when the copy is written", function()
+    local A, sa = altBoot("Kari")
+    sa.db.alts["Kari-Realm"] = { name = "Kari", realm = "Realm", side = "Alliance", copy = {} }
+    sa.db.alts["Kari Surname-Realm"] = { name = "Kari Surname", side = "Alliance", copy = {} }
+    sa.db.altRemoved["Kari-Realm"] = { ["Nina Nice"] = B }
+    sa.db.altJoined["Kari-Realm"] = { tick = 3, names = {} }
+    sa.db.altFirst = "Kari-Realm"
+    A.char.foes["Nina Nice"] = { k = 1, last = B - 5 }
+    A.StartAlts()
+    eq(sa.db.alts["Kari-Realm"], nil, "the old entry is gone")
+    eq(type(sa.db.alts["Kari"]), "table", "one entry, by name")
+    eq(type(sa.db.alts["Kari Surname-Realm"]), "table", "another character's entry stays")
+    eq(sa.db.altRemoved["Kari-Realm"], nil)
+    eq(A.char.foes["Nina Nice"], nil, "the old key's removal note was applied")
+    eq(sa.db.altJoined["Kari"].tick, 3)
+    eq(sa.db.altFirst, "Kari")
+end)
+
+test("alts: the nudge is off while the account has one character", function()
+    local A = altBoot("Kari")
+    eq(A.ShowAltNudge(), false)
+end)
+
+-- fails with the old rule (GK.db.altFirst == me), which hid it on the first character for good
+test("alts: the nudge shows on the first character too, once there is a second", function()
+    local _, sa = altBoot("Kari")
+    local _, sb = altBoot("Edvard", { db = sa.db })
+    local A2 = altBoot("Kari", { db = sb.db })
+    eq(A2.db.altFirst, "Kari")
+    eq(A2.ShowAltNudge(), true)
+end)
+
+-- fails when the Death Note reads only this character's grudges: Gank Master killed Kari, and Edvard's row read 0-0
+test("alts: a shared Death Note scores across characters", function()
+    local A, sa = altBoot("Kari")
+    A.char.foes["Gank Master"] = { n = "Gank Master", k = 1, d = 3, last = B }
+    A.WriteAltCopy()
+    local E = altBoot("Edvard", { db = sa.db })
+    E.char.foes["Gank Master"] = { n = "Gank Master", k = 0, d = 1, last = B }
+    local foes, view = E.DeathNoteFoes()
+    eq(foes["Gank Master"], E.char.foes["Gank Master"], "separate: this character's own")
+    eq(view, nil)
+    E.db.deathNoteShared = true
+    foes, view = E.DeathNoteFoes()
+    eq(foes["Gank Master"].k, 1); eq(foes["Gank Master"].d, 4)
+    eq(view, "all", "the card counts and forgets from All")
+end)
+
+-- the share sheet (UI/Window.lua, UI/Letters.lua) is not loaded by the mock, so its source is read: it drags on its
+-- own (ownDrag, which Dragged checks) and sets its height from its text each time it opens (Fit)
+test("alts: the share sheet drags alone and fits its text", function()
+    local function read(p) local fh = assert(io.open(W.dir .. p)); local s = fh:read("*a"); fh:close(); return s end
+    local win, letters = read("UI/Window.lua"), read("UI/Letters.lua")
+    assert(letters:find("f.onLedger and not f.ownDrag", 1, true), "Dragged skips the ledger for ownDrag")
+    local body = win:match("function GK%.OpenAltShare%(%)(.-)\nend\n")
+    assert(body, "GK.OpenAltShare")
+    assert(body:find("f.ownDrag = true", 1, true), "the sheet sets ownDrag")
+    assert(body:find("explain:GetStringHeight()", 1, true) and body:find("later:GetStringHeight()", 1, true),
+        "the height comes from the text")
+    assert(body:find("altShare.Fit()\n    GK.PlaceSheet", 1, true), "fitted on every open")
+end)
+
+-- fails on the ink link with an arrow it replaced ("a bit hard to see", the user, 2026-11-27)
+test("alts: the character switch is the game's dropdown box", function()
+    local fh = assert(io.open(W.dir .. "UI/Window.lua")); local src = fh:read("*a"); fh:close()
+    assert(src:find('local picker = CreateFrame("DropdownButton", nil, page, "WowStyle1DropdownTemplate")', 1, true))
+    assert(src:find("local PICKER_W = ", 1, true), "its width is set before BuildList uses it")
+end)
+
+test("alts: the nudge shows on a second character on the same side", function()
+    local _, sa = altBoot("Kari")
+    local B2 = altBoot("Edvard", { db = sa.db })
+    eq(B2.ShowAltNudge(), true)
+end)
+
+test("alts: the nudge is off for a second character on the other side", function()
+    local _, sa = altBoot("Kari")
+    local B2 = altBoot("Edvard", { db = sa.db }, "Horde")
+    eq(B2.ShowAltNudge(), false)
+    local C = altBoot("Pølse Hans", { db = B2.db }, "Horde")
+    eq(C.ShowAltNudge(), true, "a third, with another Horde character")
+end)
+
+test("alts: Share or Keep ends the nudge on every character", function()
+    local _, sa = altBoot("Kari")
+    local B2, sb = altBoot("Edvard", { db = sa.db })
+    eq(B2.ShowAltNudge(), true)
+    B2.AltNudgeKeep()
+    eq(B2.ShowAltNudge(), false)
+    eq(B2.db.deathNoteShared, false, "keep leaves the setting")
+    local C = altBoot("Gærd Balle", { db = sb.db })
+    eq(C.ShowAltNudge(), false, "never again on any character")
+    -- and Share, on a fresh account
+    local _, sx = altBoot("Kari")
+    local Y, sy = altBoot("Edvard", { db = sx.db })
+    Y.AltNudgeShare()
+    eq(Y.ShowAltNudge(), false)
+    local Z = altBoot("Gærd Balle", { db = sy.db })
+    eq(Z.ShowAltNudge(), false)
+end)
+
+test("alts: no nudge when the Death Note is already shared", function()
+    local _, sa = altBoot("Kari")
+    sa.db.deathNoteShared = true
+    local B2 = altBoot("Edvard", { db = sa.db })
+    eq(B2.ShowAltNudge(), false)
+end)
+
+test("alts: Share turns the setting on and joins the list, as the box does", function()
+    local _, sa = altBoot("Kari")
+    local B2 = altBoot("Edvard", { db = sa.db })
+    local joined = 0
+    B2.JoinDeathNote = function() joined = joined + 1 end
+    B2.AltNudgeShare()
+    eq(B2.db.deathNoteShared, true)
+    eq(B2.db.altNudged, true)
+    eq(B2.db.deathNoteTick, 1)
+    eq(joined, 1)
+end)
+
+-- Without the checks in VisibleCopy/SafeRow and AltsOnSide, the string count raises "attempt to perform arithmetic"
+-- and the non-table entries raise "attempt to index" while the page draws.
+test("alts: a damaged copy in the saved file is data, never an error", function()
+    local A, sa = altBoot("Kari")
+    sa.db.alts["Broken"] = "not a table"
+    sa.db.alts["Odd"] = { name = "Odd|cffff0000", side = "Alliance", copy = {
+        ["Gank Master"] = { k = "lots", d = -4, a = 1 / 0, last = "x" }, [5] = "row", ["Nina Nice"] = "row" } }
+    A.char.foes["Gank Master"] = { n = "Gank Master", k = 1, d = 2, a = 0, last = B + 5 }
+    local all = A.AltGrudges("all")
+    eq(all["Gank Master"].k, 1); eq(all["Gank Master"].d, 2); eq(all["Gank Master"].a, 0)
+    eq(all["Nina Nice"], nil)
+    for _, e in ipairs(A.AltsOnSide()) do
+        if e.key == "Odd" then eq(e.name:find("|c", 1, true), nil, "no colour code survives") end
+    end
+    A.RemoveAltGrudge("all", "Gank Master")
+end)
+
+-- Without JoinAltDeathNotes (and the tracked list in the copy), Share on an alt shows nothing from the main.
+test("alts: Share brings in another character's Death Note at once", function()
+    local A, sa = altBoot("Kari")
+    A.char.tracked["Gank Master"] = { t = B, c = "ROGUE", l = 70, note = "ganker" }
+    A.WriteAltCopy()
+    local B2 = altBoot("Edvard", { db = sa.db })
+    B2.AltNudgeShare()
+    local list = B2.TrackedList()
+    eq(list["Gank Master"].c, "ROGUE")
+    eq(list["Gank Master"].note, "ganker")
+    eq(sa.db.altJoined["Kari"].tick, B2.db.deathNoteTick)
+    eq(sa.db.altJoined["Kari"].names["Gank Master"], true)
+end)
+
+test("alts: a Death Note from the other side is not merged", function()
+    local A, sa = altBoot("Kari", nil, "Horde")
+    A.char.tracked["Gank Master"] = { t = B }
+    A.WriteAltCopy()
+    local B2 = altBoot("Edvard", { db = sa.db })
+    B2.AltNudgeShare()
+    eq(B2.TrackedList()["Gank Master"], nil)
+end)
+
+test("alts: a name removed after the merge is not added again at the other character's login", function()
+    local A, sa = altBoot("Kari")
+    A.char.tracked["Gank Master"] = { t = B }
+    A.WriteAltCopy()
+    local B2, sb = altBoot("Edvard", { db = sa.db })
+    B2.AltNudgeShare()
+    B2.TrackedList()["Gank Master"] = nil
+    local A2 = altBoot("Kari", { db = sb.db, char = sa.char })
+    eq(A2.TrackedList()["Gank Master"], nil, "not re-added")
+end)
+
+-- Without the altJoined table (the old number made JoinDeathNote skip the whole list), Polse Hans never joins; without
+-- its names, Gaerd Balle, removed after the merge, comes back at Edvard's login.
+test("alts: a name added after the share joins at the other character's login, a removed one does not", function()
+    local E, se = altBoot("Edvard")
+    E.char.tracked["Gærd Balle"] = { t = B }
+    E.WriteAltCopy()
+    local K, sk = altBoot("Kari", { db = se.db })
+    K.AltNudgeShare()
+    eq(type(K.TrackedList()["Gærd Balle"]), "table", "merged from Edvard's copy")
+    K.TrackedList()["Gærd Balle"] = nil
+    se.char.tracked["Pølse Hans"] = { t = B, c = "MAGE" }
+    local E2 = altBoot("Edvard", { db = sk.db, char = se.char })
+    eq(type(E2.TrackedList()["Pølse Hans"]), "table", "added after the copy")
+    eq(E2.TrackedList()["Gærd Balle"], nil, "removed, not back")
+end)
+
+-- Without the cap check keeping a skipped name out of names, the name skipped at the cap would never join later.
+test("alts: names skipped at the cap are not in altJoined.names", function()
+    local E, se = altBoot("Edvard")
+    E.char.tracked["Gank Master"] = { t = B }
+    E.char.tracked["Gærd Balle"] = { t = B }
+    E.WriteAltCopy()
+    local K = altBoot("Kari", { db = se.db })
+    K.db.deathNoteShared = true
+    local list = K.TrackedList()
+    for i = 1, K.MAX_TRACKED - 1 do list["Foe" .. i] = { t = B } end
+    K.JoinAltDeathNotes()
+    local names, inList = K.db.altJoined["Edvard"].names, 0
+    for _, nm in ipairs({ "Gank Master", "Gærd Balle" }) do
+        if list[nm] then inList = inList + 1; eq(names[nm], true) else eq(names[nm], nil) end
+    end
+    eq(inList, 1, "one fits under the cap")
+end)
+
+-- Without SafeKey, a key with a colour code or a trailing - from the saved file reaches the shared list.
+test("alts: a key with a code or ending in - in a copied list is not merged", function()
+    local _, sa = altBoot("Kari")
+    sa.db.alts["Odd"] = { name = "Odd", side = "Alliance", tracked = {
+        ["Kari|cffff0000"] = { t = 1 }, ["Edvard-"] = { t = 1 }, ["Gank Master"] = { t = 1 } } }
+    local B2 = altBoot("Edvard", { db = sa.db })
+    B2.AltNudgeShare()
+    local list = B2.TrackedList()
+    eq(list["Kari|cffff0000"], nil)
+    eq(list["Edvard-"], nil)
+    eq(type(list["Gank Master"]), "table")
+end)
+
+-- Without the type checks and GK.Clean in JoinAltDeathNotes, the string list raises "bad argument to pairs" and
+-- a colour code reaches the shared list.
+test("alts: a damaged Death Note in the saved copy is data, never an error", function()
+    local _, sa = altBoot("Kari")
+    sa.db.alts["Odd"] = { name = "Odd", side = "Alliance", tracked = "not a table" }
+    sa.db.alts["Odd2"] = { name = "Odd2", side = "Alliance", tracked = {
+        ["Gank Master"] = { c = "RO|cffff0000GUE", note = "|Hx|hlink|h", l = "high", t = 5 },
+        ["Nina Nice"] = "row", [7] = { t = 1 } } }
+    local B2 = altBoot("Edvard", { db = sa.db })
+    B2.AltNudgeShare()
+    local e = B2.TrackedList()["Gank Master"]
+    eq(type(e), "table")
+    eq(tostring(e.c):find("|c", 1, true), nil, "no colour code survives")
+    eq(tostring(e.note):find("|H", 1, true), nil, "no link survives")
+    eq(e.l, nil, "a string is not a level")
+    eq(e.t, 5)
+    eq(B2.TrackedList()["Nina Nice"], nil)
+    eq(B2.TrackedList()[7], nil)
+end)
+
+test("alts: the test panel's mode merges nothing", function()
+    local A, sa = altBoot("Kari")
+    A.char.tracked["Gank Master"] = { t = B }
+    A.WriteAltCopy()
+    local B2 = altBoot("Edvard", { db = sa.db })
+    B2.db.deathNoteShared = true
+    B2.testMode = true
+    B2.JoinAltDeathNotes()
+    B2.testMode = false
+    eq(B2.TrackedList()["Gank Master"], nil)
+    eq(next(B2.db.altJoined), nil)
+end)
+
+-- Without the type checks in ApplyAltRemovals and noteFor, both raise "bad argument to pairs" / "attempt to index".
+test("alts: damaged removal notes in the saved file are dropped, never an error", function()
+    local A, sa = altBoot("Kari")
+    local mine = A.MyAltKey()
+    sa.db.altRemoved[mine] = "not a table"
+    A.ApplyAltRemovals()
+    eq(sa.db.altRemoved[mine], nil)
+    local B2 = altBoot("Edvard", { db = sa.db })
+    sa.db.altRemoved[mine] = 7
+    B2.RemoveAltGrudge(mine, "Gank Master")
+    eq(type(sa.db.altRemoved[mine]), "table")
+end)
+
+test("alts: all my characters adds the scores up", function()
+    local A, sa = altBoot("Kari")
+    A.char.foes["Gank Master"] = { n = "Gank Master", k = 2, d = 3, a = 1, last = B + 5, lastDeath = B + 5, l = 60 }
+    A.WriteAltCopy()
+    local B2 = altBoot("Edvard", { db = sa.db })
+    B2.char.foes["Gank Master"] = { n = "Gank Master", k = 1, d = 4, a = 0, last = B + 50, lastKill = B + 50, l = 70 }
+    B2.char.foes["Nina Nice"] = { k = 0, d = 1, a = 0, last = B + 1 }
+    B2.WriteAltCopy()
+    local all = B2.AltGrudges("all")
+    eq(all["Gank Master"].k, 3); eq(all["Gank Master"].d, 7); eq(all["Gank Master"].a, 1)
+    eq(all["Gank Master"].last, B + 50, "the newest time")
+    eq(all["Gank Master"].lastDeath, B + 5)
+    eq(all["Gank Master"].lastKill, B + 50)
+    eq(all["Gank Master"].l, 70, "level from the one met last")
+    eq(all["Nina Nice"].d, 1)
+    eq(B2.AltGrudges("me")["Gank Master"].d, 4)
+    eq(B2.AltGrudges("Kari")["Gank Master"].d, 3)
+end)
+
+test("alts: removing from another character hides it at once; its next boot deletes it and clears the note", function()
+    local A, sa = altBoot("Kari")
+    A.char.foes["Gank Master"] = { k = 2, d = 3, a = 0, last = B, lastDeath = B }
+    A.char.foes["Nina Nice"] = { k = 1, d = 0, a = 0, last = B, lastKill = B }
+    A.char.log = { { k = "D", n = "Gank Master" }, { k = "K", n = "Nina Nice" } }
+    A.WriteAltCopy()
+    local B2, sb = altBoot("Edvard", { db = sa.db })
+    W.advance(100)
+    B2.RemoveAltGrudge("Kari", "Gank Master")
+    eq(B2.AltGrudges("Kari")["Gank Master"], nil, "hidden at once")
+    eq(B2.AltGrudges("Kari")["Nina Nice"].k, 1)
+    eq(B2.AltGrudges("all")["Gank Master"], nil)
+    local A2 = altBootAgain("Kari", { db = sb.db, char = sa.char })
+    eq(A2.char.foes["Gank Master"], nil, "deleted at login")
+    eq(A2.char.foes["Nina Nice"].k, 1)
+    eq(#A2.char.log, 1, "and its log line")
+    eq(A2.db.altRemoved["Kari"], nil, "the note is cleared")
+    eq(A2.db.alts["Kari"].copy["Gank Master"], nil)
+end)
+
+test("alts: a kill newer than the note survives", function()
+    local A, sa = altBoot("Kari")
+    A.char.foes["Gank Master"] = { k = 2, d = 3, a = 0, last = B, lastDeath = B }
+    A.WriteAltCopy()
+    local B2, sb = altBoot("Edvard", { db = sa.db })
+    W.advance(100)
+    B2.RemoveAltGrudge("Kari", "Gank Master")
+    sa.char.foes["Gank Master"].lastKill = B + 500
+    local A2 = altBootAgain("Kari", { db = sb.db, char = sa.char })
+    eq(A2.char.foes["Gank Master"].k, 2, "kept")
+    eq(A2.db.altRemoved["Kari"], nil, "the note is still cleared")
+    eq(A2.AltGrudges("me")["Gank Master"].k, 2)
+end)
+
+test("alts: removing from all removes mine and notes the others", function()
+    local A, sa = altBoot("Kari")
+    A.char.foes["Gank Master"] = { k = 1, d = 1, a = 0, last = B }
+    A.WriteAltCopy()
+    local B2 = altBoot("Edvard", { db = sa.db })
+    B2.char.foes["Gank Master"] = { k = 1, d = 1, a = 0, last = B }
+    B2.WriteAltCopy()
+    B2.RemoveAltGrudge("all", "Gank Master")
+    eq(B2.char.foes["Gank Master"], nil)
+    eq(B2.AltGrudges("me")["Gank Master"], nil)
+    eq(B2.db.alts["Edvard"].copy["Gank Master"], nil, "my copy follows")
+    eq(type(B2.db.altRemoved["Kari"]["Gank Master"]), "number")
+    eq(B2.db.altRemoved["Edvard"], nil, "no note for myself")
+end)
+
+test("alts: the test panel's mode writes nothing", function()
+    local GK = boot({ me = "Kari" })
+    GK.testMode = true
+    GK.db.alts, GK.db.altFirst = {}, nil
+    GK.char.foes["Gank Master"] = { k = 1, d = 0, last = B }
+    GK.WriteAltCopy()
+    eq(count(GK.db.alts), 0)
+    eq(GK.db.altFirst, nil)
+    GK.db.altRemoved["Kari"] = { ["Gank Master"] = B + 1 }
+    GK.ApplyAltRemovals()
+    eq(GK.char.foes["Gank Master"].k, 1, "no removal in test mode")
+    eq(GK.ShowAltNudge(), false)
+end)
+
 say(("\n%d passed, %d failed"):format(passed, failed))
 os.exit(failed == 0 and 0 or 1)

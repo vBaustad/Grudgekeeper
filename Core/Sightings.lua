@@ -243,6 +243,7 @@ end
 -- 2026-11-12). Not "Nemesis": the board already names the one who killed you most so.
 -- ---------------------------------------------------------------------------
 local MAX_TRACKED = 100
+GK.MAX_TRACKED = MAX_TRACKED               -- Alts.lua merges every character's list up to the same cap
 local trackVersion = 0                     -- moves at every change, for the plates and the name index
 local trackIndex, trackIndexed = {}, -1    -- [name without realm] = the key it is tracked under
 
@@ -646,11 +647,21 @@ function GK.JoinDeathNote()
     if not (GK.db and GK.db.deathNoteShared and GK.char) or GK.testMode then return end
     local tick = GK.db.deathNoteTick or 0
     if (GK.char.deathNoteTick or -1) >= tick then return end
+    -- Already merged from the account copy: a name removed since must not come back at this login.
+    -- A number (older saved data) skips the whole list; a table says which names that merge brought in, so only the
+    -- names added since (or skipped at the cap) join now.
+    local joined = GK.db.altJoined and GK.MyAltKey and GK.db.altJoined[GK.MyAltKey()]
+    local done
+    if type(joined) == "number" and joined >= tick then GK.char.deathNoteTick = tick return end
+    if type(joined) == "table" and type(joined.tick) == "number" and joined.tick >= tick
+        and type(joined.names) == "table" then
+        done = joined.names
+    end
     GK.char.deathNoteTick = tick
     local shared, n = GK.TrackedList(), 0
     for _ in pairs(shared) do n = n + 1 end
     for key, e in pairs(GK.char.tracked or {}) do
-        if not shared[key] and n < MAX_TRACKED then
+        if not shared[key] and not (done and done[key]) and n < MAX_TRACKED then
             local copy = {}
             for k, v in pairs(e) do copy[k] = v end
             shared[key] = copy
@@ -659,6 +670,9 @@ function GK.JoinDeathNote()
     end
     trackVersion = trackVersion + 1
 end
+
+--- The shared list changed from outside this file (Alts.lua): the plate marks and the name index rebuild.
+function GK.TrackedChanged() trackVersion = trackVersion + 1 end
 
 function GK.StartSightings()
     GK.JoinDeathNote()                       -- a character first here since the box was ticked

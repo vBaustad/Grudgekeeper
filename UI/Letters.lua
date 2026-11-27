@@ -1180,9 +1180,11 @@ end
 local sheets = {}
 
 --- What a drag on a sheet moves: the ledger, through the ledger's own drag (which saves where it is),
---- when the sheet lies on it - the sheet is anchored to it and goes along. Else the sheet itself.
+--- when the sheet lies on it - the sheet is anchored to it and goes along. Else the sheet itself, and always a
+--- sheet with f.ownDrag set (the Death Note's share sheet: "movable separate from the rest of the window", the
+--- user, 2026-11-27).
 local function Dragged(f)
-    local win = f.onLedger and _G.GrudgekeeperFrame
+    local win = f.onLedger and not f.ownDrag and _G.GrudgekeeperFrame
     if win and win:IsShown() then return win end
     return f
 end
