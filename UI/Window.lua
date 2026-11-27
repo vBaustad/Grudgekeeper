@@ -55,7 +55,6 @@ local NAME_X, NAME_X_RANKED = 44, 74
 -- row's 4 in from it, and a little more.
 local TIP_GAP = 28
 local LIST_TOP = 96                                  -- the first row, down from the page's top
-local NUDGE_H = 44                                   -- the Death Note's nudge line, over the first row (D1)
 local TAB_INK_Y, TAB_INK_GAP = 40, 16                -- the ink tabs under the title: how far down, and apart
 -- The foot of a list: its rows stop over the page arrows (page.count, 16 up, the arrows round it), all that
 -- stands there since Letters and Settings went to the title bar (2026-11-18). A page fits as many rows as reach
@@ -155,7 +154,6 @@ local function ListFrame(def, line)
         top = top - 30
         if not line then top = top - 16 end
     end
-    if def.nudge and def.nudge() then top = top + NUDGE_H end       -- the Death Note's nudge over its rows
     return top, math.floor((LIST_FOOT - top) / ROW_H)
 end
 
@@ -273,8 +271,6 @@ end
 -- character and All my characters are remembered for the account (GK.db.altView); one other character is a quick
 -- look, never saved, gone when the window closes.
 local grudgesWho = nil
--- The nudge's panel on the Death Note page (D1), open until a choice or the window closing.
-local nudgeOpen = false
 
 --- Does Killed me have the character switch: more than one character of the account on this side.
 local function AltSwitchShown()
@@ -949,10 +945,7 @@ GK.LedgerPages = {
     -- offer one Death Note for them all (docs/alt-sync.md D1). Its panel takes the rows' place while open.
     { name = "Death Note", headings = {},
       nudge = function() return GK.ShowAltNudge ~= nil and GK.ShowAltNudge() end,
-      items = function()
-          if nudgeOpen and GK.ShowAltNudge and GK.ShowAltNudge() then return {}, "" end
-          return DeathListItems()
-      end,
+      items = DeathListItems,
       icon = ICONS .. "Ability_Hunter_SniperShot",          -- the hunter's mark: marked to be hunted
       add = { text = "Add someone", kind = "track" },
       sub = function() return "The one whose name is written here shall die." end,
@@ -1855,6 +1848,48 @@ local function FillRow(row, it, chosen)
     Rehover(row)
 end
 
+-- The sheet the Death Note's "?" opens (D1): what sharing does, the grudges' own word apart in the faded hint ink,
+-- where to change it later, and the two choices. A window of its own over the ledger, as the note sheets are:
+-- "a separate little window that explains the situation in short" (the user, 2026-11-27).
+local altShare
+local SHARE_W = 340
+
+--- Open the sheet that offers one Death Note for the account's characters on this side.
+function GK.OpenAltShare()
+    if not altShare then
+        local f = GK.MakeFrameSheet("GrudgekeeperAltShare", SHARE_W, 236, "One Death Note?")
+        local function Para(colour, text, after, gap)
+            local fs = f:CreateFontString(nil, "ARTWORK")
+            Ink(fs, colour, TEXT_FONT, 12)
+            fs:SetWidth(SHARE_W - 48)
+            fs:SetJustifyH("LEFT")
+            fs:SetSpacing(3)
+            if after then fs:SetPoint("TOPLEFT", after, "BOTTOMLEFT", 0, -gap) else fs:SetPoint("TOPLEFT", 24, -40) end
+            fs:SetText(text)
+            return fs
+        end
+        -- every character's own list joins (GK.JoinDeathNote and GK.JoinAltDeathNotes, D5), each one kept as it was
+        local explain = Para(INK, "Share one Death Note between every character of yours on this side. Each "
+            .. "character's list joins the shared one, and comes back as it was if you stop sharing.")
+        local hint = Para(FADED, "Note: Your grudges across all your characters can always be viewed on the Grudges "
+            .. "page.", explain, 12)
+        local later = Para(INK, "You can change this later in Settings.", hint, 12)
+        local function Choose(fn)
+            fn()
+            f:Hide()
+            GK.Changed()
+            Refresh()
+        end
+        f.share = GK.FrameButton(f, "Share my Death Note", 160, function() Choose(GK.AltNudgeShare) end)
+        f.share:SetPoint("TOPLEFT", later, "BOTTOMLEFT", 0, -16)
+        f.keep = GK.FrameButton(f, "Keep separate", 120, function() Choose(GK.AltNudgeKeep) end)
+        f.keep:SetPoint("LEFT", f.share, "RIGHT", 8, 0)
+        altShare = f
+    end
+    GK.PlaceSheet(altShare)
+    altShare:Show()
+end
+
 local function BuildList(page)
     page.title = page:CreateFontString(nil, "ARTWORK")
     Ink(page.title, BLOOD, TITLE_FONT, 22)
@@ -2019,19 +2054,18 @@ local function BuildList(page)
     end)
     picker:Hide()
     page.picker = picker
-    -- The Death Note's nudge (def.nudge, D1): a line and a small button with a gold halo that breathes, slow and
-    -- soft, never a flash (the owner's pick, demo A, 2026-11-27); it holds still under the mouse. No popup at
-    -- login: it waits on the page to be found. A click opens the panel in the rows' place.
-    local nudge = CreateFrame("Frame", nil, page)
-    nudge:SetSize(PAGE_W - 24, NUDGE_H - 6)
-    nudge.button = GK.MakeButton(nudge, 70, 22)
-    nudge.button:SetPoint("LEFT", 6, 0)
-    nudge.button:SetText("Tell me")
-    nudge.glow = nudge.button:CreateTexture(nil, "BACKGROUND", nil, -1)
+    -- The Death Note's nudge (def.nudge, D1): a "?" in the page's top right corner, beside Add someone, with a gold
+    -- halo that breathes, slow and soft, never a flash (demo A, 2026-11-27); it holds still under the mouse. A line
+    -- in the list "gets mixed in all the other information" (the user, testing in the game, 2026-11-27): the corner
+    -- keeps the list as it was. Its tooltip asks, a click opens the sheet that explains (AltShareSheet).
+    local nudge = CreateFrame("Button", nil, page)
+    nudge:SetSize(22, 22)
+    nudge:SetPoint("RIGHT", page.add, "LEFT", -10, 0)
+    nudge.glow = nudge:CreateTexture(nil, "BACKGROUND")
     nudge.glow:SetTexture(MEDIA .. "glow")
     nudge.glow:SetBlendMode("ADD")
     nudge.glow:SetVertexColor(1, 0.8, 0.35)
-    nudge.glow:SetSize(120, 60)
+    nudge.glow:SetSize(48, 48)
     nudge.glow:SetPoint("CENTER")
     nudge.glow:SetAlpha(0.15)
     local breathe = nudge.glow:CreateAnimationGroup()
@@ -2041,64 +2075,28 @@ local function BuildList(page)
     swell:SetToAlpha(0.6)
     swell:SetDuration(1.6)
     swell:SetSmoothing("IN_OUT")
-    nudge.breathe = breathe
+    nudge.mark = nudge:CreateFontString(nil, "ARTWORK")
+    Ink(nudge.mark, { 1, 0.82, 0 }, TITLE_FONT, 18)
+    nudge.mark:SetPoint("CENTER", 0, 1)
+    nudge.mark:SetText("?")
     -- held at the breath's low end, where Play starts again on leave: a higher hold dropped in one step
-    nudge.button:HookScript("OnEnter", function()
+    nudge:SetScript("OnEnter", function(self)
         breathe:Stop()
-        nudge.glow:SetAlpha(0.15)
+        self.glow:SetAlpha(0.15)
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+        GameTooltip:SetText("Share one Death Note?")
+        GameTooltip:AddLine("You play more than one character. Click to see how they can share one.", nil, nil, nil, true)
+        GameTooltip:Show()
     end)
-    nudge.button:HookScript("OnLeave", function() breathe:Play() end)
-    nudge.button:HookScript("OnClick", function()
-        nudgeOpen = true
-        offset = 0
-        Refresh()
+    nudge:SetScript("OnLeave", function()
+        breathe:Play()
+        GameTooltip:Hide()
     end)
-    nudge.text = nudge:CreateFontString(nil, "ARTWORK")
-    Ink(nudge.text, INK, TEXT_FONT, 11)
-    nudge.text:SetPoint("LEFT", nudge.button, "RIGHT", 10, 0)
-    nudge.text:SetPoint("RIGHT", -4, 0)
-    nudge.text:SetJustifyH("LEFT")
-    nudge.text:SetText("It looks like you play more than one character. Do you want them to share one Death Note?")
-    nudge:SetScript("OnShow", function() if not nudge.button:IsMouseOver() then breathe:Play() end end)
+    nudge:SetScript("OnClick", function() GK.OpenAltShare() end)
+    nudge:SetScript("OnShow", function(self) if not self:IsMouseOver() then breathe:Play() end end)
     nudge:SetScript("OnHide", function() breathe:Stop() end)
     nudge:Hide()
     page.nudge = nudge
-    -- The panel: what sharing does (GK.JoinDeathNote: this character's list joins, and is back as it was when the
-    -- box is off), the grudges' own word apart in the faded hint ink, where to change it later, and the two choices.
-    local panel = CreateFrame("Frame", nil, page)
-    panel:SetSize(PAGE_W - 24, 220)
-    local function Para(colour, text, after, gap)
-        local fs = panel:CreateFontString(nil, "ARTWORK")
-        Ink(fs, colour, TEXT_FONT, 12)
-        fs:SetWidth(PAGE_W - 36)
-        fs:SetJustifyH("LEFT")
-        fs:SetSpacing(3)
-        if after then fs:SetPoint("TOPLEFT", after, "BOTTOMLEFT", 0, -gap) else fs:SetPoint("TOPLEFT", 6, 0) end
-        fs:SetText(text)
-        return fs
-    end
-    local explain = Para(INK, "Share one Death Note between every character of yours on this side. This "
-        .. "character's list joins the shared one, and comes back as it was if you stop sharing.")
-    local hint = Para(FADED, "Note: Your grudges across all your characters can always be viewed on the Grudges page.",
-        explain, 14)
-    local later = Para(INK, "You can change this later in Settings.", hint, 14)
-    local function Choose(fn)
-        fn()
-        nudgeOpen = false
-        offset = 0
-        GK.Changed()
-        Refresh()
-    end
-    panel.share = GK.MakeButton(panel, 150, 22)
-    panel.share:SetText("Share my Death Note")
-    panel.share:SetPoint("TOPLEFT", later, "BOTTOMLEFT", 0, -16)
-    panel.share:SetScript("OnClick", function() Choose(GK.AltNudgeShare) end)
-    panel.keep = GK.MakeButton(panel, 110, 22)
-    panel.keep:SetText("Keep separate")
-    panel.keep:SetPoint("LEFT", panel.share, "RIGHT", 8, 0)
-    panel.keep:SetScript("OnClick", function() Choose(GK.AltNudgeKeep) end)
-    panel:Hide()
-    page.nudgePanel = panel
     -- The column headings. One with a sort is a button: a click sorts by it, a second click goes back
     -- to the page's own order; the one in use is in blood and underlined, like a chosen link.
     page.heads = {}
@@ -3380,7 +3378,7 @@ local function Build()
     -- card pinned from outside goes too, a look at one player: opened again, the page is as it was
     win:HookScript("OnHide", function()
         pinned = nil
-        grudgesWho, nudgeOpen = nil, false           -- another character's grudges were a quick look (D3)
+        grudgesWho = nil                             -- another character's grudges were a quick look (D3)
         GK.CloseLedgerSheets()
         LeaveSettings()                              -- opened again, it opens on its pages
     end)
@@ -3476,16 +3474,7 @@ Refresh = function()
         for i, row in ipairs(list.rows) do row:SetPoint("TOPLEFT", 4, -(top + (i - 1) * ROW_H)) end
     end
     if action then list.add:Set(action) end
-    local nudged = def.nudge ~= nil and def.nudge()
-    if not nudged then nudgeOpen = false end
-    list.nudge:SetShown(nudged and not nudgeOpen)
-    list.nudgePanel:SetShown(nudged and nudgeOpen)
-    if nudged then
-        list.nudge:ClearAllPoints()
-        list.nudge:SetPoint("TOPLEFT", 12, -(top - NUDGE_H))
-        list.nudgePanel:ClearAllPoints()
-        list.nudgePanel:SetPoint("TOPLEFT", 12, -(top - NUDGE_H + 4))
-    end
+    list.nudge:SetShown(def.nudge ~= nil and def.nudge() and true or false)
     local sortKey = GK.SortKey(def)
     for i, b in ipairs(list.heads) do
         local h = heads[i]
