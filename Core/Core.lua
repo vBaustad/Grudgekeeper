@@ -2141,9 +2141,9 @@ LIB.On("PLAYER_LOGIN", function()
     GK.StartLetters(fresh)
     GK.StartMail()
     GK.StartSocial()
-    -- GuildTab.lua came in an update: the game reads the list of files when it starts, so a /reload
-    -- after an update has the new Core.lua and not the new file. Without it there is no tab until the
-    -- game is started again - and everything after this line still starts.
+    -- GuildTab.lua came in an update. A /reload loads a file new to the TOC (checked on Forever,
+    -- 2026-11-27), so this guard is only a safety net: if the file is ever missing, there is no tab,
+    -- and everything after this line still starts.
     if GK.StartGuildTab then GK.StartGuildTab() end
     GK.StartProfiles()
     GK.StartInspect()

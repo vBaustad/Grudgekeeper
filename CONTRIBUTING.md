@@ -45,8 +45,9 @@ and the claim that you did not walk). The third line is never "nothing".
 - **Never assign over a Blizzard function or frame script.** Use `hooksecurefunc` and `HookScript`. After
   `LIB.RegisterWindow`, only `HookScript` the window's `OnShow` and `OnHide`.
 - Small traps: an empty FontString reads back `nil`, not `""`; a menu's radio row closes the menu; `SendAddonMessage`
-  returns a result to read; `GetCoinTextureString` lives in `C_CurrencyInfo`. A changed TOC needs a full client
-  restart; a new texture needs only `/reload`.
+  returns a result to read; `GetCoinTextureString` lives in `C_CurrencyInfo`. A file added to the TOC loads on
+  `/reload` or on logging into a character, and so does a new texture (checked on Forever, 2026-11-27). A brand-new
+  addon folder, or a changed `## Interface` or `## SavedVariables` line, has not been checked: try `/reload` first.
 - Blizzard's own UI code shows how the game does a thing: Gethe's `wow-ui-source`, branch `forever`.
 
 ## House rules
