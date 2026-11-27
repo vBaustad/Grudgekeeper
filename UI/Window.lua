@@ -2027,7 +2027,7 @@ local function BuildList(page)
     page.reset = page:CreateFontString(nil, "ARTWORK")    -- the links' tail, anchored after the last one shown
     Ink(page.reset, FADED, TEXT_FONT, 11)
     -- The character switch on Grudges' Killed me (def.picker, docs/alt-sync.md D3): the game's own dropdown box, as
-    -- the settings and the Looking For Group window have, at the tabs' right end. Ink with an arrow first; "a bit
+    -- the settings and the Looking For Group window have, in the bottom left (Refresh). Ink with an arrow first; "a bit
     -- hard to see. Can we make it like use a box like a lot of other wow settings already have" (the user,
     -- 2026-11-27). A radio for This character, All my characters and each one.
     local picker = CreateFrame("DropdownButton", nil, page, "WowStyle1DropdownTemplate")
