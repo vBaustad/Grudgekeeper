@@ -2042,9 +2042,10 @@ local function BuildList(page)
     swell:SetDuration(1.6)
     swell:SetSmoothing("IN_OUT")
     nudge.breathe = breathe
+    -- held at the breath's low end, where Play starts again on leave: a higher hold dropped in one step
     nudge.button:HookScript("OnEnter", function()
         breathe:Stop()
-        nudge.glow:SetAlpha(0.35)
+        nudge.glow:SetAlpha(0.15)
     end)
     nudge.button:HookScript("OnLeave", function() breathe:Play() end)
     nudge.button:HookScript("OnClick", function()

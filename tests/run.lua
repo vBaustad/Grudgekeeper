@@ -5213,6 +5213,19 @@ test("alts: a damaged copy in the saved file is data, never an error", function(
     A.RemoveAltGrudge("all", "Gank Master")
 end)
 
+-- Without the type checks in ApplyAltRemovals and noteFor, both raise "bad argument to pairs" / "attempt to index".
+test("alts: damaged removal notes in the saved file are dropped, never an error", function()
+    local A, sa = altBoot("Kari")
+    local mine = A.MyAltKey()
+    sa.db.altRemoved[mine] = "not a table"
+    A.ApplyAltRemovals()
+    eq(sa.db.altRemoved[mine], nil)
+    local B2 = altBoot("Edvard", { db = sa.db })
+    sa.db.altRemoved[mine] = 7
+    B2.RemoveAltGrudge(mine, "Gank Master")
+    eq(type(sa.db.altRemoved[mine]), "table")
+end)
+
 test("alts: all my characters adds the scores up", function()
     local A, sa = altBoot("Kari")
     A.char.foes["Gank Master"] = { n = "Gank Master", k = 2, d = 3, a = 1, last = B + 5, lastDeath = B + 5, l = 60 }

@@ -99,7 +99,10 @@ function GK.ApplyAltRemovals()
     if GK.testMode or not (GK.db and GK.char) then return end
     local key = GK.MyAltKey()
     local notes = key and GK.db.altRemoved[key]
-    if not notes then return end
+    if type(notes) ~= "table" then
+        if key then GK.db.altRemoved[key] = nil end   -- a damaged saved file: no notes to apply
+        return
+    end
     for foeKey, at in pairs(notes) do
         local f = GK.char.foes[foeKey]
         if f and not (LatestEvent(f) > (tonumber(at) or 0)) then DropFoe(foeKey) end
@@ -211,7 +214,8 @@ function GK.RemoveAltGrudge(which, foeKey)
     if not (GK.db and GK.char) or type(foeKey) ~= "string" then return end
     local mine = GK.MyAltKey()
     local function noteFor(charKey)
-        local notes = GK.db.altRemoved[charKey] or {}
+        local notes = GK.db.altRemoved[charKey]
+        if type(notes) ~= "table" then notes = {} end
         notes[foeKey] = time()
         GK.db.altRemoved[charKey] = notes
     end
