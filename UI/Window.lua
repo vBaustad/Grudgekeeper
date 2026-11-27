@@ -56,6 +56,7 @@ local NAME_X, NAME_X_RANKED = 44, 74
 local TIP_GAP = 28
 local LIST_TOP = 96                                  -- the first row, down from the page's top
 local TAB_INK_Y, TAB_INK_GAP = 40, 16                -- the ink tabs under the title: how far down, and apart
+local PICKER_W = 140                                 -- Grudges' character box, right of Killed me, Killed us, Versus
 -- The foot of a list: its rows stop over the page arrows (page.count, 16 up, the arrows round it), all that
 -- stands there since Letters and Settings went to the title bar (2026-11-18). A page fits as many rows as reach
 -- it. Until 2026-11-20 only the kill orders page had a tenth, by the foot the buttons had kept, and Grudges and
@@ -2025,45 +2026,33 @@ local function BuildList(page)
     page.add = add
     page.reset = page:CreateFontString(nil, "ARTWORK")    -- the links' tail, anchored after the last one shown
     Ink(page.reset, FADED, TEXT_FONT, 11)
-    -- The character switch on Grudges' Killed me (def.picker, docs/alt-sync.md D3): its choice in ink at the tabs'
-    -- right end with the game's down arrow, a click for the menu of This character, All my characters and each one.
-    local picker = CreateFrame("Button", nil, page)
-    picker:SetHeight(18)
-    picker.text = picker:CreateFontString(nil, "ARTWORK")
-    Ink(picker.text, FADED, TEXT_FONT, 11)
-    picker.text:SetPoint("RIGHT", -14, 1)
-    picker.arrow = picker:CreateTexture(nil, "ARTWORK")
-    picker.arrow:SetTexture("Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Up")
-    picker.arrow:SetSize(16, 16)
-    picker.arrow:SetPoint("RIGHT", 2, 0)
+    -- The character switch on Grudges' Killed me (def.picker, docs/alt-sync.md D3): the game's own dropdown box, as
+    -- the settings and the Looking For Group window have, at the tabs' right end. Ink with an arrow first; "a bit
+    -- hard to see. Can we make it like use a box like a lot of other wow settings already have" (the user,
+    -- 2026-11-27). A radio for This character, All my characters and each one.
+    local picker = CreateFrame("DropdownButton", nil, page, "WowStyle1DropdownTemplate")
+    picker:SetWidth(PICKER_W)
+    picker:SetupMenu(function(self, root)
+        local p = self.p
+        if not p then return end
+        for _, o in ipairs(p.options) do
+            root:CreateRadio(o[2], function() return p.on == o[1] end, function()
+                p.pick(o[1])
+                selected[tab], pinned, offset = nil, nil, 0
+                Refresh()
+            end)
+        end
+    end)
     function picker:Set(p)
         self.p = p
-        self.text:SetText(p.text)
-        self:SetWidth(math.ceil(TextWidth(self.text)) + 16)
+        self:OverrideText(p.text)
     end
-    picker:SetScript("OnClick", function(self)
-        local p = self.p
-        if not (p and MenuUtil and MenuUtil.CreateContextMenu) then return end
-        MenuUtil.CreateContextMenu(self, function(_, root)
-            for _, o in ipairs(p.options) do
-                root:CreateRadio(o[2], function() return p.on == o[1] end, function()
-                    p.pick(o[1])
-                    selected[tab], pinned, offset = nil, nil, 0
-                    Refresh()
-                end)
-            end
-        end)
-    end)
-    picker:SetScript("OnEnter", function(self)
-        self.text:SetTextColor(INK[1], INK[2], INK[3])
+    picker:HookScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:SetText("Whose grudges to show")
         GameTooltip:Show()
     end)
-    picker:SetScript("OnLeave", function(self)
-        self.text:SetTextColor(FADED[1], FADED[2], FADED[3])
-        GameTooltip:Hide()
-    end)
+    picker:HookScript("OnLeave", function() GameTooltip:Hide() end)
     picker:Hide()
     page.picker = picker
     -- The Death Note's nudge (def.nudge, D1): a "?" in the page's top right corner, beside Add someone, with a gold
@@ -3482,7 +3471,8 @@ Refresh = function()
     if pick then
         list.picker:Set(pick)
         list.picker:ClearAllPoints()
-        list.picker:SetPoint("TOPRIGHT", list, "TOPRIGHT", -(mineShown and list.mine.width + 14 or 10), -TAB_INK_Y)
+        -- the box is taller than the tabs' ink: centred on their line, 4 up
+        list.picker:SetPoint("TOPRIGHT", list, "TOPRIGHT", -(mineShown and list.mine.width + 14 or 10), -(TAB_INK_Y - 4))
     end
     -- the line under the title on a page without tabs, decided here and not read back: the game's GetText gives
     -- no "" for an empty line

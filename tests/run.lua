@@ -5189,6 +5189,13 @@ test("alts: the share sheet drags alone and fits its text", function()
     assert(body:find("altShare.Fit()\n    GK.PlaceSheet", 1, true), "fitted on every open")
 end)
 
+-- fails on the ink link with an arrow it replaced ("a bit hard to see", the user, 2026-11-27)
+test("alts: the character switch is the game's dropdown box", function()
+    local fh = assert(io.open(W.dir .. "UI/Window.lua")); local src = fh:read("*a"); fh:close()
+    assert(src:find('local picker = CreateFrame("DropdownButton", nil, page, "WowStyle1DropdownTemplate")', 1, true))
+    assert(src:find("local PICKER_W = ", 1, true), "its width is set before BuildList uses it")
+end)
+
 test("alts: the nudge shows on a second character on the same side", function()
     local _, sa = altBoot("Kari")
     local B2 = altBoot("Edvard", { db = sa.db })
