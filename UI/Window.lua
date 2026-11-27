@@ -2063,8 +2063,8 @@ local function BuildList(page)
     -- in the list "gets mixed in all the other information" (the user, testing in the game, 2026-11-27): the corner
     -- keeps the list as it was. Its tooltip asks, a click opens the sheet that explains (GK.OpenAltShare).
     local nudge = CreateFrame("Button", nil, page)
-    nudge:SetSize(31, 31)
-    nudge:SetPoint("RIGHT", page.add, "LEFT", -6, -2)
+    nudge:SetSize(28, 28)
+    nudge:SetPoint("RIGHT", page.add, "LEFT", -8, 0)
     nudge.glow = nudge:CreateTexture(nil, "BACKGROUND")
     nudge.glow:SetTexture(MEDIA .. "glow")
     nudge.glow:SetBlendMode("ADD")
@@ -2079,23 +2079,15 @@ local function BuildList(page)
     swell:SetToAlpha(0.6)
     swell:SetDuration(1.6)
     swell:SetSmoothing("IN_OUT")
-    -- the game's own round button, so the "?" reads as one ("a proper like circle", the user, 2026-11-27): the dark
-    -- disc and gold ring of a minimap button, the same ring Blizzard's MainHelpPlateButton uses. The ring art sits
-    -- in the top left of its square, hence the offsets (laid out as LibDBIcon lays them).
+    -- demo A's button, drawn as our own art (Media/help_disc.tga, from Dev/art/help_disc.py): a near-black rim, a
+    -- thin soft gold ring, a dark face. "Is there any reason we couldn't use this exact component that was proposed
+    -- to us" (the user, 2026-11-27), after the minimap ring.
     nudge.disc = nudge:CreateTexture(nil, "BORDER")
-    nudge.disc:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
-    nudge.disc:SetSize(20, 20)
-    nudge.disc:SetPoint("TOPLEFT", 7, -5)
-    nudge.ring = nudge:CreateTexture(nil, "OVERLAY")
-    nudge.ring:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
-    nudge.ring:SetSize(53, 53)
-    nudge.ring:SetPoint("TOPLEFT")
-    nudge.glow:ClearAllPoints()
-    nudge.glow:SetPoint("CENTER", nudge.disc)
-    nudge:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight", "ADD")
+    nudge.disc:SetTexture(MEDIA .. "help_disc")
+    nudge.disc:SetAllPoints()
     nudge.mark = nudge:CreateFontString(nil, "ARTWORK")
-    Ink(nudge.mark, { 1, 0.82, 0 }, TITLE_FONT, 14)
-    nudge.mark:SetPoint("CENTER", nudge.disc, 0, 1)
+    Ink(nudge.mark, { 0.84, 0.70, 0.39 }, TITLE_FONT, 15)
+    nudge.mark:SetPoint("CENTER", 0, 1)
     nudge.mark:SetText("?")
     -- held at the breath's low end, where Play starts again on leave: a higher hold dropped in one step
     nudge:SetScript("OnEnter", function(self)
