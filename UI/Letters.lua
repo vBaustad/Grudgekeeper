@@ -410,13 +410,13 @@ local PATCH_NOTES = {
     }, { "Open settings", function() GK.OpenOptions("Quick setup") end } },
     ["1.14.0"] = { "27 November 2026", {
         { "New", {
-            { "All your characters", "Grudges, Killed me, has a box at the bottom left: this character, all of yours on this side, or one of them." },
-            { "One Death Note", "With two characters on a side, a ? on the Death Note page offers to share one list." },
-            { "Search the settings", "A search box beside the settings' title finds any setting." },
+            { "Grudges for every character", "The Killed me tab on Grudges can show all your characters' grudges added up, or one character at a time." },
+            { "One Death Note", "If you play more than one character on a side, the Death Note page offers to share one list between them." },
+            { "Search in settings", "Find any setting by typing in the search box at the top." },
         } },
         { "Changed", {
-            { "Guildies' sprees", "Their toasts burn like yours, with the count from 20." },
-            { "AddOn list", "Grudgekeeper sits under PvP, and adds no YippYapp page to Options." },
+            { "Guildie kill streaks", "A guildie's kill streak now plays the same fire effect as yours, and shows the count from 20 kills." },
+            { "Banished", "The YippYapp page that crept into your Options has been banished." },
         } },
     }, { "Open settings", function() GK.OpenOptions("Quick setup") end } },
 }
