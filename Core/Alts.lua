@@ -21,27 +21,46 @@ local function MySide()
     return nil
 end
 
---- This character's name and realm. The lib may give "Name-Realm" or the name alone; the realm then
---- comes from LIB.Realm. No realm known: realm is nil.
+--- This character's name and realm. The lib may give "Name-Realm" or the name alone; realm is then nil.
+--- LIB.Realm is not asked: it is only what the lib remembered from before build 71037, and it can change.
 local function MyNameRealm()
     local me = LIB.Me()
     if type(me) ~= "string" or me == "" or Secret(me) then return nil end
     local name, realm = me:match("^(.-)%-([^%-]*)$")
     if not name or name == "" then name, realm = me, nil end
-    if not realm or realm == "" then
-        realm = LIB.Realm and LIB.Realm() or nil
-        if type(realm) ~= "string" or realm == "" or Secret(realm) then realm = nil end
-    end
+    if realm == "" then realm = nil end
     return name, realm
 end
 
---- This character's key on the account, "Name-Realm"; the name alone when no realm is known, and never a key
---- ending in "-". Nil when the lib does not know who we are yet.
+--- This character's key on the account: the name alone, like every other key (GK.KeyOf). A realm in the key
+--- gave one character two entries when the realm changed (the owner, 2026-11-27: "GK.MyAltKey skal bare gi
+--- navnet (GK.Lib.Me()), ikke legge på LIB.Realm()"). Nil when the lib does not know who we are yet.
 function GK.MyAltKey()
-    local name, realm = MyNameRealm()
-    if not name then return nil end
-    if realm then return name .. "-" .. realm end
-    return name
+    return (MyNameRealm())
+end
+
+--- Entries an earlier build of this branch saved as "Name-Realm" for this character are folded into the name
+--- key, so the roster has one entry per character: "Rydd også bort en gammel oppføring med samme navn når kopien
+--- skrives" (the owner, 2026-11-27). Removal notes and the Death Note merge mark move with them.
+local function FoldOldKeys(key)
+    local db = GK.db
+    local prefix = key .. "-"
+    for k in pairs(db.alts) do
+        if type(k) == "string" and k ~= key and k:sub(1, #prefix) == prefix then
+            db.alts[k] = nil
+            local old, new = db.altRemoved[k], db.altRemoved[key]
+            if type(old) == "table" then
+                if type(new) ~= "table" then new = {}; db.altRemoved[key] = new end
+                for foeKey, at in pairs(old) do
+                    if (tonumber(at) or 0) > (tonumber(new[foeKey]) or 0) then new[foeKey] = at end
+                end
+            end
+            db.altRemoved[k] = nil
+            if db.altJoined[key] == nil then db.altJoined[key] = db.altJoined[k] end
+            db.altJoined[k] = nil
+            if db.altFirst == k then db.altFirst = key end
+        end
+    end
 end
 
 --- A grudge in the shape the copy keeps: only the fields it has, no hits.
@@ -68,6 +87,7 @@ function GK.WriteAltCopy()
     local key, side = GK.MyAltKey(), MySide()
     if not (key and side) then return end
     local name, realm = MyNameRealm()
+    FoldOldKeys(key)
     local alts = GK.db.alts
     local entry = alts[key]
     if not entry then
@@ -109,6 +129,7 @@ end
 function GK.ApplyAltRemovals()
     if GK.testMode or not (GK.db and GK.char) then return end
     local key = GK.MyAltKey()
+    if key then FoldOldKeys(key) end
     local notes = key and GK.db.altRemoved[key]
     if type(notes) ~= "table" then
         if key then GK.db.altRemoved[key] = nil end   -- a damaged saved file: no notes to apply
