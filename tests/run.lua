@@ -5274,7 +5274,8 @@ test("alts: Share brings in another character's Death Note at once", function()
     local list = B2.TrackedList()
     eq(list["Gank Master"].c, "ROGUE")
     eq(list["Gank Master"].note, "ganker")
-    eq(sa.db.altJoined["Kari-Realm"], B2.db.deathNoteTick)
+    eq(sa.db.altJoined["Kari-Realm"].tick, B2.db.deathNoteTick)
+    eq(sa.db.altJoined["Kari-Realm"].names["Gank Master"], true)
 end)
 
 test("alts: a Death Note from the other side is not merged", function()
@@ -5295,6 +5296,53 @@ test("alts: a name removed after the merge is not added again at the other chara
     B2.TrackedList()["Gank Master"] = nil
     local A2 = altBoot("Kari", { db = sb.db, char = sa.char })
     eq(A2.TrackedList()["Gank Master"], nil, "not re-added")
+end)
+
+-- Without the altJoined table (the old number made JoinDeathNote skip the whole list), Polse Hans never joins; without
+-- its names, Gaerd Balle, removed after the merge, comes back at Edvard's login.
+test("alts: a name added after the share joins at the other character's login, a removed one does not", function()
+    local E, se = altBoot("Edvard")
+    E.char.tracked["Gærd Balle"] = { t = B }
+    E.WriteAltCopy()
+    local K, sk = altBoot("Kari", { db = se.db })
+    K.AltNudgeShare()
+    eq(type(K.TrackedList()["Gærd Balle"]), "table", "merged from Edvard's copy")
+    K.TrackedList()["Gærd Balle"] = nil
+    se.char.tracked["Pølse Hans"] = { t = B, c = "MAGE" }
+    local E2 = altBoot("Edvard", { db = sk.db, char = se.char })
+    eq(type(E2.TrackedList()["Pølse Hans"]), "table", "added after the copy")
+    eq(E2.TrackedList()["Gærd Balle"], nil, "removed, not back")
+end)
+
+-- Without the cap check keeping a skipped name out of names, the name skipped at the cap would never join later.
+test("alts: names skipped at the cap are not in altJoined.names", function()
+    local E, se = altBoot("Edvard")
+    E.char.tracked["Gank Master"] = { t = B }
+    E.char.tracked["Gærd Balle"] = { t = B }
+    E.WriteAltCopy()
+    local K = altBoot("Kari", { db = se.db })
+    K.db.deathNoteShared = true
+    local list = K.TrackedList()
+    for i = 1, K.MAX_TRACKED - 1 do list["Foe" .. i] = { t = B } end
+    K.JoinAltDeathNotes()
+    local names, inList = K.db.altJoined["Edvard-Realm"].names, 0
+    for _, nm in ipairs({ "Gank Master", "Gærd Balle" }) do
+        if list[nm] then inList = inList + 1; eq(names[nm], true) else eq(names[nm], nil) end
+    end
+    eq(inList, 1, "one fits under the cap")
+end)
+
+-- Without SafeKey, a key with a colour code or a trailing - from the saved file reaches the shared list.
+test("alts: a key with a code or ending in - in a copied list is not merged", function()
+    local _, sa = altBoot("Kari")
+    sa.db.alts["Odd-Realm"] = { name = "Odd", side = "Alliance", tracked = {
+        ["Kari|cffff0000"] = { t = 1 }, ["Edvard-"] = { t = 1 }, ["Gank Master"] = { t = 1 } } }
+    local B2 = altBoot("Edvard", { db = sa.db })
+    B2.AltNudgeShare()
+    local list = B2.TrackedList()
+    eq(list["Kari|cffff0000"], nil)
+    eq(list["Edvard-"], nil)
+    eq(type(list["Gank Master"]), "table")
 end)
 
 -- Without the type checks and GK.Clean in JoinAltDeathNotes, the string list raises "bad argument to pairs" and

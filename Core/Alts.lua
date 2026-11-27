@@ -4,7 +4,7 @@
 -- "all my characters" without anyone's score being merged or moved: a bug here can hide a row, never lose
 -- history. A grudge removed from another character's view is a note (GK.db.altRemoved) that character
 -- applies at its next login, before anything else touches its foes (docs/alt-sync.md, D2 and D4).
--- Saved account keys (all new): alts, altFirst, altRemoved, altNudged, altView.
+-- Saved account keys (all new): alts, altFirst (kept, no longer read), altRemoved, altJoined, altNudged, altView.
 local ADDON, GK = ...
 local LIB = GK.Lib or LibStub("LibForever-1.0")
 local Secret = GK.Secret or function() return false end
@@ -62,7 +62,7 @@ local function CopyOfFoes(foes)
 end
 
 --- Rebuild this character's roster entry and its copy of the grudges. The first entry the roster ever gets
---- is remembered as the first character the account saw (the nudge, D1). Not in the test panel's mode.
+--- is remembered as the first character the account saw (altFirst: saved, but the nudge no longer reads it). Not in the test panel's mode.
 function GK.WriteAltCopy()
     if GK.testMode or not (GK.db and GK.char) then return end
     local key, side = GK.MyAltKey(), MySide()
@@ -158,6 +158,11 @@ local function Num(v)
     return math.floor(v)
 end
 
+--- A key from the saved file as data: a plain name, nothing a link or colour code could ride in, never ending in "-".
+local function SafeKey(k)
+    return type(k) == "string" and k ~= "" and k:sub(-1) ~= "-" and GK.Clean(k, 64) == k
+end
+
 --- One row of another character's copy as data from a saved file: numbers checked, words cleaned.
 local function SafeRow(row)
     local out = {}
@@ -177,7 +182,7 @@ local function VisibleCopy(charKey)
     if not (type(e) == "table" and type(e.copy) == "table") then return out end
     local removed = GK.db.altRemoved[charKey]
     for foeKey, row in pairs(e.copy) do
-        if type(foeKey) == "string" and type(row) == "table" and not (type(removed) == "table" and removed[foeKey]) then
+        if SafeKey(foeKey) and type(row) == "table" and not (type(removed) == "table" and removed[foeKey]) then
             out[foeKey] = SafeRow(row)
         end
     end
@@ -266,7 +271,7 @@ function GK.ShowAltNudge()
     if GK.testMode or not (GK.db and GK.char) then return false end
     if GK.db.deathNoteShared or GK.db.altNudged then return false end
     -- any character, the first one too: "It's not important which one is main and which one is alt. The main point
-    -- is that you're logging in on separate characters" (the user, 2026-11-27). altFirst is still kept, unused here.
+    -- is that you're logging in on separate characters" (the user, 2026-11-27). altFirst is still saved, not read here.
     local me = GK.MyAltKey()
     if not me then return false end
     for _, e in ipairs(GK.AltsOnSide()) do
@@ -275,23 +280,26 @@ function GK.ShowAltNudge()
     return false
 end
 
---- One Death Note entry from a saved copy as data: plain fields only, words cleaned, numbers checked (t, the time
---- it was added, and l, the level, are numbers or nothing).
+--- One Death Note entry from a saved copy as data: only the fields an entry has (GK.Track, GK.SetDeathNote), words
+--- cleaned, numbers checked (t, the time it was added, and l, the level, are numbers or nothing).
 local function SafeTracked(e)
     local out = {}
-    for f, v in pairs(e) do
-        if type(f) == "string" then
-            if type(v) == "string" and f ~= "t" and f ~= "l" then out[f] = GK.Clean and GK.Clean(v, 64) or v
-            elseif type(v) == "number" and v == v and v > -2 ^ 31 and v < 2 ^ 31 then out[f] = v
-            elseif type(v) == "boolean" then out[f] = v end
-        end
+    for _, f in ipairs({ "c", "r", "note" }) do
+        if type(e[f]) == "string" then out[f] = GK.Clean(e[f], f == "note" and GK.DEATH_NOTE_MAX or 64) end
+    end
+    for _, f in ipairs({ "t", "l" }) do
+        local v = e[f]
+        if type(v) == "number" and v == v and v > -2 ^ 31 and v < 2 ^ 31 then out[f] = v end
     end
     return out
 end
 
 --- Sharing on: every other character of mine on this side brings its copied Death Note into the shared list at
 --- once (the owner decided 2026-11-27, after Share on an alt showed nothing from the main). A name already there
---- keeps its record; never past the cap. altJoined stops that character's own login from adding a removed name again.
+--- keeps its record; never past the cap. Ticking the box again merges the copies again, once per tick, as a
+--- character's own list does. altJoined[charKey] = { tick, names } tells that character's own login (GK.JoinDeathNote)
+--- which names are in the shared list because of this merge, so a name removed since does not come back, while a name
+--- it added after its last copy, or one skipped at the cap, still joins.
 function GK.JoinAltDeathNotes()
     if not (GK.db and GK.db.deathNoteShared and GK.char) or GK.testMode then return end
     local me, side = GK.MyAltKey(), MySide()
@@ -303,15 +311,22 @@ function GK.JoinAltDeathNotes()
     for key, e in pairs(GK.db.alts) do
         if key ~= me and type(key) == "string" and type(e) == "table" and e.side == side
             and type(e.tracked) == "table" then
+            local names = {}
             for name, entry in pairs(e.tracked) do
-                if type(name) == "string" and type(entry) == "table" and not shared[name] and n < cap then
-                    shared[name] = SafeTracked(entry)
-                    n = n + 1
+                if SafeKey(name) and type(entry) == "table" then
+                    if shared[name] then
+                        names[name] = true
+                    elseif n < cap then
+                        shared[name] = SafeTracked(entry)
+                        names[name] = true
+                        n = n + 1
+                    end
                 end
             end
-            GK.db.altJoined[key] = GK.db.deathNoteTick or 0
+            GK.db.altJoined[key] = { tick = GK.db.deathNoteTick or 0, names = names }
         end
     end
+    if GK.TrackedChanged then GK.TrackedChanged() end   -- the plate marks and the name index read the new list
     if GK.Changed then GK.Changed() end
 end
 

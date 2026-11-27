@@ -527,7 +527,8 @@ local function DeathListItems()
         end
         local note = GK.DeathNote and GK.DeathNote(e.key)
         if note then sub = '"' .. note .. '"' end            -- when you saw them is on their card
-        local look = f or e.t
+        -- the score is the sum over the side; the look (guid, sex, race) is from this character's own record
+        local look = c.foes[e.key] or f or e.t
         local you, they = f and (f.k or 0) or 0, f and (f.d or 0) or 0
         local spec = PosterSpec(e.key, look)
         if view then spec.t.alts = view end
@@ -1901,6 +1902,8 @@ function GK.OpenAltShare()
     altShare.Fit()
     GK.PlaceSheet(altShare)
     altShare:Show()
+    -- GetStringHeight can read 0 before the first layout: fit again on the next frame
+    if C_Timer and C_Timer.After then C_Timer.After(0, altShare.Fit) end
 end
 
 local function BuildList(page)
@@ -2058,7 +2061,7 @@ local function BuildList(page)
     -- The Death Note's nudge (def.nudge, D1): a "?" in the page's top right corner, beside Add someone, with a gold
     -- halo that breathes, slow and soft, never a flash (demo A, 2026-11-27); it holds still under the mouse. A line
     -- in the list "gets mixed in all the other information" (the user, testing in the game, 2026-11-27): the corner
-    -- keeps the list as it was. Its tooltip asks, a click opens the sheet that explains (AltShareSheet).
+    -- keeps the list as it was. Its tooltip asks, a click opens the sheet that explains (GK.OpenAltShare).
     local nudge = CreateFrame("Button", nil, page)
     nudge:SetSize(31, 31)
     nudge:SetPoint("RIGHT", page.add, "LEFT", -6, -2)
@@ -3471,7 +3474,7 @@ Refresh = function()
     if pick then
         list.picker:Set(pick)
         list.picker:ClearAllPoints()
-        -- the bottom left, level with the page count (page.count, 16 up): at the tabs' right end it was "cramped and
+        -- the bottom left, level with the page count (page.count, 16 up, and 22 is the count's 16 plus half its line): at the tabs' right end it was "cramped and
         -- messy", and "There's like space in the lower left" (the user, 2026-11-27)
         list.picker:SetPoint("LEFT", list, "BOTTOMLEFT", 6, 22)
     end

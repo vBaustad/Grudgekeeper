@@ -186,9 +186,9 @@ local defaults = {
     announceWhenGuild = "noCombat",    -- the same for a guildie's; one held back waits, then comes in order
     announceTime = 7,                  -- how many seconds a toast shows; a splash half of it (Announce.lua)
     alts = {},               -- [charKey] = { name, realm, side, first, copy = { [foe key] = counts and times } }: the account's characters (Alts.lua)
-    altFirst = nil,          -- the charKey of the first character the account saw (the nudge's "not the first")
+    altFirst = nil,          -- the charKey of the first character the account saw; saved, but the nudge no longer reads it
     altRemoved = {},         -- [charKey] = { [foe key] = time }: grudges removed from another character's view
-    altJoined = {},          -- [charKey] = the Death Note tick its list was merged at; its login must not add a removed name again
+    altJoined = {},          -- [charKey] = { tick, names }: the Death Note tick its copy was merged at and the names that merge put in the shared list; its login adds only other names (a number, from older data, skips all)
     altNudged = false,       -- the nudge about one Death Note was handled, on any character
     altView = "me",          -- the Grudges page's remembered view: "me" or "all"
     looks = {},              -- [player key] = race file and sex, "Scourge3": their race's face on cards (Sightings.lua)

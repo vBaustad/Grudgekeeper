@@ -20,13 +20,13 @@ it reads this first.
 - It shows on any character once the account has **two or more characters on the same side**, while
   `deathNoteShared` is off and the account has never handled the nudge. **Changed 2026-11-27:** it first skipped the
   account's first character (`altFirst`); "It's not important which one is main and which one is alt. The main
-  point is that you're logging in on separate characters" (the user). `altFirst` is still saved, and unused.
+  point is that you're logging in on separate characters" (the user). `altFirst` is still saved, and no longer read.
 - It does **not** depend on this character's list being empty, or on other characters having grudges.
 - **One time per account.** Clicking "Share" or "Keep separate" handles it, and it never shows again on any
   character. The setting then stays whatever the player picked until they change it in Settings. If
   `deathNoteShared` is already on, the nudge never shows.
 - **No popup at login.** Too many addons already do that. The nudge lives in the window and waits to be found.
-- **Where:** in the Death Note page, as soon as you're on an alt, whether the list is empty or not.
+- **Where:** in the Death Note page, on any character once there are two on the side, whether the list is empty or not.
 - **Changed after testing in the game (2026-11-27):** the line and the button in the list "gets mixed in all the
   other information" (the user). The nudge is now a glowing "?" in the page's top right corner, beside "Add
   someone". Hovering shows a tooltip ("Share one Death Note?"). A click opens a small window of its own
@@ -65,11 +65,13 @@ merging the scores, and a merge bug would lose history that can't be recovered).
 - The copy is written at login and whenever this character's grudges change.
 - **The totals do not need the Death Note setting.** They are read-only and harmless, so a player who keeps separate
   Death Notes can still see who killed them most across all characters.
-- The account also keeps a roster of its characters: name with realm, side, and which one was seen first (for D1).
+- The account also keeps a roster of its characters: name with realm, side, and which one was seen first (saved, no longer used by D1).
   Old characters show up once they log in with the new version. The owner knows this; don't mention it again.
 
 ### D3. The character switch on the Grudges page
 
+- The switch is the game's dropdown box (`WowStyle1DropdownTemplate`) at the bottom left of the page, level with the
+  page count. Moved there 2026-11-27: at the tabs it was "cramped and messy" (the user).
 - A small dropdown on the Grudges page: "This character", "All my characters", and one entry for each character on
   this side.
 - It appears on the "Killed me" view whenever the account has more than one character on this side. It is hidden on
@@ -93,6 +95,8 @@ merging the scores, and a merge bug would lose history that can't be recovered).
   the page again. Keep the time on the note as a safeguard anyway: never delete a kill newer than the note.
 - Removing from the current character's view works as it does today (`Core/Guild.lua:1492`), and it also updates
   this character's account copy.
+- With the Death Note shared, Forget on a Death Note card removes the grudge from every character on the side: its
+  card counts from "All" (the user agreed 2026-11-27).
 
 ### D5. Share brings in every character's Death Note
 
@@ -103,9 +107,11 @@ merging the scores, and a merge bug would lose history that can't be recovered).
 - Why: clicking "Share my Death Note" on an alt showed nothing from the main, because `GK.JoinDeathNote` only reads
   the list of the character that is logged in.
 - This adds to D2's copy, so it is to be raised with the owner in the pull request.
-- Re-add guard: `GK.db.altJoined[charKey]` holds the Death Note tick at which that character's list was merged. At
-  that character's next login `GK.JoinDeathNote` sees it and merges nothing, so a name removed from the shared list
-  stays removed.
+- Re-add guard: `GK.db.altJoined[charKey]` is `{ tick, names }`: the Death Note tick at which that character's copy
+  was merged, and the names that are in the shared list because of that merge (or were already there). At that
+  character's next login `GK.JoinDeathNote` adds only the names not in `names`, so a name removed from the shared
+  list stays removed, while a name the character added after its last copy, or one skipped at `GK.MAX_TRACKED`,
+  still joins. A plain number (older dev data) keeps the first meaning: merge nothing.
 - The copied list is data from a saved file: strings go through `GK.Clean`, numbers are range-checked, and the merge
   stops at `GK.MAX_TRACKED`.
 
