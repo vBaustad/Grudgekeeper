@@ -25,6 +25,11 @@ it reads this first.
   `deathNoteShared` is already on, the nudge never shows.
 - **No popup at login.** Too many addons already do that. The nudge lives in the window and waits to be found.
 - **Where:** in the Death Note page, as soon as you're on an alt, whether the list is empty or not.
+- **Changed after testing in the game (2026-11-27):** the line and the button in the list "gets mixed in all the
+  other information" (the user). The nudge is now a glowing "?" in the page's top right corner, beside "Add
+  someone". Hovering shows a tooltip ("Share one Death Note?"). A click opens a small window of its own
+  (`GK.OpenAltShare`, a frame sheet) with the panel's text and the two buttons. The list stays as it was. The
+  "line next to the button" and "click opens a small panel" bullets below describe the first version.
 - **Look:** a small button with a breathing gold glow, a soft halo that fades in and out and never flashes (demo A
   at https://claude.ai/artifact/YDY6QxfKn62wvhi24DNwVV; the in-game version is a looping alpha animation on a glow
   texture). The glow stops while the player hovers it. Respect the same quiet-motion habits the addon already has.
