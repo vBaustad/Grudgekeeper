@@ -76,6 +76,17 @@ function GK.WriteAltCopy()
     end
     entry.name, entry.realm, entry.side = name, realm, side
     entry.copy = CopyOfFoes(GK.char.foes)
+    -- The Death Note list too (the owner's call, 2026-11-27), so Share on an alt can bring it in at once.
+    -- Always this character's own list, never the shared one.
+    local tracked = {}
+    for k, e in pairs(GK.char.tracked or {}) do
+        if type(e) == "table" then
+            local c = {}
+            for f, v in pairs(e) do c[f] = v end
+            tracked[k] = c
+        end
+    end
+    entry.tracked = tracked
     if GK.db.altFirst == nil then GK.db.altFirst = key end
 end
 
@@ -253,11 +264,52 @@ function GK.ShowAltNudge()
     return false
 end
 
---- The One Death Note setting turned on: this character's own list joins the shared one (the Settings box and
---- the nudge both do this).
+--- One Death Note entry from a saved copy as data: plain fields only, words cleaned, numbers checked (t, the time
+--- it was added, and l, the level, are numbers or nothing).
+local function SafeTracked(e)
+    local out = {}
+    for f, v in pairs(e) do
+        if type(f) == "string" then
+            if type(v) == "string" and f ~= "t" and f ~= "l" then out[f] = GK.Clean and GK.Clean(v, 64) or v
+            elseif type(v) == "number" and v == v and v > -2 ^ 31 and v < 2 ^ 31 then out[f] = v
+            elseif type(v) == "boolean" then out[f] = v end
+        end
+    end
+    return out
+end
+
+--- Sharing on: every other character of mine on this side brings its copied Death Note into the shared list at
+--- once (the owner decided 2026-11-27, after Share on an alt showed nothing from the main). A name already there
+--- keeps its record; never past the cap. altJoined stops that character's own login from adding a removed name again.
+function GK.JoinAltDeathNotes()
+    if not (GK.db and GK.db.deathNoteShared and GK.char) or GK.testMode then return end
+    local me, side = GK.MyAltKey(), MySide()
+    if not side then return end
+    local shared = GK.TrackedList()
+    local n = 0
+    for _ in pairs(shared) do n = n + 1 end
+    local cap = GK.MAX_TRACKED or 100
+    for key, e in pairs(GK.db.alts) do
+        if key ~= me and type(key) == "string" and type(e) == "table" and e.side == side
+            and type(e.tracked) == "table" then
+            for name, entry in pairs(e.tracked) do
+                if type(name) == "string" and type(entry) == "table" and not shared[name] and n < cap then
+                    shared[name] = SafeTracked(entry)
+                    n = n + 1
+                end
+            end
+            GK.db.altJoined[key] = GK.db.deathNoteTick or 0
+        end
+    end
+    if GK.Changed then GK.Changed() end
+end
+
+--- The One Death Note setting turned on: this character's own list joins the shared one, and so do the copied
+--- lists of my other characters (the Settings box and the nudge both do this).
 function GK.DeathNoteTurnedOn()
     GK.db.deathNoteTick = (GK.db.deathNoteTick or 0) + 1
     if GK.JoinDeathNote then GK.JoinDeathNote() end
+    GK.JoinAltDeathNotes()
 end
 
 --- The nudge's "Share my Death Note": the setting on, as its box does, and the nudge handled.

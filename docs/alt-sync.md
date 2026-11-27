@@ -80,6 +80,21 @@ merging the scores, and a merge bug would lose history that can't be recovered).
 - Removing from the current character's view works as it does today (`Core/Guild.lua:1492`), and it also updates
   this character's account copy.
 
+### D5. Share brings in every character's Death Note
+
+- The owner decided on 2026-11-27, after testing in the game, that the account copy also holds each character's own
+  Death Note list (`entry.tracked`, written by `GK.WriteAltCopy`), and that turning sharing on merges every
+  same-side character's list into the shared one at once (`GK.JoinAltDeathNotes`, called from
+  `GK.DeathNoteTurnedOn`).
+- Why: clicking "Share my Death Note" on an alt showed nothing from the main, because `GK.JoinDeathNote` only reads
+  the list of the character that is logged in.
+- This adds to D2's copy, so it is to be raised with the owner in the pull request.
+- Re-add guard: `GK.db.altJoined[charKey]` holds the Death Note tick at which that character's list was merged. At
+  that character's next login `GK.JoinDeathNote` sees it and merges nothing, so a name removed from the shared list
+  stays removed.
+- The copied list is data from a saved file: strings go through `GK.Clean`, numbers are range-checked, and the merge
+  stops at `GK.MAX_TRACKED`.
+
 ## Plan
 
 Work on a branch in a worktree, for example `.worktrees/alt-sync` on `feat/alt-sync`. Follow the repo's

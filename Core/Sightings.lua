@@ -243,6 +243,7 @@ end
 -- 2026-11-12). Not "Nemesis": the board already names the one who killed you most so.
 -- ---------------------------------------------------------------------------
 local MAX_TRACKED = 100
+GK.MAX_TRACKED = MAX_TRACKED               -- Alts.lua merges every character's list up to the same cap
 local trackVersion = 0                     -- moves at every change, for the plates and the name index
 local trackIndex, trackIndexed = {}, -1    -- [name without realm] = the key it is tracked under
 
@@ -646,6 +647,9 @@ function GK.JoinDeathNote()
     if not (GK.db and GK.db.deathNoteShared and GK.char) or GK.testMode then return end
     local tick = GK.db.deathNoteTick or 0
     if (GK.char.deathNoteTick or -1) >= tick then return end
+    -- Already merged from the account copy: a name removed since must not come back at this login.
+    local joined = GK.db.altJoined and GK.MyAltKey and GK.db.altJoined[GK.MyAltKey()]
+    if type(joined) == "number" and joined >= tick then GK.char.deathNoteTick = tick return end
     GK.char.deathNoteTick = tick
     local shared, n = GK.TrackedList(), 0
     for _ in pairs(shared) do n = n + 1 end

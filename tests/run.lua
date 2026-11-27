@@ -5090,6 +5090,11 @@ end)
 -- One account, many characters: a boot hands its saved tables on to the next.
 local function altBoot(name, prev, faction)      -- prev: { db = the account's, char = this character's, if it played }
     local GK = boot({ me = name .. "-Realm", faction = faction, db = prev and prev.db, char = prev and prev.char })
+    -- Sightings.lua holds the Death Note (TrackedList, JoinDeathNote); the mock does not load it. Its login step
+    -- (StartSightings) is stubbed, so the one line of it that matters here is called by hand: GK.JoinDeathNote().
+    assert(loadfile(W.dir .. "Core/Sightings.lua"))("Grudgekeeper", GK)
+    GK.char.tracked = GK.char.tracked or {}
+    GK.JoinDeathNote()
     return GK, { db = GK.db, char = GK.char }
 end
 local function altBootAgain(name, saved, faction) return altBoot(name, saved, faction) end
@@ -5211,6 +5216,72 @@ test("alts: a damaged copy in the saved file is data, never an error", function(
         if e.key == "Odd-Realm" then eq(e.name:find("|c", 1, true), nil, "no colour code survives") end
     end
     A.RemoveAltGrudge("all", "Gank Master")
+end)
+
+-- Without JoinAltDeathNotes (and the tracked list in the copy), Share on an alt shows nothing from the main.
+test("alts: Share brings in another character's Death Note at once", function()
+    local A, sa = altBoot("Kari")
+    A.char.tracked["Gank Master"] = { t = B, c = "ROGUE", l = 70, note = "ganker" }
+    A.WriteAltCopy()
+    local B2 = altBoot("Edvard", { db = sa.db })
+    B2.AltNudgeShare()
+    local list = B2.TrackedList()
+    eq(list["Gank Master"].c, "ROGUE")
+    eq(list["Gank Master"].note, "ganker")
+    eq(sa.db.altJoined["Kari-Realm"], B2.db.deathNoteTick)
+end)
+
+test("alts: a Death Note from the other side is not merged", function()
+    local A, sa = altBoot("Kari", nil, "Horde")
+    A.char.tracked["Gank Master"] = { t = B }
+    A.WriteAltCopy()
+    local B2 = altBoot("Edvard", { db = sa.db })
+    B2.AltNudgeShare()
+    eq(B2.TrackedList()["Gank Master"], nil)
+end)
+
+test("alts: a name removed after the merge is not added again at the other character's login", function()
+    local A, sa = altBoot("Kari")
+    A.char.tracked["Gank Master"] = { t = B }
+    A.WriteAltCopy()
+    local B2, sb = altBoot("Edvard", { db = sa.db })
+    B2.AltNudgeShare()
+    B2.TrackedList()["Gank Master"] = nil
+    local A2 = altBoot("Kari", { db = sb.db, char = sa.char })
+    eq(A2.TrackedList()["Gank Master"], nil, "not re-added")
+end)
+
+-- Without the type checks and GK.Clean in JoinAltDeathNotes, the string list raises "bad argument to pairs" and
+-- a colour code reaches the shared list.
+test("alts: a damaged Death Note in the saved copy is data, never an error", function()
+    local _, sa = altBoot("Kari")
+    sa.db.alts["Odd-Realm"] = { name = "Odd", side = "Alliance", tracked = "not a table" }
+    sa.db.alts["Odd2-Realm"] = { name = "Odd2", side = "Alliance", tracked = {
+        ["Gank Master"] = { c = "RO|cffff0000GUE", note = "|Hx|hlink|h", l = "high", t = 5 },
+        ["Nina Nice"] = "row", [7] = { t = 1 } } }
+    local B2 = altBoot("Edvard", { db = sa.db })
+    B2.AltNudgeShare()
+    local e = B2.TrackedList()["Gank Master"]
+    eq(type(e), "table")
+    eq(tostring(e.c):find("|c", 1, true), nil, "no colour code survives")
+    eq(tostring(e.note):find("|H", 1, true), nil, "no link survives")
+    eq(e.l, nil, "a string is not a level")
+    eq(e.t, 5)
+    eq(B2.TrackedList()["Nina Nice"], nil)
+    eq(B2.TrackedList()[7], nil)
+end)
+
+test("alts: the test panel's mode merges nothing", function()
+    local A, sa = altBoot("Kari")
+    A.char.tracked["Gank Master"] = { t = B }
+    A.WriteAltCopy()
+    local B2 = altBoot("Edvard", { db = sa.db })
+    B2.db.deathNoteShared = true
+    B2.testMode = true
+    B2.JoinAltDeathNotes()
+    B2.testMode = false
+    eq(B2.TrackedList()["Gank Master"], nil)
+    eq(next(B2.db.altJoined), nil)
 end)
 
 -- Without the type checks in ApplyAltRemovals and noteFor, both raise "bad argument to pairs" / "attempt to index".

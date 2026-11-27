@@ -188,6 +188,7 @@ local defaults = {
     alts = {},               -- [charKey] = { name, realm, side, first, copy = { [foe key] = counts and times } }: the account's characters (Alts.lua)
     altFirst = nil,          -- the charKey of the first character the account saw (the nudge's "not the first")
     altRemoved = {},         -- [charKey] = { [foe key] = time }: grudges removed from another character's view
+    altJoined = {},          -- [charKey] = the Death Note tick its list was merged at; its login must not add a removed name again
     altNudged = false,       -- the nudge about one Death Note was handled, on any character
     altView = "me",          -- the Grudges page's remembered view: "me" or "all"
     looks = {},              -- [player key] = race file and sex, "Scourge3": their race's face on cards (Sightings.lua)
