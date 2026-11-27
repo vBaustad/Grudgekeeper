@@ -1857,7 +1857,7 @@ local SHARE_W = 340
 --- Open the sheet that offers one Death Note for the account's characters on this side.
 function GK.OpenAltShare()
     if not altShare then
-        local f = GK.MakeFrameSheet("GrudgekeeperAltShare", SHARE_W, 236, "One Death Note?")
+        local f = GK.MakeFrameSheet("GrudgekeeperAltShare", SHARE_W, 236, "Combined Death Note?")
         local function Para(colour, text, after, gap)
             local fs = f:CreateFontString(nil, "ARTWORK")
             Ink(fs, colour, TEXT_FONT, 12)
@@ -1869,8 +1869,8 @@ function GK.OpenAltShare()
             return fs
         end
         -- every character's own list joins (GK.JoinDeathNote and GK.JoinAltDeathNotes, D5), each one kept as it was
-        local explain = Para(INK, "Share one Death Note between every character of yours on this side. Each "
-            .. "character's list joins the shared one, and comes back as it was if you stop sharing.")
+        local explain = Para(INK, "Share one Death Note between every character? Each character's list is "
+            .. "combined into a shared list.")
         local hint = Para(FADED, "Note: Your grudges across all your characters can always be viewed on the Grudges "
             .. "page.", explain, 12)
         local later = Para(INK, "You can change this later in Settings.", hint, 12)
@@ -2075,6 +2075,17 @@ local function BuildList(page)
     swell:SetToAlpha(0.6)
     swell:SetDuration(1.6)
     swell:SetSmoothing("IN_OUT")
+    -- a gold ring round a dark disc, so the "?" reads as a button ("a proper like circle", the user, 2026-11-27)
+    local DISC = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
+    nudge.ring = nudge:CreateTexture(nil, "BORDER")
+    nudge.ring:SetColorTexture(1, 0.82, 0)
+    nudge.ring:SetMask(DISC)
+    nudge.ring:SetAllPoints()
+    nudge.disc = nudge:CreateTexture(nil, "BORDER", nil, 1)
+    nudge.disc:SetColorTexture(0.12, 0.08, 0.04)
+    nudge.disc:SetMask(DISC)
+    nudge.disc:SetPoint("TOPLEFT", 2, -2)
+    nudge.disc:SetPoint("BOTTOMRIGHT", -2, 2)
     nudge.mark = nudge:CreateFontString(nil, "ARTWORK")
     Ink(nudge.mark, { 1, 0.82, 0 }, TITLE_FONT, 18)
     nudge.mark:SetPoint("CENTER", 0, 1)
@@ -2084,7 +2095,7 @@ local function BuildList(page)
         breathe:Stop()
         self.glow:SetAlpha(0.15)
         GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-        GameTooltip:SetText("Share one Death Note?")
+        GameTooltip:SetText("Combined Death Note?")
         GameTooltip:AddLine("You play more than one character. Click to see how they can share one.", nil, nil, nil, true)
         GameTooltip:Show()
     end)
