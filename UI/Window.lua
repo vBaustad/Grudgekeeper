@@ -3471,9 +3471,9 @@ Refresh = function()
     if pick then
         list.picker:Set(pick)
         list.picker:ClearAllPoints()
-        -- the box is taller than the tabs' ink: centred on their line, 4 up, and its right edge under Post a kill
-        -- order's (page.add, 4 in): "not properly aligned with post a kill order" (the user, 2026-11-27)
-        list.picker:SetPoint("TOPRIGHT", list, "TOPRIGHT", -(mineShown and list.mine.width + 14 or 4), -(TAB_INK_Y - 4))
+        -- the bottom left, level with the page count (page.count, 16 up): at the tabs' right end it was "cramped and
+        -- messy", and "There's like space in the lower left" (the user, 2026-11-27)
+        list.picker:SetPoint("LEFT", list, "BOTTOMLEFT", 6, 22)
     end
     -- the line under the title on a page without tabs, decided here and not read back: the game's GetText gives
     -- no "" for an empty line
