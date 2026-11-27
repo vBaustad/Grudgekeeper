@@ -185,6 +185,11 @@ local defaults = {
     announceWhenMine = "always",       -- when yours may come: "always", "noCombat", "noCombatInInstance" or "noInstance"
     announceWhenGuild = "noCombat",    -- the same for a guildie's; one held back waits, then comes in order
     announceTime = 7,                  -- how many seconds a toast shows; a splash half of it (Announce.lua)
+    alts = {},               -- [charKey] = { name, realm, side, first, copy = { [foe key] = counts and times } }: the account's characters (Alts.lua)
+    altFirst = nil,          -- the charKey of the first character the account saw (the nudge's "not the first")
+    altRemoved = {},         -- [charKey] = { [foe key] = time }: grudges removed from another character's view
+    altNudged = false,       -- the nudge about one Death Note was handled, on any character
+    altView = "me",          -- the Grudges page's remembered view: "me" or "all"
     looks = {},              -- [player key] = race file and sex, "Scourge3": their race's face on cards (Sightings.lua)
 }
 -- This character's own record.
@@ -2134,6 +2139,7 @@ LIB.On("PLAYER_LOGIN", function()
     GK.ForgetGoneSounds(GK.db)
     SplitSides(GK.db)                                -- after it: a None picked is a box off by then
     GK.RekeyStores()
+    if GK.StartAlts then GK.StartAlts() end          -- removal notes before anything else touches the grudges (alt-sync D4)
     RegisterMinimap()
     GK.StartGuild()
     GK.StartSightings()

@@ -110,7 +110,8 @@ end
 -- ---------------------------------------------------------------------------
 -- opts: me (default "Meyer-Realm"), inGuild (default true), guildGrudge (a GuildGrudgeDB to have), loaded
 -- (is the GuildGrudge addon on; default: whether a GuildGrudgeDB was given), ui (also load NotesUI.lua, with
--- the stand-ins in tests/ui_mock.lua).
+-- the stand-ins in tests/ui_mock.lua), db / char (a GrudgekeeperDB / GrudgekeeperCharDB to start with: two
+-- characters on one account), faction (default "Alliance").
 -- Returns GK and the LibForever stand-in. M.sent collects what the addon sent, M.printed what it printed.
 function M.boot(opts)
     opts = opts or {}
@@ -130,7 +131,7 @@ function M.boot(opts)
     env.strtrim = function(s) return (s:gsub("^%s+", ""):gsub("%s+$", "")) end
     env.wipe = function(t) for k in pairs(t) do t[k] = nil end return t end
     env.IsInGuild = function() return M.inGuild end
-    env.UnitFactionGroup = function() return "Alliance" end
+    env.UnitFactionGroup = function() return opts.faction or "Alliance" end
     env.InCombatLockdown = function() return false end      -- always there in the game
     env.print = function(...)
         local parts = {}
@@ -160,11 +161,11 @@ function M.boot(opts)
     env.SlashCmdList = {}
     env.issecretvalue = nil
     env.GuildGrudgeDB = opts.guildGrudge
-    env.GrudgekeeperDB, env.GrudgekeeperCharDB = opts.db, nil     -- opts.db: an account that played before
+    env.GrudgekeeperDB, env.GrudgekeeperCharDB = opts.db, opts.char     -- opts.db: an account that played before
     M.rankFlags = nil
 
     local GK = {}
-    for _, file in ipairs({ "Core/Core.lua", "Core/Notes.lua", "Core/Import.lua" }) do
+    for _, file in ipairs({ "Core/Core.lua", "Core/Alts.lua", "Core/Notes.lua", "Core/Import.lua" }) do
         local chunk = assert(loadfile(M.dir .. file))
         chunk("Grudgekeeper", GK)
     end

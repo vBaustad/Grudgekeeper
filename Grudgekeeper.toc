@@ -29,6 +29,7 @@ Libs\LibForever-1.0\Settings.lua
 Libs\LibForever-1.0\SelfTest.lua
 
 Core\Core.lua
+Core\Alts.lua
 Core\Sightings.lua
 Core\Kills.lua
 Core\Guild.lua
