@@ -56,7 +56,7 @@ local NAME_X, NAME_X_RANKED = 44, 74
 local TIP_GAP = 28
 local LIST_TOP = 96                                  -- the first row, down from the page's top
 local TAB_INK_Y, TAB_INK_GAP = 40, 16                -- the ink tabs under the title: how far down, and apart
-local PICKER_W = 124                                -- Grudges' character box, right of Killed me, Killed us, Versus
+local PICKER_W = 150                                -- Grudges' character box, bottom left: room for All my characters
 -- The foot of a list: its rows stop over the page arrows (page.count, 16 up, the arrows round it), all that
 -- stands there since Letters and Settings went to the title bar (2026-11-18). A page fits as many rows as reach
 -- it. Until 2026-11-20 only the kill orders page had a tenth, by the foot the buttons had kept, and Grudges and
