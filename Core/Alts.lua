@@ -125,9 +125,10 @@ function GK.AltsOnSide()
     local out, side = {}, MySide()
     if not (GK.db and GK.db.alts and side) then return out end
     for key, e in pairs(GK.db.alts) do
-        if e.side == side then
-            out[#out + 1] = { key = key, name = e.name or key, realm = e.realm, side = e.side, first = e.first,
-                copy = e.copy }
+        if type(key) == "string" and type(e) == "table" and e.side == side then
+            local name = type(e.name) == "string" and e.name or key
+            out[#out + 1] = { key = key, name = GK.Clean and GK.Clean(name, 64) or name, realm = e.realm,
+                side = e.side, first = e.first, copy = e.copy }
         end
     end
     table.sort(out, function(a, b)
@@ -137,14 +138,34 @@ function GK.AltsOnSide()
     return out
 end
 
+--- A count or a time from the saved file: a whole number from 0, or nil.
+local function Num(v)
+    if type(v) ~= "number" or v ~= v or v < 0 or v > 2 ^ 31 then return nil end
+    return math.floor(v)
+end
+
+--- One row of another character's copy as data from a saved file: numbers checked, words cleaned.
+local function SafeRow(row)
+    local out = {}
+    for _, field in ipairs({ "k", "d", "a", "l", "last", "lastKill", "lastAssist", "lastDeath" }) do
+        out[field] = Num(row[field])
+    end
+    for _, field in ipairs({ "n", "c", "r" }) do
+        if type(row[field]) == "string" then out[field] = GK.Clean and GK.Clean(row[field], 64) or row[field] end
+    end
+    return out
+end
+
 --- One character's copy without the grudges removed from its view by a note.
 local function VisibleCopy(charKey)
     local e = GK.db.alts[charKey]
     local out = {}
-    if not (e and e.copy) then return out end
+    if not (type(e) == "table" and type(e.copy) == "table") then return out end
     local removed = GK.db.altRemoved[charKey]
     for foeKey, row in pairs(e.copy) do
-        if not (removed and removed[foeKey]) then out[foeKey] = row end
+        if type(foeKey) == "string" and type(row) == "table" and not (type(removed) == "table" and removed[foeKey]) then
+            out[foeKey] = SafeRow(row)
+        end
     end
     return out
 end
@@ -160,7 +181,7 @@ function GK.AltGrudges(which)
     local sources = { CopyOfFoes(GK.char.foes) }
     local side = MySide()
     for key, e in pairs(GK.db.alts) do
-        if key ~= mine and e.side == side then sources[#sources + 1] = VisibleCopy(key) end
+        if key ~= mine and type(e) == "table" and e.side == side then sources[#sources + 1] = VisibleCopy(key) end
     end
     local out, newest = {}, {}
     for _, src in ipairs(sources) do
@@ -205,7 +226,9 @@ function GK.RemoveAltGrudge(which, foeKey)
         if GK.char.foes[foeKey] then forgetMine() end
         local side = MySide()
         for key, e in pairs(GK.db.alts) do
-            if key ~= mine and e.side == side and e.copy and e.copy[foeKey] then noteFor(key) end
+            if key ~= mine and type(e) == "table" and e.side == side and type(e.copy) == "table" and e.copy[foeKey] then
+                noteFor(key)
+            end
         end
     elseif GK.db.alts[which] then
         noteFor(which)

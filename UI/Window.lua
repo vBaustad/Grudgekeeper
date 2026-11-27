@@ -616,13 +616,13 @@ local function KilledMeItems(who)
             lined = true
             rule = #items > 0 or nil
         end
-        local select = PosterSpec(e.key, e.f)
+        local spec = PosterSpec(e.key, e.f)
         -- the card counts and forgets from the same view (GK.PosterCard, D4)
-        if who and who ~= "me" then select.t.alts = who end
+        if who and who ~= "me" then spec.t.alts = who end
         items[#items + 1] = { key = "f:" .. e.key, name = e.name, class = e.f.c, face = { key = e.key, c = e.f.c },
             desc = Short(e.f.l, e.f.c, e.f.r), sub = sub, score = { you, they }, rule = rule,
             eye = GK.IsTracked and GK.IsTracked(e.key) or nil,
-            select = select, you = you, they = they, ts = e.f.last, own = true }
+            select = spec, you = you, they = they, ts = e.f.last, own = true }
     end
     -- Your log is the You page's: it stood here under Lately as well, the same 25 rows twice (2026-11-16).
     -- Grudges is who owes you; what you did is on the You page.

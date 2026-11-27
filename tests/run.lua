@@ -5196,6 +5196,23 @@ test("alts: Share turns the setting on and joins the list, as the box does", fun
     eq(joined, 1)
 end)
 
+-- Without the checks in VisibleCopy/SafeRow and AltsOnSide, the string count raises "attempt to perform arithmetic"
+-- and the non-table entries raise "attempt to index" while the page draws.
+test("alts: a damaged copy in the saved file is data, never an error", function()
+    local A, sa = altBoot("Kari")
+    sa.db.alts["Broken-Realm"] = "not a table"
+    sa.db.alts["Odd-Realm"] = { name = "Odd|cffff0000", side = "Alliance", copy = {
+        ["Gank Master"] = { k = "lots", d = -4, a = 1 / 0, last = "x" }, [5] = "row", ["Nina Nice"] = "row" } }
+    A.char.foes["Gank Master"] = { n = "Gank Master", k = 1, d = 2, a = 0, last = B + 5 }
+    local all = A.AltGrudges("all")
+    eq(all["Gank Master"].k, 1); eq(all["Gank Master"].d, 2); eq(all["Gank Master"].a, 0)
+    eq(all["Nina Nice"], nil)
+    for _, e in ipairs(A.AltsOnSide()) do
+        if e.key == "Odd-Realm" then eq(e.name:find("|c", 1, true), nil, "no colour code survives") end
+    end
+    A.RemoveAltGrudge("all", "Gank Master")
+end)
+
 test("alts: all my characters adds the scores up", function()
     local A, sa = altBoot("Kari")
     A.char.foes["Gank Master"] = { n = "Gank Master", k = 2, d = 3, a = 1, last = B + 5, lastDeath = B + 5, l = 60 }
