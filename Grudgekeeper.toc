@@ -9,6 +9,7 @@
 ## AddonCompartmentFunc: Grudgekeeper_OnAddonCompartmentClick
 ## AddonCompartmentFuncOnEnter: Grudgekeeper_OnAddonCompartmentEnter
 ## AddonCompartmentFuncOnLeave: Grudgekeeper_OnAddonCompartmentLeave
+## Category: PvP
 ## X-Category: PvP
 ## X-Website: https://github.com/vBaustad/Grudgekeeper
 ## X-License: MIT
@@ -19,14 +20,10 @@ Libs\LibDataBroker-1.1\LibDataBroker-1.1.lua
 Libs\LibDBIcon-1.0\lib.xml
 Libs\AceComm-3.0\ChatThrottleLib.lua
 Libs\AceComm-3.0\AceComm-3.0.lua
+# Only the parts of LibForever Grudgekeeper uses: its Launcher, Minimap, Welcome, Settings and SelfTest are YippYapp's, and Settings made a "YippYapp" page in Options for every player (2026-11-27)
 Libs\LibForever-1.0\LibForever-1.0.lua
 Libs\LibForever-1.0\Maps.lua
-Libs\LibForever-1.0\Launcher.lua
 Libs\LibForever-1.0\Windows.lua
-Libs\LibForever-1.0\Minimap.lua
-Libs\LibForever-1.0\Welcome.lua
-Libs\LibForever-1.0\Settings.lua
-Libs\LibForever-1.0\SelfTest.lua
 
 Core\Core.lua
 Core\Sightings.lua

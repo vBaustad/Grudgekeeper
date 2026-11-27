@@ -5091,5 +5091,35 @@ test("effects: the lab's coordinates - y down from the seal's centre, clockwise 
     eq(r1(), r2(), "seeded: the same cloud every time")
 end)
 
+test("Grudgekeeper loads only the parts of LibForever it uses: no YippYapp page, /yippyapp or launcher", function()
+    -- Grudgekeeper is not YippYapp (DECISIONS.md). The lib's Settings.lua made a "YippYapp" page in Options and
+    -- Welcome.lua a /yippyapp command for every player who installed it: "det forvirrer folk" (the owner, 2026-11-27)
+    local file = assert(io.open(W.dir .. "Grudgekeeper.toc", "rb"))
+    local toc = file:read("*a")
+    file:close()
+    local function loads(part)
+        for line in toc:gmatch("[^\r\n]+") do
+            if line:match("^Libs.LibForever%-1%.0." .. part .. "%.lua$") then return true end
+        end
+        return false
+    end
+    eq(loads("LibForever%-1%.0"), true, "the lib itself")
+    eq(loads("Windows"), true, "GK.RegisterWindow and RegisterPopup live there")
+    for _, part in ipairs({ "Launcher", "Minimap", "Welcome", "Settings", "SelfTest" }) do
+        eq(loads(part), false, part .. ".lua is YippYapp's")
+    end
+end)
+
+test("the AddOn list files Grudgekeeper under PvP, and never under YippYapp", function()
+    -- the game groups the list by ## Category; ## X-Category is only read by CurseForge (the owner, 2026-11-27:
+    -- "legg til Category: PvP også", after a player saw Grudgekeeper with no group at all)
+    local file = assert(io.open(W.dir .. "Grudgekeeper.toc", "rb"))
+    local toc = file:read("*a")
+    file:close()
+    eq(toc:match("## Category: ([^\r\n]+)"), "PvP")
+    local _, n = toc:gsub("## Category:", "")
+    eq(n, 1, "one group only, and never YippYapp: Grudgekeeper is not a YippYapp addon (DECISIONS.md)")
+end)
+
 say(("\n%d passed, %d failed"):format(passed, failed))
 os.exit(failed == 0 and 0 or 1)

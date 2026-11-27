@@ -4,6 +4,8 @@
 
 - **Search the settings.** A search box beside the page title finds a setting by its name, its help or a choice in its dropdown, wherever it lives. The results drop down under the box, each with the page it is on. Click one, or pick it with the arrow keys and Enter, to go there, and the row lights up for a moment. By dakristia.
 - **A guildie's spree toast burns as yours does.** Its seal stamps in on fire, and from 20 kills the count slams on beside it (×20, ×25 and on). Its sounds go by your setting for guildies' sounds.
+- **No YippYapp page.** Grudgekeeper no longer adds a YippYapp page to Options or a /yippyapp command. They came with a library it shares with other addons, and it never used them.
+- **Under PvP in the AddOn list.** Grudgekeeper now sits in the PvP group of the game's AddOn list.
 
 ## 1.13.1
 
