@@ -208,7 +208,8 @@ function GK.PosterCard(t, inLedger)
     local s = GK.Store()
     local w = Find(s.wanted, key)
     local e = Find(s.slain, key)
-    local f, fkey = Find(GK.char.foes, key)
+    -- opened from another character's grudges, or all of them, the card counts what that view counts (D4)
+    local f, fkey = Find(t.alts and GK.AltGrudges and GK.AltGrudges(t.alts) or GK.char.foes, key)
     local o = GK.OrderOn(key, guid)
     local live = GK.Seen(key, guid)
     local function Pick(field)
@@ -355,7 +356,12 @@ function GK.PosterCard(t, inLedger)
         d.buttons[#d.buttons + 1] = { armed and "Really forget?" or "Forget grudge", function()
             if forgetArmed == fkey and GetTime() < forgetUntil then
                 forgetArmed = nil
-                GK.ForgetGrudge(fkey)
+                if t.alts and GK.RemoveAltGrudge then
+                    GK.RemoveAltGrudge(t.alts, fkey)
+                    GK.Changed()
+                else
+                    GK.ForgetGrudge(fkey)
+                end
                 return
             end
             forgetArmed, forgetUntil = fkey, GetTime() + FORGET_ARMED_FOR

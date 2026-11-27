@@ -201,7 +201,8 @@ function GK.RemoveAltGrudge(which, foeKey)
     if which == "me" or which == mine then
         forgetMine()
     elseif which == "all" then
-        forgetMine()
+        -- only a grudge this character has: ForgetGrudge tells the guild, and there is nothing to tell
+        if GK.char.foes[foeKey] then forgetMine() end
         local side = MySide()
         for key, e in pairs(GK.db.alts) do
             if key ~= mine and e.side == side and e.copy and e.copy[foeKey] then noteFor(key) end

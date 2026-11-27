@@ -55,6 +55,7 @@ local NAME_X, NAME_X_RANKED = 44, 74
 -- row's 4 in from it, and a little more.
 local TIP_GAP = 28
 local LIST_TOP = 96                                  -- the first row, down from the page's top
+local NUDGE_H = 44                                   -- the Death Note's nudge line, over the first row (D1)
 local TAB_INK_Y, TAB_INK_GAP = 40, 16                -- the ink tabs under the title: how far down, and apart
 -- The foot of a list: its rows stop over the page arrows (page.count, 16 up, the arrows round it), all that
 -- stands there since Letters and Settings went to the title bar (2026-11-18). A page fits as many rows as reach
@@ -154,6 +155,7 @@ local function ListFrame(def, line)
         top = top - 30
         if not line then top = top - 16 end
     end
+    if def.nudge and def.nudge() then top = top + NUDGE_H end       -- the Death Note's nudge over its rows
     return top, math.floor((LIST_FOOT - top) / ROW_H)
 end
 
@@ -265,6 +267,26 @@ end
 local function GuildView()
     local view, guild = GrudgesView()
     return view == "guild", guild
+end
+
+-- Whose grudges Killed me shows (docs/alt-sync.md, D3): "me", "all", or one character's key (Alts.lua). This
+-- character and All my characters are remembered for the account (GK.db.altView); one other character is a quick
+-- look, never saved, gone when the window closes.
+local grudgesWho = nil
+-- The nudge's panel on the Death Note page (D1), open until a choice or the window closing.
+local nudgeOpen = false
+
+--- Does Killed me have the character switch: more than one character of the account on this side.
+local function AltSwitchShown()
+    return grudgesView == "me" and GK.AltsOnSide ~= nil and #GK.AltsOnSide() > 1
+end
+
+--- Whose grudges Killed me shows as it stands: "me" without the switch.
+local function GrudgesWho()
+    if not AltSwitchShown() then return "me" end
+    if grudgesWho and GK.db.alts and GK.db.alts[grudgesWho] and grudgesWho ~= GK.MyAltKey() then return grudgesWho end
+    grudgesWho = nil
+    return GK.db.altView == "all" and "all" or "me"
 end
 
 --- Does Only mine show, and count, on this page as it stands? Not on Grudges' first two views: Killed me is
@@ -544,15 +566,21 @@ end
 --- Killed me: who has killed you, the most owed first, then under a faint line who you are even with or lead.
 --- One on your Death list is here too, with the eye. "most wanted er jo typ 'de du har møtt som har drept oss'"
 --- (the owner, 2026-11-22).
-local function KilledMeItems()
+local function KilledMeItems(who)
     local items, c = {}, GK.char
-    -- the last thing that happened with each of them: your log is newest first
+    -- the last thing that happened with each of them: your log is newest first. Another character's, or all of
+    -- them, is the account copy (Alts.lua), which keeps no log: "last met" there.
     local lastOf = {}
-    for _, e in ipairs(c.log) do
-        if e.n and not lastOf[e.n] then lastOf[e.n] = e end
+    local source = c.foes
+    if who and who ~= "me" then
+        source = GK.AltGrudges(who)
+    else
+        for _, e in ipairs(c.log) do
+            if e.n and not lastOf[e.n] then lastOf[e.n] = e end
+        end
     end
     local foes = {}
-    for k, v in pairs(c.foes) do
+    for k, v in pairs(source) do
         if (v.d or 0) > 0 then foes[#foes + 1] = { key = k, f = v, name = GK.Show(k), owed = Owed(v) } end
     end
     -- who leads over you, the most owed first; then even; then who you lead, the smallest lead first. Within
@@ -588,10 +616,13 @@ local function KilledMeItems()
             lined = true
             rule = #items > 0 or nil
         end
+        local select = PosterSpec(e.key, e.f)
+        -- the card counts and forgets from the same view (GK.PosterCard, D4)
+        if who and who ~= "me" then select.t.alts = who end
         items[#items + 1] = { key = "f:" .. e.key, name = e.name, class = e.f.c, face = { key = e.key, c = e.f.c },
             desc = Short(e.f.l, e.f.c, e.f.r), sub = sub, score = { you, they }, rule = rule,
             eye = GK.IsTracked and GK.IsTracked(e.key) or nil,
-            select = PosterSpec(e.key, e.f), you = you, they = they, ts = e.f.last, own = true }
+            select = select, you = you, they = they, ts = e.f.last, own = true }
     end
     -- Your log is the You page's: it stood here under Lately as well, the same 25 rows twice (2026-11-16).
     -- Grudges is who owes you; what you did is on the You page.
@@ -914,7 +945,14 @@ GK.LedgerPages = {
     -- many turns of the page, so no max.
     -- The Death Note since 2026-11-24, the Death list before: "kanskje kalle det Death Note isteden for Death List som
     -- en homage til animeen" (the owner), who picked the line under its title of four in our own words.
-    { name = "Death Note", items = DeathListItems, headings = {},
+    -- nudge: on a second character of the account, one time for the account, the line and glowing button that
+    -- offer one Death Note for them all (docs/alt-sync.md D1). Its panel takes the rows' place while open.
+    { name = "Death Note", headings = {},
+      nudge = function() return GK.ShowAltNudge ~= nil and GK.ShowAltNudge() end,
+      items = function()
+          if nudgeOpen and GK.ShowAltNudge and GK.ShowAltNudge() then return {}, "" end
+          return DeathListItems()
+      end,
       icon = ICONS .. "Ability_Hunter_SniperShot",          -- the hunter's mark: marked to be hunted
       add = { text = "Add someone", kind = "track" },
       sub = function() return "The one whose name is written here shall die." end,
@@ -937,7 +975,27 @@ GK.LedgerPages = {
                   or "An officer or the guild master can track an enemy guild.")
           end
           if view == "killed" then return WantedItems() end
-          return KilledMeItems()
+          return KilledMeItems(GrudgesWho())
+      end,
+      -- whose grudges, on Killed me alone: Killed us and Versus are the guild's and cover everyone (D3)
+      picker = function()
+          if not AltSwitchShown() then return nil end
+          local who = GrudgesWho()
+          local options = { { "me", "This character" }, { "all", "All my characters" } }
+          local label = who == "all" and "All my characters" or "This character"
+          for _, e in ipairs(GK.AltsOnSide()) do
+              if e.key ~= GK.MyAltKey() then
+                  options[#options + 1] = { e.key, e.name }
+                  if who == e.key then label = e.name end
+              end
+          end
+          return { text = label, options = options, on = who, pick = function(v)
+              if v == "me" or v == "all" then
+                  GK.db.altView, grudgesWho = v, nil
+              else
+                  grudgesWho = v
+              end
+          end }
       end,
       headings = function()
           local view, guild = GrudgesView()
@@ -1920,6 +1978,126 @@ local function BuildList(page)
     page.add = add
     page.reset = page:CreateFontString(nil, "ARTWORK")    -- the links' tail, anchored after the last one shown
     Ink(page.reset, FADED, TEXT_FONT, 11)
+    -- The character switch on Grudges' Killed me (def.picker, docs/alt-sync.md D3): its choice in ink at the tabs'
+    -- right end with the game's down arrow, a click for the menu of This character, All my characters and each one.
+    local picker = CreateFrame("Button", nil, page)
+    picker:SetHeight(18)
+    picker.text = picker:CreateFontString(nil, "ARTWORK")
+    Ink(picker.text, FADED, TEXT_FONT, 11)
+    picker.text:SetPoint("RIGHT", -14, 1)
+    picker.arrow = picker:CreateTexture(nil, "ARTWORK")
+    picker.arrow:SetTexture("Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Up")
+    picker.arrow:SetSize(16, 16)
+    picker.arrow:SetPoint("RIGHT", 2, 0)
+    function picker:Set(p)
+        self.p = p
+        self.text:SetText(p.text)
+        self:SetWidth(math.ceil(TextWidth(self.text)) + 16)
+    end
+    picker:SetScript("OnClick", function(self)
+        local p = self.p
+        if not (p and MenuUtil and MenuUtil.CreateContextMenu) then return end
+        MenuUtil.CreateContextMenu(self, function(_, root)
+            for _, o in ipairs(p.options) do
+                root:CreateRadio(o[2], function() return p.on == o[1] end, function()
+                    p.pick(o[1])
+                    selected[tab], pinned, offset = nil, nil, 0
+                    Refresh()
+                end)
+            end
+        end)
+    end)
+    picker:SetScript("OnEnter", function(self)
+        self.text:SetTextColor(INK[1], INK[2], INK[3])
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText("Whose grudges to show")
+        GameTooltip:Show()
+    end)
+    picker:SetScript("OnLeave", function(self)
+        self.text:SetTextColor(FADED[1], FADED[2], FADED[3])
+        GameTooltip:Hide()
+    end)
+    picker:Hide()
+    page.picker = picker
+    -- The Death Note's nudge (def.nudge, D1): a line and a small button with a gold halo that breathes, slow and
+    -- soft, never a flash (the owner's pick, demo A, 2026-11-27); it holds still under the mouse. No popup at
+    -- login: it waits on the page to be found. A click opens the panel in the rows' place.
+    local nudge = CreateFrame("Frame", nil, page)
+    nudge:SetSize(PAGE_W - 24, NUDGE_H - 6)
+    nudge.button = GK.MakeButton(nudge, 70, 22)
+    nudge.button:SetPoint("LEFT", 6, 0)
+    nudge.button:SetText("Tell me")
+    nudge.glow = nudge.button:CreateTexture(nil, "BACKGROUND", nil, -1)
+    nudge.glow:SetTexture(MEDIA .. "glow")
+    nudge.glow:SetBlendMode("ADD")
+    nudge.glow:SetVertexColor(1, 0.8, 0.35)
+    nudge.glow:SetSize(120, 60)
+    nudge.glow:SetPoint("CENTER")
+    nudge.glow:SetAlpha(0.15)
+    local breathe = nudge.glow:CreateAnimationGroup()
+    breathe:SetLooping("BOUNCE")
+    local swell = breathe:CreateAnimation("Alpha")
+    swell:SetFromAlpha(0.15)
+    swell:SetToAlpha(0.6)
+    swell:SetDuration(1.6)
+    swell:SetSmoothing("IN_OUT")
+    nudge.breathe = breathe
+    nudge.button:HookScript("OnEnter", function()
+        breathe:Stop()
+        nudge.glow:SetAlpha(0.35)
+    end)
+    nudge.button:HookScript("OnLeave", function() breathe:Play() end)
+    nudge.button:HookScript("OnClick", function()
+        nudgeOpen = true
+        offset = 0
+        Refresh()
+    end)
+    nudge.text = nudge:CreateFontString(nil, "ARTWORK")
+    Ink(nudge.text, INK, TEXT_FONT, 11)
+    nudge.text:SetPoint("LEFT", nudge.button, "RIGHT", 10, 0)
+    nudge.text:SetPoint("RIGHT", -4, 0)
+    nudge.text:SetJustifyH("LEFT")
+    nudge.text:SetText("It looks like you play more than one character. Do you want them to share one Death Note?")
+    nudge:SetScript("OnShow", function() if not nudge.button:IsMouseOver() then breathe:Play() end end)
+    nudge:SetScript("OnHide", function() breathe:Stop() end)
+    nudge:Hide()
+    page.nudge = nudge
+    -- The panel: what sharing does (GK.JoinDeathNote: this character's list joins, and is back as it was when the
+    -- box is off), the grudges' own word apart in the faded hint ink, where to change it later, and the two choices.
+    local panel = CreateFrame("Frame", nil, page)
+    panel:SetSize(PAGE_W - 24, 220)
+    local function Para(colour, text, after, gap)
+        local fs = panel:CreateFontString(nil, "ARTWORK")
+        Ink(fs, colour, TEXT_FONT, 12)
+        fs:SetWidth(PAGE_W - 36)
+        fs:SetJustifyH("LEFT")
+        fs:SetSpacing(3)
+        if after then fs:SetPoint("TOPLEFT", after, "BOTTOMLEFT", 0, -gap) else fs:SetPoint("TOPLEFT", 6, 0) end
+        fs:SetText(text)
+        return fs
+    end
+    local explain = Para(INK, "Share one Death Note between every character of yours on this side. This "
+        .. "character's list joins the shared one, and comes back as it was if you stop sharing.")
+    local hint = Para(FADED, "Note: Your grudges across all your characters can always be viewed on the Grudges page.",
+        explain, 14)
+    local later = Para(INK, "You can change this later in Settings.", hint, 14)
+    local function Choose(fn)
+        fn()
+        nudgeOpen = false
+        offset = 0
+        GK.Changed()
+        Refresh()
+    end
+    panel.share = GK.MakeButton(panel, 150, 22)
+    panel.share:SetText("Share my Death Note")
+    panel.share:SetPoint("TOPLEFT", later, "BOTTOMLEFT", 0, -16)
+    panel.share:SetScript("OnClick", function() Choose(GK.AltNudgeShare) end)
+    panel.keep = GK.MakeButton(panel, 110, 22)
+    panel.keep:SetText("Keep separate")
+    panel.keep:SetPoint("LEFT", panel.share, "RIGHT", 8, 0)
+    panel.keep:SetScript("OnClick", function() Choose(GK.AltNudgeKeep) end)
+    panel:Hide()
+    page.nudgePanel = panel
     -- The column headings. One with a sort is a button: a click sorts by it, a second click goes back
     -- to the page's own order; the one in use is in blood and underlined, like a chosen link.
     page.heads = {}
@@ -3201,6 +3379,7 @@ local function Build()
     -- card pinned from outside goes too, a look at one player: opened again, the page is as it was
     win:HookScript("OnHide", function()
         pinned = nil
+        grudgesWho, nudgeOpen = nil, false           -- another character's grudges were a quick look (D3)
         GK.CloseLedgerSheets()
         LeaveSettings()                              -- opened again, it opens on its pages
     end)
@@ -3273,6 +3452,13 @@ Refresh = function()
     list.reset:ClearAllPoints()
     list.reset:SetPoint("TOPRIGHT", list, "TOPRIGHT", -(mineShown and list.mine.width + 14 or 12), -(TAB_INK_Y + 3))
     list.reset:SetText(last and def.linksTail and def.linksTail() or "")
+    local pick = last and def.picker and def.picker() or nil
+    list.picker:SetShown(pick ~= nil)
+    if pick then
+        list.picker:Set(pick)
+        list.picker:ClearAllPoints()
+        list.picker:SetPoint("TOPRIGHT", list, "TOPRIGHT", -(mineShown and list.mine.width + 14 or 10), -TAB_INK_Y)
+    end
     -- the line under the title on a page without tabs, decided here and not read back: the game's GetText gives
     -- no "" for an empty line
     list.sub:ClearAllPoints()
@@ -3289,6 +3475,16 @@ Refresh = function()
         for i, row in ipairs(list.rows) do row:SetPoint("TOPLEFT", 4, -(top + (i - 1) * ROW_H)) end
     end
     if action then list.add:Set(action) end
+    local nudged = def.nudge ~= nil and def.nudge()
+    if not nudged then nudgeOpen = false end
+    list.nudge:SetShown(nudged and not nudgeOpen)
+    list.nudgePanel:SetShown(nudged and nudgeOpen)
+    if nudged then
+        list.nudge:ClearAllPoints()
+        list.nudge:SetPoint("TOPLEFT", 12, -(top - NUDGE_H))
+        list.nudgePanel:ClearAllPoints()
+        list.nudgePanel:SetPoint("TOPLEFT", 12, -(top - NUDGE_H + 4))
+    end
     local sortKey = GK.SortKey(def)
     for i, b in ipairs(list.heads) do
         local h = heads[i]
