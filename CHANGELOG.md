@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.14.0
 
 - **Search the settings.** A search box beside the page title finds a setting by its name, its help or a choice in its dropdown, wherever it lives. The results drop down under the box, each with the page it is on. Click one, or pick it with the arrow keys and Enter, to go there, and the row lights up for a moment. By dakristia.
 - **Grudges across your characters.** On Grudges' Killed me, a box at the bottom left of the page shows this character's grudges, all your characters' on this side added up, or one other character's. The page opens on This character or All, whichever you used last. A grudge can be forgotten from any of them; another character forgets it the next time you log in on it. By dakristia.

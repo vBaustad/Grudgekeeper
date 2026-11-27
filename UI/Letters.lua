@@ -281,7 +281,7 @@ end
 -- of its own. Someone who skipped a release gets each letter they missed, oldest first: 1.5.0's came the
 -- same day as 1.4.0's (the owner, 2026-11-12: "må vel ha enda en what's new da"). The next one: its id at
 -- the end of NEWS, and its words in NEWS_WORDS.
-local NEWS = { "1.4.0", "1.5.0", "1.6.0", "1.7.0", "1.9.0", "1.12.0", "1.13.0" }
+local NEWS = { "1.4.0", "1.5.0", "1.6.0", "1.7.0", "1.9.0", "1.12.0", "1.13.0", "1.14.0" }
 local LATEST = NEWS[#NEWS]
 
 -- Each letter in his voice: two short paragraphs with air between and no numbers, and a button to where
@@ -335,6 +335,11 @@ local NEWS_WORDS = {
         "",
         "The patch notes say what is new.",
     }, "seal_red", "Patch notes", function() GK.OpenPatchNotes("1.13.0") end },
+    ["1.14.0"] = { "Patch notes", {
+        "A new version of Grudgekeeper is here: your grudges across all your characters, and one Death Note for them if you like.",
+        "",
+        "The patch notes say what is new.",
+    }, "seal_red", "Patch notes", function() GK.OpenPatchNotes("1.14.0") end },
 }
 
 --- The news letters not seen yet, oldest first: all of them when none was, those after the one seen last,
@@ -403,8 +408,19 @@ local PATCH_NOTES = {
             { "Death Note", "The Death list has a new name." },
         } },
     }, { "Open settings", function() GK.OpenOptions("Quick setup") end } },
+    ["1.14.0"] = { "27 November 2026", {
+        { "New", {
+            { "All your characters", "Grudges, Killed me, has a box at the bottom left: this character, all of yours on this side, or one of them." },
+            { "One Death Note", "With two characters on a side, a ? on the Death Note page offers to share one list." },
+            { "Search the settings", "A search box beside the settings' title finds any setting." },
+        } },
+        { "Changed", {
+            { "Guildies' sprees", "Their toasts burn like yours, with the count from 20." },
+            { "AddOn list", "Grudgekeeper sits under PvP, and adds no YippYapp page to Options." },
+        } },
+    }, { "Open settings", function() GK.OpenOptions("Quick setup") end } },
 }
-local PATCH_LATEST = "1.13.0"
+local PATCH_LATEST = "1.14.0"
 GK.PATCH_NOTES, GK.PATCH_LATEST = PATCH_NOTES, PATCH_LATEST       -- for tools/smoke_grudgekeeper.py
 
 local NOTES_W, NOTES_H, NOTES_TEXT_W = 460, 520, 392      -- the notes scroll when they run past about 390

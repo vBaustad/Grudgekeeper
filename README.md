@@ -21,13 +21,14 @@ leaderboard, and kill orders with a bounty on them.
 - **Death Note** is your own list, and holds only who you put there: **Add someone** on its page, **Add to
   Death Note** on their card or in the right-click menu on an enemy. Up to 100, never shared, and nobody leaves
   it unless you take them off. With **One Death Note for all my characters** on (Settings, Death Note), your
-  characters on the same side share it, notes and warning too. One of them near warns you and wears an eye over their nameplate. Adding one
+  characters on the same side share it, notes and warning too. With two characters on a side, a **?** on the Death Note page offers it once. One of them near warns you and wears an eye over their nameplate. Adding one
   opens a small window for a note, if you want one: Add works without. The note shows on their row and card,
   where **Edit** changes it, and is never sent. Killing one is a toast of yours, with no letter and nothing
   said to the guild beyond the kill itself. It was called
   Track before, then the Death list, and whoever you tracked is on it.
 - **Grudges** is what came by itself. **Killed me** has who killed you: those who lead over you first, the one
   you owe most at the top ("owed 3"), and under a faint line those you stand even with and those you lead.
+  With more than one character on this side, a box at its bottom left shows this character's, all of yours added up, or one of the others'.
   **Killed us** has who killed the guild most. The third tab is **Versus**, for the guild yours tracks. Kill one who
   killed you since you last got them and Revenge is told on screen, with where the two of you stand. Kill one
   who still leads over you again and a toast says where you stand now ("Grudge: ... now 2 - 3"), or that you

@@ -2974,7 +2974,7 @@ test("what's new: every letter missed, oldest first, once; none on a first insta
     GK.DeliverNews(false)
     eq(#GK.char.letters, 0, "a moment after login, not under the loading screen")
     W.advance(6)
-    eq(#GK.char.letters, 7)
+    eq(#GK.char.letters, 8)
     eq(GK.char.letters[1].news, "1.4.0", "the oldest first")
     eq(GK.char.letters[2].news, "1.5.0")
     eq(GK.char.letters[3].news, "1.6.0")
@@ -2982,30 +2982,32 @@ test("what's new: every letter missed, oldest first, once; none on a first insta
     eq(GK.char.letters[5].news, "1.9.0", "1.8.0 had none")
     eq(GK.char.letters[6].news, "1.12.0", "1.10.0 and 1.11.0 had none")
     eq(GK.char.letters[7].news, "1.13.0")
-    eq(GK.db.newsSeen, "1.13.0")
+    eq(GK.char.letters[8].news, "1.14.0")
+    eq(GK.db.newsSeen, "1.14.0")
     GK.DeliverNews(false)                          -- the next login
     W.advance(6)
-    eq(#GK.char.letters, 7, "once")
+    eq(#GK.char.letters, 8, "once")
 
     local GK1 = bootSheets({ me = ME })
     function GK1.NoticeUpdate() end
     GK1.db.newsSeen = "1.4.0"                      -- on 1.4.0: its letter came then
     GK1.DeliverNews(false)
     W.advance(6)
-    eq(#GK1.char.letters, 6)
+    eq(#GK1.char.letters, 7)
     eq(GK1.char.letters[1].news, "1.5.0", "only the ones after it")
     eq(GK1.char.letters[2].news, "1.6.0")
     eq(GK1.char.letters[3].news, "1.7.0")
     eq(GK1.char.letters[4].news, "1.9.0")
     eq(GK1.char.letters[5].news, "1.12.0")
     eq(GK1.char.letters[6].news, "1.13.0")
+    eq(GK1.char.letters[7].news, "1.14.0")
 
     local GK2 = bootSheets({ me = ME })
     function GK2.NoticeUpdate() end
     GK2.DeliverNews(true)
     W.advance(6)
     eq(#GK2.char.letters, 0, "a first install: nothing is new")
-    eq(GK2.db.newsSeen, "1.13.0", "and not later either")
+    eq(GK2.db.newsSeen, "1.14.0", "and not later either")
 
     local GK3 = bootSheets({ me = ME })
     function GK3.NoticeUpdate() end
@@ -3013,7 +3015,7 @@ test("what's new: every letter missed, oldest first, once; none on a first insta
     GK3.DeliverNews(false)
     W.advance(6)
     eq(#GK3.char.letters, 0, "letters off: none")
-    eq(GK3.db.newsSeen, "1.13.0")
+    eq(GK3.db.newsSeen, "1.14.0")
 
     local GK4 = bootSheets({ me = ME })
     function GK4.NoticeUpdate() end
@@ -3035,7 +3037,8 @@ test("what's new: short notes from him about no one, each with a button to where
         ["1.9.0"] = { "Louder now", "a fanfare of its own", "Leaderboard" },
         -- drawn as a scroll only in a picture or a test: opened, it is the patch notes (2026-11-23)
         ["1.12.0"] = { "Patch notes", "A new version of Grudgekeeper is here", "Patch notes" },
-        ["1.13.0"] = { "Patch notes", "a quick setup for your settings", "Patch notes" } }
+        ["1.13.0"] = { "Patch notes", "a quick setup for your settings", "Patch notes" },
+        ["1.14.0"] = { "Patch notes", "your grudges across all your characters", "Patch notes" } }
     for id, w in pairs(want) do
         local d = GK.LetterContent({ id = 1, kind = "news", news = id })
         eq(d.note, true, id)
