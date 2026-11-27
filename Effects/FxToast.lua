@@ -18,9 +18,12 @@ local TOAST_SEAL = 64                  -- the toast's seal, and its ribbon's hei
 local RIB_X = 164                      -- the ribbon's centre, from the seal's (4 gap, 128 half of 256, 32 half of the seal)
 
 --- The effect a toast plays: kind is "spree" or "tormentor"; mine whether the spree is the player's own. nil: none.
+--- A guildie's spree burns as yours does, with the count past 15: "jeg forventet grudgeboundx20 men fikk grudgebound
+--- og subtitle "20 kill streak"" (the owner, 2026-11-26, of a guildie's 20). A toast is how a guildie's moment
+--- shows (a splash is only ever yours), and its effect's sounds go by the guildies' sound setting (item.silent).
 function GK.ToastEffect(kind, mine)
     if kind == "tormentor" then return "debt_paid" end
-    if kind == "spree" and mine then return "spree_burn" end
+    if kind == "spree" then return "spree_burn" end
     return nil
 end
 

@@ -5035,15 +5035,21 @@ test("effects: a toast's own effects play from start to fade without an error, a
     local GK, LIB, A = bootAnnounce()
     GK.db.spreeMine = "toast"
     GK.db.announceTime = 3                  -- so five seconds take a toast through its fade and back to the pool
+    GK.db.grudgeMine = "toast"
     eq(GK.ToastEffect("spree", true), "spree_burn")
-    eq(GK.ToastEffect("spree", false), nil, "a guildie's spree stays plain")
+    -- a guildie's burns as yours does, with the count past 15 (the owner, 2026-11-26: "jeg forventet grudgeboundx20")
+    eq(GK.ToastEffect("spree", false), "spree_burn", "a guildie's spree burns too")
     eq(GK.ToastEffect("tormentor", false), "debt_paid")
+    -- the fourth: whether the count (x20) slams on after the seal
     local cases = {
-        { "burn", "spree_burn", function() LIB.Fire("GK_SPREE", ME, 7, "Butcher", true, "butcher") end },
-        { "burn with the count", "spree_burn", function() LIB.Fire("GK_SPREE", ME, 20, "Grudgebound", true, "grudgebound") end },
+        { "burn", "spree_burn", function() LIB.Fire("GK_SPREE", ME, 7, "Butcher", true, "butcher") end, false },
+        { "burn with the count", "spree_burn", function() LIB.Fire("GK_SPREE", ME, 20, "Grudgebound", true, "grudgebound") end, true },
+        { "a guildie's burn with the count", "spree_burn",
+            function() LIB.Fire("GK_SPREE", KARI, 20, "Grudgebound", false, "grudgebound") end, true },
         -- a tormentor's toast is the grudge book now (FxEnded.lua's T4, 2026-11-21), found by its name first
         { "the book", "tormentor", function() LIB.Fire("GK_TORMENTOR", ME, "Gankalot", 6, true) end },
-        { "plain", nil, function() LIB.Fire("GK_SPREE", KARI, 7, "Butcher", false, "butcher") end },
+        -- a grudge evened up, not on the Death list, has no effect of its own: a pooled toast starts clean
+        { "plain", nil, function() LIB.Fire("GK_GRUDGE", "Gankalot", 2, 3) end },
     }
     for round = 1, 2 do
         for _, c in ipairs(cases) do
@@ -5055,6 +5061,7 @@ test("effects: a toast's own effects play from start to fade without an error, a
             end
             assert(toast, c[1] .. ": a toast was shown")
             eq(toast.fx, c[2] and GK.TOASTFX[c[2]], c[1])
+            if c[4] ~= nil then eq(toast.burn.hasNum, c[4], c[1] .. ": the count") end
             for _ = 1, 50 do toast.OnUpdate(toast, 0.1) end
             assert(#A.frames <= 1 or round == 1 or #A.frames == before, c[1] .. ": the pool is reused")
         end
